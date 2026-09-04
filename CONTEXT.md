@@ -145,3 +145,15 @@ _Avoid_: profile, mode, level
 **Schema drift**:
 A difference between the control plane's published API description and what the live API accepts or returns.
 _Avoid_: breaking change, bug, mismatch (unqualified)
+
+**Caller**:
+Whatever is on the other end of a request the HTTP transport received: an address, and the node name the local node knows that address by when it knows one. Distinct from the operator, who configured the server, and from the agent, which is the software making tool calls.
+_Avoid_: client (that word is for an MCP client), user, requester
+
+**Admission**:
+The set of checks a request passes before the transport sees it — the host, the origin, the rate limit and the bearer token — and the act of passing them.
+_Avoid_: auth, middleware, gate (that word is for the tier and toolset check)
+
+**Health endpoint**:
+The one HTTP route that answers without admission, so that something holding no credential can tell whether the server is up.
+_Avoid_: ping, liveness, status (that word is for `tailscale status`)

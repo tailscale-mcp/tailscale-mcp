@@ -1112,3 +1112,63 @@ The cost of being wrong in this direction is one `confirm: true` on a call an op
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/resources.rs`
+
+## Q90 — build/ticket-23 — interpretation
+
+**Question:** rmcp's own Streamable HTTP transport already validates `Host` and `Origin` and caps the request body. Ticket 23 asks for all three. Whose checks run?
+
+**Options considered:** configure rmcp's and add nothing / do all of it in front and turn rmcp's off / do it in front and configure rmcp's identically as well
+
+**Chosen:** the checks in front own the policy, and rmcp is handed the same host list and the same body cap.
+
+**Decided-by:** agent
+
+**Justification:** Two of the three could not be left to rmcp as they stand. Its origin list defaults to empty and an empty list means *do not check*, where the ticket means *refuse every browser*; its host list allows everything when empty, which is the wrong direction to fail in. And a token, a rate limit and an open health endpoint are not its to do at all — the health endpoint in particular has to answer for a `Host` the transport would refuse, which it can only do from outside.
+
+So the middleware asks the questions, in the order host, origin, rate, token: a request from the wrong host is refused before its token is examined, so a page probing for a valid token learns nothing from how long the refusal takes.
+
+Handing rmcp the same list rather than disabling its check is the answer to the duplication that would otherwise be: there is one list, computed once, and the two cannot disagree because they are the same value. Its check is then redundant work on requests that already passed, which is the cheap direction for a defence in depth to be redundant in.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/http.rs`
+
+## Q91 — build/ticket-23 — deviation
+
+**Question:** The HTTP bearer token needs to reach the server. A `--http-token` flag was the obvious way, and this repo has a test asserting no argument name contains `key`, `secret`, `token` or `password`.
+
+**Options considered:** add the flag and widen the test / add the flag and document the risk / no flag: the environment variable only
+
+**Chosen:** `TAILSCALE_MCP_HTTP_TOKEN` and nothing on the command line.
+
+**Decided-by:** agent
+
+**Justification:** The test is not a formality; it is the same rule that keeps auth keys and API keys off this server's argv, and off the argv of every command it runs. A command line is readable by every process on the machine, and a server whose whole job is to hold a control-plane credential should not be the one to break its own rule for its own token.
+
+Nothing is lost. Every other credential this server takes arrives by environment variable already, so there is no new mechanism for an operator to learn, and the refusal on a non-loopback bind names the variable.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/config.rs`
+
+## Q86 — build/ticket-23 — deviation
+
+*Appended after Q91: this entry was written before them and held out of an
+earlier commit, and an entry is appended where it is written down rather than
+slotted in by number. Q75 sits before Q74 for the same reason.*
+
+**Question:** Ticket 23 says to serve Streamable HTTP "on the agreed default loopback address", and no address was ever agreed.
+
+**Options considered:** `127.0.0.1:8080` / `127.0.0.1:3000` / a port already registered to something / `127.0.0.1:8449`
+
+**Chosen:** `127.0.0.1:8449`, and the `--http` flag takes an address so an operator never has to accept it.
+
+**Decided-by:** agent
+
+**Justification:** Loopback is the part the ticket does settle, and it is the right default for a reason worth writing down: an operator binding this server to a tailnet address is publishing a control plane, and that should be a thing they typed rather than a thing they inherited.
+
+The port is the part that was open. 8080, 8000 and 3000 are the ports a developer's other things are already on, and a default that collides is a default that wastes an afternoon. 8443 is nearly as crowded and additionally suggests TLS, which this server does not terminate. 8449 is not registered with IANA, is not in common use, and is close enough to the familiar range to look deliberate rather than random.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/http.rs`

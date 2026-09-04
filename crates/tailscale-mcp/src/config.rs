@@ -9,6 +9,7 @@
 //! environment of a running test binary.
 
 use std::collections::BTreeSet;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -61,6 +62,15 @@ pub const NO_TAILNET_ENV: &str = "TAILSCALE_MCP_NO_TAILNET";
 pub const CLI_PATH_ENV: &str = "TAILSCALE_MCP_CLI_PATH";
 pub const MAX_RESULT_BYTES_ENV: &str = "TAILSCALE_MCP_MAX_RESULT_BYTES";
 pub const LOG_ENV: &str = "TAILSCALE_MCP_LOG";
+/// The bearer token the HTTP transport requires.
+///
+/// A variable and no flag, because a token on a command line is a token in
+/// every process listing on the machine.
+pub const HTTP_TOKEN_ENV: &str = "TAILSCALE_MCP_HTTP_TOKEN";
+/// Serve HTTP with no token at all.
+pub const HTTP_NO_AUTH_ENV: &str = "TAILSCALE_MCP_HTTP_NO_AUTH";
+/// Serve HTTP without sessions.
+pub const HTTP_STATELESS_ENV: &str = "TAILSCALE_MCP_HTTP_STATELESS";
 /// Where the control-plane calls go. Deliberately without a command-line form:
 /// it exists so the tests can point at a fake and so a staging control plane
 /// can be reached, and neither belongs among the flags. It is documented all
@@ -80,6 +90,9 @@ pub const ENV_VARS: &[&str] = &[
     CLI_PATH_ENV,
     MAX_RESULT_BYTES_ENV,
     LOG_ENV,
+    HTTP_TOKEN_ENV,
+    HTTP_NO_AUTH_ENV,
+    HTTP_STATELESS_ENV,
     API_BASE_URL_ENV,
 ];
 
@@ -102,6 +115,15 @@ wins over the matching variable.
   TAILSCALE_MCP_CLI_PATH           --cli-path
   TAILSCALE_MCP_MAX_RESULT_BYTES   --max-result-bytes
   TAILSCALE_MCP_LOG                --log
+  TAILSCALE_MCP_HTTP_NO_AUTH       --http-no-auth
+  TAILSCALE_MCP_HTTP_STATELESS     --http-stateless
+
+--http serves over Streamable HTTP instead of stdio, on 127.0.0.1:8449 unless
+given an address, with --http-allow-host and --http-allow-origin to widen what
+it answers for. TAILSCALE_MCP_HTTP_TOKEN is the bearer token callers must
+present; it has no command-line form, because an argument is readable by every
+process on this machine. A bind anywhere but loopback needs either that variable
+or --http-no-auth.
 
 TAILSCALE_TAILNET names the tailnet the control-plane tools act on; without it
 they act on the one the credential belongs to. TAILSCALE_MCP_API_BASE_URL sends
@@ -155,6 +177,47 @@ pub struct Cli {
     /// Logging filter, in the `tracing` syntax. Logs go to standard error.
     #[arg(long, value_name = "FILTER")]
     pub log: Option<String>,
+
+    /// Serve MCP over HTTP at this address instead of over stdio. Defaults to
+    /// 127.0.0.1:8449 when the flag is given with no address.
+    #[arg(long, value_name = "ADDR", num_args = 0..=1, default_missing_value = crate::http::DEFAULT_BIND)]
+    pub http: Option<String>,
+
+    /// Serve HTTP with no token at all. Required to bind anywhere but
+    /// loopback without one.
+    #[arg(long)]
+    pub http_no_auth: bool,
+
+    /// Also answer for this Host header. Repeatable. Loopback and this node's
+    /// own tailnet names are always allowed.
+    #[arg(long, value_name = "HOST")]
+    pub http_allow_host: Vec<String>,
+
+    /// Answer requests from this browser origin. Repeatable. Without it, a
+    /// request carrying any Origin is refused.
+    #[arg(long, value_name = "ORIGIN")]
+    pub http_allow_origin: Vec<String>,
+
+    /// Serve HTTP without sessions, where the negotiated protocol version
+    /// still has them. From 2026-07-28 the protocol has no sessions and this
+    /// changes nothing.
+    #[arg(long)]
+    pub http_stateless: bool,
+}
+
+/// How to serve MCP over HTTP, once the operator has asked for it.
+#[derive(Debug, Clone)]
+pub struct HttpConfig {
+    /// Where to listen.
+    pub bind: SocketAddr,
+    /// The bearer token, or `None` when the operator said there is none.
+    pub token: Option<tailscale_rest::Secret>,
+    /// Host headers to answer for beyond the ones always allowed.
+    pub allow_hosts: Vec<String>,
+    /// Browser origins to answer for.
+    pub allow_origins: Vec<String>,
+    /// Whether to keep sessions.
+    pub stateful: bool,
 }
 
 /// The configuration the server actually runs with.
@@ -179,6 +242,8 @@ pub struct Config {
     /// one.
     pub tailnet: String,
     pub log_filter: String,
+    /// Serve over HTTP instead of stdio, when the operator asked for it.
+    pub http: Option<HttpConfig>,
 }
 
 impl Config {
@@ -265,6 +330,25 @@ impl Config {
             },
         };
 
+        let http = match cli.http {
+            None => None,
+            Some(address) => Some(checked_http(
+                HttpConfig {
+                    bind: http_bind(&address)?,
+                    // No flag for the token, deliberately: an argument is
+                    // visible to every process on the machine, and this server
+                    // has never had a way to put a secret on its own command
+                    // line (Q91).
+                    token: get(HTTP_TOKEN_ENV).map(tailscale_rest::Secret::new),
+                    allow_hosts: cli.http_allow_host,
+                    allow_origins: cli.http_allow_origin,
+                    stateful: !flag(cli.http_stateless, HTTP_STATELESS_ENV)?,
+                },
+                &address,
+                flag(cli.http_no_auth, HTTP_NO_AUTH_ENV)?,
+            )?),
+        };
+
         Ok(Self {
             preset,
             toolsets,
@@ -282,6 +366,7 @@ impl Config {
                     .or_else(|| get(LOG_ENV))
                     .unwrap_or_else(|| DEFAULT_LOG_FILTER.to_owned()),
             ),
+            http,
         })
     }
 
@@ -289,6 +374,53 @@ impl Config {
     pub fn is_disabled(&self, surface: Surface) -> bool {
         self.disabled.contains(&surface)
     }
+}
+
+/// Resolve the HTTP options, refusing the combination that would publish an
+/// unauthenticated control plane by accident.
+///
+/// A token is optional on loopback, where the operating system has already
+/// decided who can reach the socket, and required everywhere else. The
+/// no-authentication flag is the only way past that, and is a flag rather than
+/// an omission on purpose: serving a tailnet address to anyone who asks should
+/// be something an operator did, not something that happened.
+fn checked_http(
+    settings: HttpConfig,
+    address: &str,
+    no_auth: bool,
+) -> Result<HttpConfig, ConfigError> {
+    if no_auth {
+        return Ok(HttpConfig {
+            token: None,
+            ..settings
+        });
+    }
+    // The unspecified address — `0.0.0.0` or `::` — is emphatically not
+    // loopback: it is every interface the machine has, which is the case the
+    // token exists for.
+    if settings.token.is_none() && !settings.bind.ip().is_loopback() {
+        return Err(ConfigError::InvalidValue {
+            setting: "--http".to_owned(),
+            value: address.to_owned(),
+            expected: "a loopback address, or a token in TAILSCALE_MCP_HTTP_TOKEN, \
+                       or --http-no-auth to say the address really should answer \
+                       anyone who asks",
+        });
+    }
+    Ok(settings)
+}
+
+/// The address `--http` was given, resolved.
+fn http_bind(address: &str) -> Result<SocketAddr, ConfigError> {
+    address
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut found| found.next())
+        .ok_or_else(|| ConfigError::InvalidValue {
+            setting: "--http".to_owned(),
+            value: address.to_owned(),
+            expected: "an address and port, such as 127.0.0.1:8449",
+        })
 }
 
 /// The spellings people actually write in a container environment file.
@@ -475,17 +607,55 @@ mod tests {
         }
     }
 
+    /// This module's own source, so that the test below can hold the list to
+    /// the code rather than to a number somebody has to remember to change.
+    const SOURCE: &str = include_str!("config.rs");
+
     #[test]
     fn the_documented_variables_are_the_ones_that_are_read() {
         // A variable added to the resolution but not to the list would be
-        // invisible to the diagnosis subcommand and to the help text.
+        // invisible to the diagnosis subcommand and to the help text. The
+        // previous version of this test pinned `ENV_VARS.len()` to a number,
+        // which is a check that passes while the list is wrong: three
+        // variables were read and undocumented and it said nothing.
         for var in ENV_VARS {
             assert!(
                 LONG_ABOUT.contains(var),
                 "{var} is read but not documented in the help"
             );
         }
-        assert_eq!(ENV_VARS.len(), 10);
+
+        // Constant name to the variable it names, from the declarations above.
+        let declared: std::collections::HashMap<&str, &str> = SOURCE
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim().strip_prefix("pub const ")?;
+                let (name, rest) = line.split_once(": &str = \"")?;
+                name.ends_with("_ENV")
+                    .then(|| (name, rest.split('"').next().unwrap_or_default()))
+            })
+            .collect();
+        assert!(
+            declared.len() >= ENV_VARS.len(),
+            "every listed variable should have a declaration to be found"
+        );
+
+        // Every `*_ENV` constant the resolution actually reads.
+        let resolution = SOURCE
+            .split_once("pub fn resolve_with(")
+            .and_then(|(_, rest)| rest.split_once("\n    /// Whether the operator switched"))
+            .map_or(SOURCE, |(body, _)| body);
+        for (name, var) in &declared {
+            let read = resolution.contains(&format!("{name})"))
+                || resolution.contains(&format!("{name},"));
+            if read {
+                assert!(
+                    ENV_VARS.contains(var),
+                    "{name} is read by the resolution but is not in ENV_VARS, so nothing \
+                     documents it and the diagnosis subcommand will not check it"
+                );
+            }
+        }
     }
 
     #[test]

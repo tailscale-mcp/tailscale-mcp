@@ -26,6 +26,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 thiserror = "2"
 anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
 # YAML, for the one test that reads the vendored API description. A dev-dependency
 # of `tailscale-rest` only, so it reaches no release build.

@@ -25,6 +25,8 @@ clap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
+axum.workspace = true
+tower.workspace = true
 thiserror.workspace = true
 
 [lints]

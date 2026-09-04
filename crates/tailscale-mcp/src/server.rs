@@ -88,6 +88,10 @@ impl Backends {
 #[derive(Debug)]
 pub struct Startup {
     pub server: TailscaleMcpServer,
+    /// What this node calls the nodes at these addresses, read from the same
+    /// status the identity came from. The HTTP transport names its callers
+    /// with it; a stdio session has one caller and no use for it.
+    pub peers: std::collections::HashMap<std::net::IpAddr, String>,
     /// Lines for standard error. Never standard output: on the stdio transport
     /// that is the protocol stream, and a stray line there ends the session.
     pub notes: Vec<String>,
@@ -139,7 +143,7 @@ pub async fn build(
     // Probing a node the operator asked us to leave alone would be a surprise,
     // so both probes are skipped when the local surface is not on offer.
     let local_offered = backends.local_available && !config.is_disabled(Surface::Local);
-    let (cli_version, identity) = if local_offered {
+    let (cli_version, identity, peers) = if local_offered {
         let version = cli::probe_version(backends.local.as_ref()).await;
         match version {
             Some(found) if found < SUPPORTED_FLOOR && !found.is_unstable() => notes.push(format!(
@@ -154,17 +158,23 @@ pub async fn build(
             ),
             Some(_) => {}
         }
+        let (identity, peers) = cli::probe_node(backends.local.as_ref()).await;
         (
             version,
             // Live: it may be read again as it ages, because a node can be
             // renamed or moved onto a different address under a running
             // server (Q87).
-            Identity::probed(cli::probe_identity(backends.local.as_ref()).await),
+            Identity::probed(identity),
+            peers,
         )
     } else {
         // Nothing was read, so there is nothing to re-read: a fixed identity
         // that matches nothing rather than a timer asking a missing binary.
-        (None, Identity::fixed(SelfIdentity::default()))
+        (
+            None,
+            Identity::fixed(SelfIdentity::default()),
+            std::collections::HashMap::new(),
+        )
     };
 
     // Only when the surface is on offer: a credential in the environment is
@@ -217,6 +227,7 @@ pub async fn build(
 
     Ok(Startup {
         server: TailscaleMcpServer::new(Arc::new(registry), gate, Arc::new(ctx)),
+        peers,
         notes,
     })
 }

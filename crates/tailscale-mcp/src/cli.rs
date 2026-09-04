@@ -6,6 +6,9 @@
 //! it wrong is not cosmetic: `needs_operator` tells the caller to run one
 //! command and try again, while `unsupported_version` tells it to stop asking.
 
+use std::collections::HashMap;
+use std::net::IpAddr;
+
 use tailscale_cli::{ExecError, Invocation, Output};
 
 use crate::context::{SelfIdentity, ToolContext};
@@ -223,23 +226,44 @@ pub async fn probe_version(backend: &dyn tailscale_cli::LocalBackend) -> Option<
 /// ordinary one, and the operator sees the same confirmation rules as anyone
 /// managing another node.
 pub async fn probe_identity(backend: &dyn tailscale_cli::LocalBackend) -> SelfIdentity {
-    let Some(output) = backend
+    status_document(backend)
+        .await
+        .as_ref()
+        .map(identity_in)
+        .unwrap_or_default()
+}
+
+/// Who this node is and what it calls its peers, from one reading of status.
+///
+/// Both at once because both come out of the same document, and running
+/// `tailscale status` twice at startup to parse the same JSON two ways is work
+/// nobody asked for.
+pub async fn probe_node(
+    backend: &dyn tailscale_cli::LocalBackend,
+) -> (SelfIdentity, HashMap<IpAddr, String>) {
+    let Some(document) = status_document(backend).await else {
+        return (SelfIdentity::default(), HashMap::new());
+    };
+    (identity_in(&document), peer_names_in(&document))
+}
+
+/// `tailscale status --json`, parsed, or nothing if it could not be had.
+async fn status_document(backend: &dyn tailscale_cli::LocalBackend) -> Option<serde_json::Value> {
+    let output = backend
         .run(Invocation::read(["status", "--json"]))
         .await
         .ok()
-        .filter(Output::success)
-    else {
-        return SelfIdentity::default();
-    };
-    let Ok(document) = serde_json::from_str::<serde_json::Value>(&output.stdout_str()) else {
-        return SelfIdentity::default();
-    };
+        .filter(Output::success)?;
+    serde_json::from_str(&output.stdout_str()).ok()
+}
+
+fn identity_in(document: &serde_json::Value) -> SelfIdentity {
     let node = &document["Self"];
     SelfIdentity {
         node_id: node["ID"].as_str().map(str::to_owned),
         // Status cannot supply this: the numeric id is the control plane's own
         // name for the device and is never sent to the node. Filled in from
-        // the control plane by `ToolContext::current_identity`.
+        // the control plane by `ToolContext::names_us`.
         numeric_id: None,
         addresses: node["TailscaleIPs"]
             .as_array()
@@ -251,6 +275,32 @@ pub async fn probe_identity(backend: &dyn tailscale_cli::LocalBackend) -> SelfId
             .unwrap_or_default(),
         dns_name: node["DNSName"].as_str().map(str::to_owned),
     }
+}
+
+/// Every node this node can name, by address.
+///
+/// For the HTTP transport's log line: a request arriving from `100.64.0.2` is
+/// more useful in a log as the node it came from, and the local node already
+/// knows the mapping. An address this node has never heard of stays an
+/// address (ticket 23).
+fn peer_names_in(document: &serde_json::Value) -> HashMap<IpAddr, String> {
+    let mut named = HashMap::new();
+    let peers = document["Peer"]
+        .as_object()
+        .into_iter()
+        .flat_map(|by_key| by_key.values());
+    for node in std::iter::once(&document["Self"]).chain(peers) {
+        let Some(name) = node["DNSName"].as_str() else {
+            continue;
+        };
+        let name = name.trim_end_matches('.');
+        for address in node["TailscaleIPs"].as_array().into_iter().flatten() {
+            if let Some(address) = address.as_str().and_then(|a| a.parse().ok()) {
+                named.insert(address, name.to_owned());
+            }
+        }
+    }
+    named
 }
 
 #[cfg(test)]
@@ -433,5 +483,56 @@ mod tests {
         assert_eq!(probe_version(&StubBackend::missing()).await, None);
         assert_eq!(probe_version(&StubBackend::failure(1, "no")).await, None);
         assert_eq!(probe_version(&StubBackend::ok("not a version")).await, None);
+    }
+
+    /// One reading of status, two answers out of it.
+    #[tokio::test]
+    async fn the_status_probe_names_this_node_and_its_peers() {
+        let backend = StubBackend::missing().on(
+            ["status", "--json"],
+            tailscale_cli::stub::Reply::ok(
+                serde_json::json!({
+                    "Self": {
+                        "ID": "n1111111CNTRL",
+                        "DNSName": "workstation.example-tailnet.ts.net.",
+                        "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::1"],
+                    },
+                    "Peer": {
+                        "nodekey:2222": {
+                            "DNSName": "laptop.example-tailnet.ts.net.",
+                            "TailscaleIPs": ["100.64.0.2"],
+                        },
+                        // No addresses, so nothing to key it by.
+                        "nodekey:3333": {"DNSName": "ghost.example-tailnet.ts.net."},
+                    },
+                })
+                .to_string(),
+            ),
+        );
+
+        let (identity, peers) = probe_node(&backend).await;
+        assert!(identity.matches("n1111111CNTRL"));
+        assert!(identity.matches("workstation"));
+        assert_eq!(
+            peers.get(&"100.64.0.2".parse::<IpAddr>().expect("an address")),
+            Some(&"laptop.example-tailnet.ts.net".to_owned()),
+            "a peer is named by the address a request would arrive from"
+        );
+        assert_eq!(
+            peers.get(&"100.64.0.1".parse::<IpAddr>().expect("an address")),
+            Some(&"workstation.example-tailnet.ts.net".to_owned()),
+            "and so is this node, which can reach its own HTTP transport"
+        );
+        assert_eq!(
+            peers.len(),
+            3,
+            "the trailing dot is dropped, the ghost has no address"
+        );
+
+        assert_eq!(
+            backend.calls().len(),
+            1,
+            "one reading of status, not one per answer wanted"
+        );
     }
 }

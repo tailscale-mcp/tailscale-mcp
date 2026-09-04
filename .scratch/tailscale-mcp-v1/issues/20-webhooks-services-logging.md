@@ -14,3 +14,4 @@ The organisation tools are alpha upstream; their descriptions say so. Tailnet de
 - The paginated listing follows its cursor and respects the API's maximum page size.
 - The rotated webhook secret is returned once and never logged.
 - Service naming follows the path the live API serves, not only the published description, with the divergence noted.
+- The webhook, service and logging shapes deferred to this ticket in `schema_drift.rs`'s `DEFERRED` table are modelled, and their rows removed (Q64).

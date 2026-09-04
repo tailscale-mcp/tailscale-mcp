@@ -27,6 +27,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 thiserror = "2"
 anyhow = "1"
 tempfile = "3"
+# YAML, for the one test that reads the vendored API description. A dev-dependency
+# of `tailscale-rest` only, so it reaches no release build.
+serde_norway = "0.9"
 # Signals, so that a timed-out child can be asked to stop before it is killed.
 # Used through nix's safe wrappers, which keeps `unsafe_code = "forbid"` intact.
 nix = { version = "0.31", default-features = false, features = ["signal"] }

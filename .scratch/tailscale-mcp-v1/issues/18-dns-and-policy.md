@@ -13,3 +13,4 @@ A policy write must carry the version identifier or an explicit statement that i
 - A mismatched identifier produces the conflict code.
 - Validation of a set of tests against the current policy and of a hypothetical document are distinguished correctly.
 - All DNS tools round-trip against the fake server, and the split configuration update and replace forms behave differently as the API defines them.
+- The DNS and policy shapes deferred to this ticket in `schema_drift.rs`'s `DEFERRED` table are modelled, and their rows removed (Q64).

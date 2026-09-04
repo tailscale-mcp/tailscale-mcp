@@ -271,19 +271,43 @@ impl RequestBuilder<'_> {
     pub async fn send(self) -> Result<Value, ApiError> {
         let request = self.describe_request();
         let answer = self.send_raw().await?;
-        if answer.bytes.iter().all(u8::is_ascii_whitespace) {
-            return Ok(Value::Null);
-        }
-        serde_json::from_slice(&answer.bytes)
-            .map_err(|source| ApiError::Malformed { request, source })
+        parse(&answer.bytes, &request)
     }
 
     /// Send it, and read the answer as a particular shape.
     pub async fn send_as<T: DeserializeOwned>(self) -> Result<T, ApiError> {
+        Ok(self.send_answer().await?.value)
+    }
+
+    /// Send it, and read the answer both ways at once.
+    ///
+    /// ADR-0003 asks for "the parsed model together with the raw body and the
+    /// headers that matter", and this is why: a tool forwards the body it was
+    /// given, unrenamed and with every field the control plane sent, while the
+    /// server reads the typed value to decide what to do next. Parsing twice
+    /// would be two chances to disagree, so the model is deserialised from the
+    /// [`Value`] rather than from the bytes a second time.
+    ///
+    /// An empty body reads as [`Value::Null`], the same as [`send`] gives it,
+    /// and `T` has to be a type that can read null — [`Value`] or `()` or an
+    /// [`Option`]. A model cannot: every one of them carries a flattened map
+    /// of unknown fields, which makes it a map to serde, and serde will not
+    /// read a map from null. That is the right way round, because the
+    /// endpoints that answer with nothing are the deletions, and a deletion
+    /// has no model to answer with.
+    ///
+    /// [`send`]: RequestBuilder::send
+    pub async fn send_answer<T: DeserializeOwned>(self) -> Result<Answer<T>, ApiError> {
         let request = self.describe_request();
         let answer = self.send_raw().await?;
-        serde_json::from_slice(&answer.bytes)
-            .map_err(|source| ApiError::Malformed { request, source })
+        let raw = parse(&answer.bytes, &request)?;
+        let value =
+            T::deserialize(&raw).map_err(|source| ApiError::Malformed { request, source })?;
+        Ok(Answer {
+            value,
+            raw,
+            etag: answer.etag,
+        })
     }
 
     /// Send it, and read the answer as text.
@@ -456,6 +480,35 @@ impl RequestBuilder<'_> {
 struct RawBody {
     bytes: Vec<u8>,
     etag: Option<String>,
+}
+
+/// A body, parsed. Empty means nothing was said, not that nothing parsed.
+///
+/// One function rather than three copies of the same two lines, so that the
+/// three `send` methods cannot come to disagree about what an empty body is.
+fn parse(bytes: &[u8], request: &str) -> Result<Value, ApiError> {
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(Value::Null);
+    }
+    serde_json::from_slice(bytes).map_err(|source| ApiError::Malformed {
+        request: request.to_owned(),
+        source,
+    })
+}
+
+/// A parsed answer, and the body it was parsed from.
+///
+/// Both halves are kept because both are used: `raw` is what a tool hands
+/// back, so the caller sees whatever the control plane sent rather than the
+/// subset this build knows the names of, and `value` is what the server reads
+/// when it has to act on the answer.
+#[derive(Debug, Clone)]
+pub struct Answer<T> {
+    pub value: T,
+    /// The body, parsed as JSON and otherwise untouched.
+    pub raw: Value,
+    /// The `ETag` header, for the endpoints that version their document.
+    pub etag: Option<String>,
 }
 
 /// A body that was asked for as text, and the version it was read at.
@@ -1286,6 +1339,76 @@ mod tests {
             .expect("the fake answers");
 
         assert_eq!(answer, Value::Null, "a deletion answers with nothing");
+    }
+
+    #[tokio::test]
+    async fn an_answer_is_read_both_ways_from_one_parse() {
+        // The reason `Answer` holds both halves (ADR-0003): a tool forwards
+        // `raw` so the caller sees every field the control plane sent, and the
+        // server reads `value` when it has to act. They come from one parse, so
+        // a field in one is a field in the other.
+        let body = json!({
+            "id": "kExAmPlE",
+            "description": "a key",
+            "invented": {"by": "a later control plane"},
+        });
+        let keys = "/api/v2/tailnet/-/keys/kExAmPlE";
+        let fake = fake().await.on("GET", keys, Response::json(&body));
+        let client = client(&fake, api_key());
+
+        let answer = client
+            .get(keys)
+            .send_answer::<crate::models::key::Key>()
+            .await
+            .expect("the fake answers");
+
+        assert_eq!(answer.value.id.as_deref(), Some("kExAmPlE"));
+        assert_eq!(
+            answer.value.unknown.get("invented"),
+            Some(&json!({"by": "a later control plane"})),
+            "the typed half keeps what it had no field for"
+        );
+        assert_eq!(answer.raw, body, "and the raw half is the body, untouched");
+    }
+
+    #[tokio::test]
+    async fn an_answer_carries_the_etag_that_versions_it() {
+        // The other thing ADR-0003 asks `Answer` to carry. The policy file is
+        // the endpoint that needs it: a write has to quote the `ETag` it read.
+        let acl = "/api/v2/tailnet/-/acl";
+        let fake = fake().await.on(
+            "GET",
+            acl,
+            Response::json(json!({"acls": []})).with_header("ETag", "\"abc123\""),
+        );
+        let client = client(&fake, api_key());
+
+        let answer = client
+            .get(acl)
+            .send_answer::<Value>()
+            .await
+            .expect("the fake answers");
+
+        assert_eq!(answer.etag.as_deref(), Some("\"abc123\""));
+    }
+
+    #[tokio::test]
+    async fn an_empty_body_answers_as_nothing_rather_than_failing_to_parse() {
+        // What a deletion sends, read through `send_answer` rather than
+        // `send`. `Value` reads null; a model could not, which is documented
+        // on `send_answer` and is why deletions ask for `Value`.
+        let device = "/api/v2/device/n1111111CNTRL";
+        let fake = fake().await.on("DELETE", device, Response::empty());
+        let client = client(&fake, api_key());
+
+        let answer = client
+            .delete(device)
+            .send_answer::<Value>()
+            .await
+            .expect("the fake answers");
+
+        assert_eq!(answer.value, Value::Null);
+        assert_eq!(answer.raw, Value::Null, "both halves agree about nothing");
     }
 
     #[tokio::test]

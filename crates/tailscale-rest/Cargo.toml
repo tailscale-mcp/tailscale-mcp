@@ -33,3 +33,7 @@ workspace = true
 tokio = { workspace = true, features = ["net", "rt", "rt-multi-thread", "io-util", "macros"] }
 # The federated credential is a file on disk, so testing it needs one.
 tempfile.workspace = true
+# The schema drift test reads the vendored OpenAPI document. Parsed rather than
+# scanned, because a reader that misreads a block sees fewer properties than are
+# there, and a drift test that under-reads its input passes (Q61).
+serde_norway.workspace = true

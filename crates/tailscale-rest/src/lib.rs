@@ -12,11 +12,12 @@ pub mod credentials;
 pub mod error;
 #[cfg(any(test, feature = "testing"))]
 pub mod fake;
+pub mod models;
 pub mod secret;
 mod token;
 
 pub use client::{
-    Client, ClientConfig, DEFAULT_BASE_URL, RequestBuilder, TextBody, checked_base_url,
+    Answer, Client, ClientConfig, DEFAULT_BASE_URL, RequestBuilder, TextBody, checked_base_url,
 };
 pub use credentials::{Credentials, DEFAULT_TAILNET};
 pub use error::ApiError;

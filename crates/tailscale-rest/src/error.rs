@@ -82,7 +82,7 @@ impl ApiError {
     /// Whether asking again could plausibly work.
     ///
     /// This is about the failure, not about the request: whether *this* call
-    /// may be sent twice is [`Idempotence`], and both have to agree before
+    /// may be sent twice is `Idempotence`, and both have to agree before
     /// anything is retried.
     pub const fn is_transient(&self) -> bool {
         match self {

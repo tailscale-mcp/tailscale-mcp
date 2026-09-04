@@ -1,6 +1,6 @@
 # 01 — Cargo workspace and toolchain policy
 
-Status: resolved
+Status: done
 Milestone: 1 — Skeleton and core
 Blocked by: —
 
@@ -22,3 +22,14 @@ Two things worth knowing for later tickets:
 
 - The licence allow-list rejected `webpki-roots`, which ships Mozilla's root certificate store under `CDLA-Permissive-2.0`. That is a permissive data licence, not copyleft, so it was added with the reasoning recorded in `deny.toml`. This is the fail-closed behaviour the policy intends: a new licence stops the build until someone reads it.
 - Workspace lints encode two design constraints as compiler errors rather than review habits: writing to standard output is denied because it corrupts the stdio transport, and unwrapping is denied because a panic on caller input drops the connection instead of returning a tool error. Logging to standard error stays allowed. Recorded as DECISIONS.md Q4.
+
+## As built
+
+Built with tickets 01–06 in one commit, `9d56516 Skeleton, core plumbing and
+server bootstrap (tickets 01-06)`, because the six are one another's
+prerequisites: a tool cannot be declared without a tier to declare, a tier is
+unobservable without an error model, and none of it runs without a way to
+execute a process. That commit's message is the record of what was built; no
+ticket in the group wrote an "As built" section, and the practice started at
+ticket 11. The status is corrected here rather than the prose invented after
+the fact.

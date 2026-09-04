@@ -1,6 +1,6 @@
 # 04 — Error model and secret redaction
 
-Status: ready-for-agent
+Status: done
 Milestone: 1 — Skeleton and core
 Blocked by: 02
 
@@ -13,3 +13,14 @@ Redaction belongs here because every error path can carry a secret: auth keys, A
 - A failure carrying a key-shaped value in its output has that value redacted in the result and in the log.
 - A malformed request produces a protocol error; a failed operation never does.
 - Hints are present on the codes where the design promised one, including the permission, version, platform, size and conflict codes.
+
+## As built
+
+Built with tickets 01–06 in one commit, `9d56516 Skeleton, core plumbing and
+server bootstrap (tickets 01-06)`, because the six are one another's
+prerequisites: a tool cannot be declared without a tier to declare, a tier is
+unobservable without an error model, and none of it runs without a way to
+execute a process. That commit's message is the record of what was built; no
+ticket in the group wrote an "As built" section, and the practice started at
+ticket 11. The status is corrected here rather than the prose invented after
+the fact.

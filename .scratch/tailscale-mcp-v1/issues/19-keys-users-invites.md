@@ -13,3 +13,4 @@ A newly minted secret is returned once, in full, with the tool description warni
 - Creating a key with a capabilities object matching Tailscale's documented example succeeds unmodified.
 - A user-owned-only endpoint called with a tailnet-owned credential produces the hint.
 - Role changes, suspension, restoration and deletion are classified per the inventory.
+- The key, user, contact and OAuth-app shapes deferred to this ticket in `schema_drift.rs`'s `DEFERRED` table are modelled, and their rows removed (Q64).

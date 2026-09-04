@@ -616,3 +616,88 @@ Two tests written here have already moved out. The base-URL pair is startup beha
 Recorded rather than done quietly, because a third seam that nobody wrote down is a fourth one's precedent.
 **Outcome:** assumed
 **Ref:** `crates/tailscale-mcp/tests/control_plane.rs`, `.scratch/tailscale-mcp-v1/spec.md`
+
+## Q60 — build/ticket-16 — interpretation
+
+**Question:** ADR-0003 says "enums are strict only for closed sets and free strings elsewhere". Which of the vendored description's enums are closed?
+**Options considered:** model each `enum` as a Rust enum and add `#[serde(other)]` catch-alls / judge each of the twenty-two individually / model all of them as documented strings, with the known values named beside the field
+**Chosen:** None of the twenty-two is closed. Every one becomes a `String`, with a `&[&str]` constant naming the values the description knows, and the drift test compares those constants against the document.
+**Decided-by:** agent
+**Justification:** Going through them one at a time is what produced the answer, and the answer was unanimous, which is itself the finding: this API's enums are lists of what exists today. `ConfigurationAuditLog.type` is `['CONFIG']`, a single-member set that only makes sense as the first of several. `LogstreamEndpointConfiguration.destinationType` names eight log vendors and `compressionFormat` three codecs, both of which are markets, not specifications. `Key.keyType` already disagrees with the live API — `docs/research/control-plane-api.md` records the create and response shapes differing — so a strict enum there would fail on a body the server actually sends. `Webhook.subscriptions` is the event catalogue, which grows whenever a feature does. Nothing in the set is a protocol constant.
+
+A `#[serde(other)]` catch-all would parse an unknown value without failing, and that is the trap: it turns a value the control plane meant something by into an `Unknown` variant that discards the string, so a caller is told less than the wire said. ADR-0004 requires Tailscale's shapes back verbatim, and a variant that cannot round-trip is not verbatim.
+
+What a strict enum genuinely buys is documentation, and that is bought here instead: the values live in a named constant next to the field, which is what a tool's parameter description quotes, and the drift test asserts the constant still equals the document's list. So a refreshed description that adds `brotli` fails the build in the same way a new property does, and the failure names the constant to edit — which is the "recorded where the test can explain them rather than silently pass" the ticket asks for.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/models/`, `crates/tailscale-rest/tests/schema_drift.rs`
+
+## Q61 — build/ticket-16 — interpretation
+
+**Question:** The drift test must compare the vendored description against the models. What is it comparing the description *to* — how does a test find out which JSON fields a struct has, and how does it read a 6,700-line YAML document?
+**Options considered:** `schemars::schema_for!` on each model / a hand-written table of schema names and field names / a macro that declares the struct and its field list together / a hand-rolled YAML reader vs a parser crate
+**Chosen:** A `model!` macro that emits the struct and a `ModelShape` naming the same JSON strings, and `serde_norway` as a test-only dependency for the document.
+**Decided-by:** agent
+**Justification:** A hand-written table is a second copy of the field names that nothing keeps in step, and its failure mode is the one this test exists to prevent: a field deleted from a struct and forgotten in the table leaves a green test. The macro makes that impossible, because there is one place the JSON name is written and both the `#[serde(rename)]` and the shape come from it.
+
+`schemars::schema_for!` would derive the list from the type, which is stronger still, but it puts a schema-generation dependency in a published library crate for the sake of one test, and it reports what schemars believes about serde's attributes rather than what serde does.
+
+The document is read with a parser rather than by hand for the same reason. An indentation reader that misparses a block silently sees fewer properties than there are, and a drift test that under-reads its input passes. `serde_norway` is a dev-dependency of `tailscale-rest` alone, so nothing it brings reaches a release build.
+
+The shapes are keyed by path rather than by name, because eleven of the description's object types are inline and have no name: `Device.clientConnectivity`, `KeyCapabilities.devices.create`, `ConfigurationAuditLog.actor` and the rest. The test walks the document and builds the same paths, so an inline object is checked exactly as a named schema is, and a new one appearing is a failure rather than a thing the walk steps over.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/models/mod.rs`, `crates/tailscale-rest/tests/schema_drift.rs`
+
+## Q62 — build/ticket-16 — deviation
+
+**Question:** Nine of the description's properties are secrets: a minted auth key, an OAuth client secret, a webhook signing secret, a log stream's bearer token and cloud credentials. The models derive `Debug`. What type holds them?
+**Options considered:** `String`, like every other string / `Secret`, which redacts itself / omit them from the models and read them off the raw body
+**Chosen:** `Secret`, with `Serialize`/`Deserialize` added to it so it can appear in a model.
+**Decided-by:** agent
+**Justification:** `String` is the default and it is wrong here for a reason that has nothing to do with these nine call sites: `missing_debug_implementations` means every model derives `Debug`, and a derived `Debug` reaching a `tracing` field is exactly how the key a user just minted ends up in a log file. `secret.rs` says as much in its own module doc — "a derived `Debug` on a `String` field is how tokens end up in logs" — and these are the same fields it was written for.
+
+Omitting them was rejected because the caller needs them: minting an auth key that does not return the key is not a feature. The value is returned verbatim, once, exactly as the control plane sent it; what `Secret` changes is only what happens when something prints the struct instead of reading the field.
+
+The cost is that `Secret` now derives `Serialize`, so a model serialised back out writes the value in the clear — which is correct, since that is the tool result the caller asked for, and is the one place the value is meant to travel. `Display` and `Debug` still redact, so the accident stays impossible and the deliberate path stays open.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/secret.rs`, `crates/tailscale-rest/src/models/key.rs`
+
+## Q63 — build/ticket-16 — deviation
+
+**Question:** Q59 kept `tests/control_plane.rs` provisionally, on the understanding that "each of the six becomes an ordinary tool call the moment a tailnet tool exists" and that ticket 16 would be that moment. Ticket 16 turns out to land models and a drift test and no tool at all. Does the file move now or wait?
+**Options considered:** absorb the six into tool calls now / delete the file now and let ticket 17 re-derive what it was proving / keep it unchanged and re-aim the absorption at ticket 17
+**Chosen:** Keep it unchanged; the absorption moves to ticket 17, which builds the first tailnet tools.
+**Decided-by:** agent
+**Justification:** Q59's reasoning was never about ticket 16 in particular — it was that a transport asserted by nothing until some later ticket happens to cover it is how a foundation ships broken. That argument is unchanged: ticket 16 added `send_answer` and forty-five models, and still nothing above the client calls it, so the six tests are the only thing holding the credential, the tailnet, the size cap and an unreachable control plane to their contracts. Absorbing them now is not possible, and deleting them would leave ticket 16's own addition — `Answer<T>` reading the parsed and raw halves off one parse — with a transport underneath it that no test reaches.
+
+Recorded rather than left implicit, because Q59 named a ticket and that ticket has now passed. A provisional seam whose expiry quietly slips one ticket at a time is a permanent seam, which is the thing Q59 rejected. Ticket 17 is the last ticket this can slip to: it builds the device tools, so a tool call that carries the credential to a fake control plane exists there by construction.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/tests/control_plane.rs`, `.scratch/tailscale-mcp-v1/issues/17-devices-and-posture.md`
+
+## Q64 — build/ticket-16 — deviation
+
+**Question:** The drift test as first written walked `components/schemas` and nothing else. The description also carries forty-six objects and ten enumerations inline in `paths` and `components/parameters`, which that walk could not see. `spec.md` says the test asserts "every property is modelled". Does the walk widen, and if it does, are those forty-six modelled here?
+**Options considered:** leave the walk at the named schemas and narrow the claim / widen the walk and model all forty-six in this ticket / widen the walk and record the ones this ticket does not model, with the ticket that will
+**Chosen:** Widen the walk to the whole document, and carry a `DEFERRED` table naming each unmodelled object and the ticket it belongs to.
+**Decided-by:** agent
+**Justification:** Narrowing the claim was rejected because the claim is the test's whole value. A tripwire that watches a third of the document and says so is still a tripwire nobody can rely on: the properties most likely to move on a refresh are request bodies, and those are exactly what `components/schemas` does not hold.
+
+Modelling all forty-six here was rejected as the other half of the same mistake. They are request bodies a tool builds from its own parameters and envelopes a listing arrives in — `{"devices": […]}` — which belong to the tools that send and receive them, and so to tickets 17 through 20. Ticket 16 would have swallowed four tickets' worth of shapes to satisfy a test.
+
+The table is what makes the deferral honest rather than silent. A path in it must still be in the document and must not also be modelled, so it cannot rot; an object the description grows that is neither modelled nor listed fails the walk. The list can only shrink, and it shrinks by a ticket landing rather than by anyone editing the table.
+
+Widening also found what the narrow walk was hiding: ten enumerations with no constant — including `keyType`, which the description gives three different lists for, so a create tool quoting the response list would have offered values the control plane rejects — and an `anyOf` branch with properties in the bulk device-attributes body. Both are the under-reading failure Q61 named, arrived at by a different route.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/tests/schema_drift.rs`, `crates/tailscale-rest/src/models/key.rs`
+
+## Q65 — build/ticket-16 — interpretation
+
+**Question:** Q60 says "None of the twenty-two is closed" and gives its reasoning in those terms. The description has thirty-three enumerations, not twenty-two — the missing eleven being the ten inline ones of Q64 plus one this crate had miscounted. Does Q60 stand?
+**Options considered:** amend Q60 / record the count here and leave Q60's reasoning intact / re-take the decision across all thirty-three
+**Chosen:** Q60's decision stands unchanged; only its count was wrong, and the count is corrected here.
+**Decided-by:** agent
+**Supersedes:** Q60, as to the number only.
+**Justification:** The eleven that Q60 never saw were examined before this was written, and every one is the same kind of thing it judged: `?event` is a catalogue of a hundred and thirty-eight audit events that grows with the product, `?fields` and the role and type filters are lists with an `all` member, and the three `keyType` lists differ from each other, which is Q60's own argument for documented strings made twice over. There was nothing to re-decide.
+
+Recorded rather than fixed quietly because the journal is append-only and a number in it that the code contradicts is worse than a number that is merely wrong: a later reader checking the models against Q60 would find eleven enumerations unaccounted for and no way to tell whether they were an oversight or a deliberate exclusion.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/models/mod.rs`, `crates/tailscale-rest/tests/schema_drift.rs`

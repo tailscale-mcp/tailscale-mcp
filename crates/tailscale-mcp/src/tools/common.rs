@@ -64,6 +64,14 @@ pub fn note(ctx: &ToolContext, stderr: &str) -> Option<String> {
 }
 
 /// The text a command printed, with blank lines and comment lines dropped.
+/// A JSON value as the text a person reads: indented, so the shape shows.
+///
+/// The fallback cannot happen for a value that came from a parser, and is a
+/// fallback rather than an `unwrap` because `unwrap` is denied here.
+pub fn pretty(value: &serde_json::Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+}
+
 /// Everything the client printed, redacted, standard output first.
 ///
 /// Which stream a command reports on is not a property a caller should have to

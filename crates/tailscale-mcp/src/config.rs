@@ -142,40 +142,40 @@ secret on an argument list is visible to every process on the machine.";
 #[command(name = "tailscale-mcp", version, about, long_about = LONG_ABOUT)]
 pub struct Cli {
     /// Which group of toolsets to start from: minimal, core or full.
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, global = true, value_name = "NAME")]
     pub preset: Option<String>,
 
     /// Toolsets to offer. A bare list replaces the preset's selection; a list
     /// where every entry begins with `+` or `-` adjusts it.
-    #[arg(long, value_name = "LIST", allow_hyphen_values = true)]
+    #[arg(long, global = true, value_name = "LIST", allow_hyphen_values = true)]
     pub toolsets: Option<String>,
 
     /// Permit tools that change configuration.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub allow_write: bool,
 
     /// Permit tools that remove or expose something. Implies --allow-write.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub allow_destructive: bool,
 
     /// Do not offer the local surface, even if the CLI is present.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub no_local: bool,
 
     /// Do not offer the tailnet surface, even if a credential is present.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub no_tailnet: bool,
 
     /// Where the `tailscale` binary is, when it is not on the path.
-    #[arg(long, value_name = "PATH")]
+    #[arg(long, global = true, value_name = "PATH")]
     pub cli_path: Option<PathBuf>,
 
     /// Refuse a tool result larger than this many bytes.
-    #[arg(long, value_name = "BYTES")]
+    #[arg(long, global = true, value_name = "BYTES")]
     pub max_result_bytes: Option<usize>,
 
     /// Logging filter, in the `tracing` syntax. Logs go to standard error.
-    #[arg(long, value_name = "FILTER")]
+    #[arg(long, global = true, value_name = "FILTER")]
     pub log: Option<String>,
 
     /// Serve MCP over HTTP at this address instead of over stdio. Defaults to
@@ -203,6 +203,72 @@ pub struct Cli {
     /// changes nothing.
     #[arg(long)]
     pub http_stateless: bool,
+
+    /// Ask this binary a question instead of serving. Without one it serves.
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+/// The things this binary does other than serve.
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum Command {
+    /// Check the CLI, the credential and the control plane, and report each.
+    ///
+    /// Exits non-zero when a check fails, so that a script can act on it.
+    Diagnose {
+        /// Report as JSON rather than as a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print what this preset and tier would offer, without serving.
+    Tools {
+        /// Report as JSON rather than as a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print this server's version and the protocol versions it speaks.
+    Version,
+    /// Print a configuration snippet for an MCP client. Writes nothing.
+    Setup {
+        /// Which client the snippet is for.
+        #[arg(value_enum)]
+        client: Client,
+    },
+    /// Validate a policy file, or deploy it. Quiet on success.
+    Policy {
+        #[command(subcommand)]
+        action: PolicyCommand,
+    },
+}
+
+/// What to do with a policy file.
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum PolicyCommand {
+    /// Check that the control plane would accept this file. Changes nothing.
+    Check {
+        /// The policy file, HuJSON or JSON.
+        file: PathBuf,
+    },
+    /// Write this file as the tailnet policy, guarded by the version
+    /// identifier read immediately before.
+    Deploy {
+        /// The policy file, HuJSON or JSON.
+        file: PathBuf,
+    },
+}
+
+/// The clients `setup` knows how to write a snippet for.
+///
+/// One enum and not two: clap derives the parsing and the list of variants
+/// from it, so a sixth client is offered, parsed and tested from one place
+/// rather than from four (Q95).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Client {
+    ClaudeCode,
+    ClaudeDesktop,
+    Vscode,
+    Cursor,
+    Zed,
 }
 
 /// How to serve MCP over HTTP, once the operator has asked for it.
@@ -374,7 +440,73 @@ impl Config {
     pub fn is_disabled(&self, surface: Surface) -> bool {
         self.disabled.contains(&surface)
     }
+
+    /// The settings that differ from what this server would do on its own, as
+    /// the variables that would reproduce them.
+    ///
+    /// This is `resolve` run backwards, which is why it lives beside it: every
+    /// field it reads and every variable it names is this module's, and a
+    /// setting added to one without the other is a snippet that does not
+    /// reproduce the server it was printed from.
+    ///
+    /// Only what the operator changed. A snippet spelling out every default
+    /// would be a snippet nobody reads, and every value in it would go stale
+    /// the day a default changed.
+    pub fn changed_settings(&self) -> Vec<(&'static str, String)> {
+        let mut chosen = Vec::new();
+        if self.preset != Preset::default() {
+            chosen.push((PRESET_ENV, self.preset.as_str().to_owned()));
+        }
+        if self.toolsets != self.preset.toolsets() {
+            chosen.push((
+                TOOLSETS_ENV,
+                self.toolsets
+                    .iter()
+                    .map(|toolset| toolset.as_str())
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ));
+        }
+        match self.max_tier {
+            Tier::Destructive => chosen.push((ALLOW_DESTRUCTIVE_ENV, "true".to_owned())),
+            Tier::Write => chosen.push((ALLOW_WRITE_ENV, "true".to_owned())),
+            Tier::Read => {}
+        }
+        if self.is_disabled(Surface::Local) {
+            chosen.push((NO_LOCAL_ENV, "true".to_owned()));
+        }
+        if self.is_disabled(Surface::Tailnet) {
+            chosen.push((NO_TAILNET_ENV, "true".to_owned()));
+        }
+        if let Some(path) = &self.cli_path {
+            chosen.push((CLI_PATH_ENV, path.display().to_string()));
+        }
+        if self.max_result_bytes != DEFAULT_MAX_RESULT_BYTES {
+            chosen.push((MAX_RESULT_BYTES_ENV, self.max_result_bytes.to_string()));
+        }
+        // Against the bounded default, not the raw one: `resolve` bounds every
+        // filter it is given, including the default, so comparing with the raw
+        // string would report the default as a change on every run.
+        if self.log_filter != bounded_log_filter(DEFAULT_LOG_FILTER) {
+            chosen.push((LOG_ENV, self.log_filter.clone()));
+        }
+        chosen
+    }
 }
+
+/// Variables `changed_settings` deliberately never carries into a snippet.
+///
+/// The three HTTP ones because a client launches this binary and talks to it
+/// over stdio, so a snippet that turned on the HTTP transport would describe a
+/// server the client cannot reach; and the base address because it exists for
+/// the test suite to point at a fake and has no place in an operator's
+/// configuration (Q96).
+pub const NOT_IN_A_SNIPPET: &[&str] = &[
+    HTTP_TOKEN_ENV,
+    HTTP_NO_AUTH_ENV,
+    HTTP_STATELESS_ENV,
+    API_BASE_URL_ENV,
+];
 
 /// Resolve the HTTP options, refusing the combination that would publish an
 /// unauthenticated control plane by accident.

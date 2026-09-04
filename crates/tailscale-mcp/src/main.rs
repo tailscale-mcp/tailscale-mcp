@@ -9,14 +9,39 @@ use anyhow::Context as _;
 use clap::Parser as _;
 use rmcp::ServiceExt as _;
 use rmcp::transport::stdio;
-use tailscale_mcp::config::{Cli, Config, HttpConfig};
+use tailscale_mcp::config::{Cli, Command, Config, HttpConfig};
 use tailscale_mcp::server::{self, Backends, Startup};
+use tailscale_mcp::subcommands;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> anyhow::Result<std::process::ExitCode> {
     let cli = Cli::parse();
+    let asked = cli.command.clone();
+    // Before the configuration is resolved, because this is the one question
+    // worth asking of a server that will not start: a bad variable should not
+    // stop it saying what it is.
+    if matches!(asked, Some(Command::Version)) {
+        return Ok(subcommands::version().emit());
+    }
     let config = Config::resolve(cli)?;
     init_tracing(&config.log_filter);
+
+    // A question, rather than a session. None of these starts a server, and
+    // only the diagnosis touches the network.
+    if let Some(command) = asked {
+        return Ok(match command {
+            Command::Diagnose { json } => {
+                subcommands::diagnose(&config, Backends::discover(&config), json).await
+            }
+            Command::Tools { json } => subcommands::tools(&config, json),
+            Command::Version => subcommands::version(),
+            Command::Setup { client } => subcommands::setup(client, &config),
+            Command::Policy { action } => {
+                subcommands::policy(&config, Backends::discover(&config), &action).await
+            }
+        }
+        .emit());
+    }
 
     let backends = Backends::discover(&config);
     let startup = server::build(&config, tailscale_mcp::tools::entries(), backends).await?;
@@ -27,7 +52,8 @@ async fn main() -> anyhow::Result<()> {
     match &config.http {
         Some(http) => serve_http(http, startup).await,
         None => serve_stdio(startup).await,
-    }
+    }?;
+    Ok(std::process::ExitCode::SUCCESS)
 }
 
 /// One client on a pipe the operating system already decided who may open.

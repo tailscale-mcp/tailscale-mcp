@@ -1172,3 +1172,141 @@ The port is the part that was open. 8080, 8000 and 3000 are the ports a develope
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/http.rs`
+
+## Q92 — build/ticket-24 — interpretation
+
+**Question:** Ticket 24 says "tool listing counts match the agreed table for every preset and tier combination". `spec.md` fixes one number — "186 tools: 62 typed local tools, a 30-tool debug toolset, one passthrough, and 93 tailnet tools" — and no table of the other nine was ever agreed.
+
+**Options considered:** agree a table now and make the code match it / derive the nine from the metadata table and pin them in a test / count at runtime and assert nothing
+
+**Chosen:** derive them, pin them, and reconcile the total against the four numbers the spec did fix.
+
+**Decided-by:** agent
+
+**Justification:** A table written by hand would be a second source of truth for something `spec.md` already says has one: the metadata table is "the single source for the tool-listing subcommand, the contract tests and the README's tool table". Agreeing numbers separately would mean the first disagreement is settled by whichever was written more recently.
+
+So the nine counts are what the metadata table yields — 37/51/55 for minimal, 57/106/126 for core, 68/126/155 for full — pinned in `tests/subcommands.rs` so that moving a tool between toolsets or tiers is a change somebody has to look at rather than a number that quietly moves. The total is checked against the spec's own breakdown: 186 with the debug toolset and the passthrough asked for by name, split 93 local and 93 tailnet, which is 62 + 30 + 1 on one side and one per documented control-plane operation on the other.
+
+`full` is 155 rather than 186 because it is every *typed* toolset: the debug knobs and the passthrough are opt-in by name, which is what `Preset::Full`'s own documentation has said since ticket 05.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/tests/subcommands.rs`, `crates/tailscale-mcp/src/subcommands.rs`
+
+## Q93 — build/ticket-24 — interpretation
+
+**Question:** Ticket 24 says the diagnosis "reports each check independently and exits non-zero when a check fails". A check the operator switched off with `--no-local` or `--no-tailnet` did not fail. Does it pass?
+
+**Options considered:** report it as a pass / leave it out of the report / a third state
+
+**Chosen:** three states — passed, skipped, failed — and only failed changes the exit code.
+
+**Decided-by:** agent
+
+**Justification:** Reporting a skipped check as a pass tells an operator their credential is fine when nothing looked at it, which is the answer most likely to send them looking in the wrong place. Leaving it out is quieter but worse: the operator wonders whether the check exists.
+
+So a skipped check is printed, marked `--`, and says why it was skipped; the exit code counts only failures, because a switched-off surface is a thing the operator chose and a pipeline should not stop for it.
+
+The three checks are made independently for the same reason: a missing `tailscale` binary must not prevent the credential from being checked, because somebody running a diagnosis wants the whole list rather than the first thing to go wrong.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/subcommands.rs`
+
+## Q94 — build/ticket-25 — interpretation
+
+**Question:** Ticket 25 says the policy subcommands should reuse "the same client code as the tools, including the version identifier guard". A handler can be called directly, or the tool can be invoked through the registry.
+
+**Options considered:** call the handlers / invoke through the registry / a separate code path shaped like the tools
+
+**Chosen:** through the registry, by tool name, with a gate of the policy toolset at the destructive tier.
+
+**Decided-by:** agent
+
+**Justification:** "The same client code" is most true when it is literally the same call. Going through the registry means the parameter parsing, the version guard, the error codes and the request shaping are the ones a tool call gets, and a pipeline checking a policy cannot disagree with an agent writing one about what is valid.
+
+The tier is destructive regardless of what the operator passed, because the tier exists to constrain an agent and there is no agent here: a person typed `policy deploy` at a terminal, and asking them to also pass `--allow-destructive` would be asking them to confirm twice what they said once.
+
+The version identifier is read inside `deploy`, immediately before the write, rather than accepted as an argument. The guard's whole purpose is that the document being replaced is the one that was read, and an `etag` carried in from an earlier pipeline step would be guarding against the wrong thing. Where the read returns no `ETag` — an untouched tailnet — the write goes over the control plane's default instead, which is the same fallback `tailnet_policy_set` offers (Q73).
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/subcommands.rs`, `crates/tailscale-mcp/tests/policy_subcommands.rs`
+
+## Q95 — build/ticket-24 — deviation
+
+**Question:** The client list existed twice — `config::ClientName` for clap to parse and `subcommands::Client` for the behaviour — with a `From` between them.
+
+**Options considered:** keep both and keep the conversion / keep both and generate one from the other / one enum
+
+**Chosen:** one enum, in `config`, deriving `clap::ValueEnum`.
+
+**Decided-by:** agent
+
+**Justification:** Nothing structural justified the split: both are modules of one crate, and `config` already imports from `gating` and `meta`. What the split cost was four switches over the same five cases and a hand-written `Client::ALL` that a sixth client would not have been added to — so a sixth client would have compiled, been offered on the command line, and been silently untested, because both tests iterated that list.
+
+With one enum, `ValueEnum::value_variants()` is the list, generated. The snippet test iterates it and fails on a client whose shape nobody has written down, which is the failure worth having.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/config.rs`, `crates/tailscale-mcp/src/subcommands/setup.rs`
+
+## Q96 — build/ticket-24 — omission
+
+**Question:** The setup snippet carried six of the settings an operator can change. `--cli-path`, `--max-result-bytes` and `--log` were silently dropped, so on the machine that needed `--cli-path`, the pasted snippet produced a server with no local surface.
+
+**Options considered:** document the gap / carry everything / carry everything that makes sense in a snippet, and name the exceptions
+
+**Chosen:** the third, with `NOT_IN_A_SNIPPET` naming the four that are deliberately left out and a test holding the two lists to `ENV_VARS` between them.
+
+**Decided-by:** agent
+
+**Justification:** The criterion is that the snippet "produces a working server", and a snippet that drops a setting produces a different server from the one it was printed from. The three that were missing are exactly the ones an operator sets because their machine is unusual, which is when a snippet matters most.
+
+Four are left out on purpose. The three HTTP variables describe a transport a client cannot use — a client launches this binary and talks to it over stdio — so a snippet that turned it on would describe a server the client cannot reach. The base address exists for the test suite to point at a fake.
+
+The check that keeps this honest is a test asserting every entry in `ENV_VARS` is either carried or excluded by name, because the `debug_assert` that was there checked membership and never completeness — which is why three variables went missing without anything noticing.
+
+The function moved onto `Config` at the same time. It is `resolve` run backwards: every field it reads and every variable it names belongs to that module, and keeping them apart is what let them drift.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/config.rs`, `crates/tailscale-mcp/tests/subcommands.rs`
+
+## Q97 — build/ticket-24 — deviation
+
+**Question:** `version` printed the rmcp version from `option_env!("DEP_RMCP_VERSION")`, with a comment claiming the dependency records it at build time.
+
+**Options considered:** leave it / add a build script / print nothing about the SDK / a written constant held to the manifest by a test
+
+**Chosen:** the constant, with a test that reads the workspace manifest and fails when the two diverge.
+
+**Decided-by:** agent
+
+**Justification:** The comment was the reverse of the truth. `DEP_*` variables reach only the build script of a crate that depends on one declaring `links`; rmcp declares no `links` and this crate has no build script, so the variable was `None` on every build and had always been. The reviewer proved it by changing the constant and watching the binary print the change.
+
+A build script to recover the version would be a build script for one line of output. Printing nothing would lose the thing most worth having in a bug report. So the constant stays and a test parses `rmcp = "…"` out of the workspace manifest and asserts the printed version starts with it — the same shape as the test that holds `ENV_VARS` to the code, and the same reason: a fact written in two places needs something that fails when they disagree.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/subcommands/mod.rs`, `crates/tailscale-mcp/tests/subcommands.rs`
+
+## Q98 — build/ticket-24 — deviation
+
+**Question:** The setup snippets were nearly right and wrong in two places: Zed's carried `"source": "custom"`, which Zed's own settings type has no variant for, and Claude Code's told the operator to pass the `mcpServers` wrapper to `claude mcp add-json`, which takes the server object inside it.
+
+**Options considered:** leave them / one shape for all five and let the operator adapt / each client's own shape, checked against a table written from the clients' documentation
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** The criterion is that the snippet, "pasted into the named client, produces a working server". A snippet that is nearly the right shape fails that criterion completely and in a way that looks like the server is broken rather than the snippet — which is the worst way for this subcommand to be wrong.
+
+So the shape is one line — the key each client keeps its servers under — and the test's table of those keys is written from each client's documentation rather than read back out of the code. A test that asked the code which key it used would agree with the code about a key neither of them had checked against the client, which is how the Zed snippet passed its test while being wrong.
+
+Claude Code gets both: the file form, and a second line showing the `add-json` command with the inner object, because the two take different halves and an operator should not have to know that.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/subcommands/setup.rs`, `crates/tailscale-mcp/tests/subcommands.rs`

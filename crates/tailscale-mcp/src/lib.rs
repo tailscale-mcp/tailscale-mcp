@@ -24,6 +24,7 @@ pub mod meta;
 pub mod registry;
 pub mod resources;
 pub mod server;
+pub mod subcommands;
 pub mod tools;
 pub mod version;
 

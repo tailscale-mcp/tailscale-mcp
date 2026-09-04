@@ -210,7 +210,7 @@ async fn tailnet_json(ctx: Arc<ToolContext>, rest: &str) -> ToolResult<String> {
         .get(client.tailnet_path(None, rest))
         .send_as::<Value>()
         .await?;
-    Ok(printed(&answer))
+    Ok(crate::tools::common::pretty(&answer))
 }
 
 async fn device(ctx: Arc<ToolContext>, device_id: String) -> ToolResult<String> {
@@ -219,13 +219,7 @@ async fn device(ctx: Arc<ToolContext>, device_id: String) -> ToolResult<String> 
         .get(crate::tools::tailnet_devices::device_path(&device_id, "")?)
         .send_as::<Value>()
         .await?;
-    Ok(printed(&answer))
-}
-
-/// An answer as the text a resource carries: indented, so that a person
-/// reading it in a client sees the shape.
-fn printed(answer: &Value) -> String {
-    serde_json::to_string_pretty(answer).unwrap_or_else(|_| answer.to_string())
+    Ok(crate::tools::common::pretty(&answer))
 }
 
 /// The policy file as text, which is what makes it the odd one out.

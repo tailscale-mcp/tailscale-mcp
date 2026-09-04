@@ -209,3 +209,63 @@
 **Justification:** A flattened struct does not produce a flat schema: `schemars` renders it as an `allOf` composition with no top-level `properties` map. The registry injects the `confirm` field into that map when a tool requires confirmation, and five of these three tools' relatives do — so flattening would have silently produced tools whose confirmation field never appeared in their schema, and the failure would have surfaced as a caller unable to confirm rather than as a compile error. The macro keeps one definition of the shared fields, and with them the two methods that turn those fields into arguments, at the price of a layer of `macro_rules!` between the reader and the field list. Repeating the fields by hand was rejected for the reason it always is: three copies of sixteen fields drift.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/local_prefs.rs`; `crates/tailscale-mcp/src/registry.rs`
+
+## Q22 — build/ticket-10 — tradeoff
+
+**Question:** `tailscale serve` and `tailscale funnel` run in the foreground by default and stop on an interactive prompt. Ticket 10 asks that no tool leave a foreground process running. What is passed on the caller's behalf?
+**Options considered:** `--bg` only, and let a prompt time out / `--bg` and `--yes` on every set and clear / expose both as parameters and let the caller choose
+**Chosen:** `--bg=true --yes=true` on every call that sets or clears a handler, with neither exposed as a parameter.
+**Decided-by:** agent
+**Justification:** A foreground `serve` holds its terminal until it is interrupted, which no tool call can do, so `--bg` is not a choice — the alternative is a call that never returns. `--yes` is the same argument one step further in: the prompt it answers is drawn on a terminal nobody is watching, so leaving it unanswered turns the call into a timeout rather than into a question the caller gets asked. The question it asks is nevertheless a real one, and this server asks it in the place a caller can see: funnel publishes to the public internet, so both funnel tools sit at the destructive tier and the one that exposes something requires `confirm: true`. This is the same division as Q17 — our gate is the one with a stable meaning, the client's flag is passed on a call that already carried our answer — except that here `--yes` is passed on the serve tools too, where the tier rather than a confirmation is what the caller had to opt into. Exposing either flag as a parameter was rejected because every value other than the one passed is a hang.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_serve.rs`; DECISIONS Q17
+
+## Q23 — build/ticket-10 — deviation
+
+**Question:** Ticket 10's acceptance criteria say "serve tools are available at the write tier; funnel tools only at the destructive tier". `serve reset` removes every handler on the node and `serve clear` removes every handler for a service. Do they stay at the write tier to satisfy the criterion as written?
+**Options considered:** every serve tool at write, as the criterion reads / `reset` and `clear` at destructive, against the letter of it / a fourth tier for bulk removal
+**Chosen:** `tailscale_serve_reset` and `tailscale_serve_clear` at the destructive tier with `confirm: true`; the other six serve tools at write or read, so serve remains fully usable without `--allow-destructive`.
+**Decided-by:** agent
+**Justification:** The criterion's load-bearing word is *only*, on the funnel side: what it is protecting is that a write-tier session cannot publish to the internet, and that exposing a server on the tailnet does not require the destructive flag. Both hold. Against that, the tier definitions are explicit — destructive is "removes something ... in a way that is not simply undone" — and `reset` discards a configuration that the caller cannot reconstruct from anything the tool returned. Classifying it as write to satisfy a phrase would make the tier mean less everywhere else, which is the one thing the tier model cannot afford. A fourth tier was rejected for the same reason: three tiers a caller can hold in mind are worth more than a taxonomy. The cost is that clearing everything needs a flag that setting things up did not; a caller who wants to undo one handler has `tailscale_serve_off` at the write tier.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_serve.rs`; `.scratch/tailscale-mcp-v1/issues/10-local-serve-toolset.md`
+
+## Q24 — build/ticket-10 — interpretation
+
+**Question:** The command inventory records `serve get-config <file>` as writing a file, alongside `set-config <file>` which reads one. Should `tailscale_serve_get_config` create a temporary file for the client to write into?
+**Options considered:** reserve a private path and read it back / print to standard output and parse that / probe the installed client and follow what it does
+**Chosen:** Probed, and the note is wrong: `serve get-config` prints the document to standard output and ignores the positional argument entirely. Only `set-config` needs a file, so only `set-config` makes one.
+**Decided-by:** agent
+**Justification:** Verified against the installed client at 1.102.2: `serve get-config --all=true` prints JSON with no file named, prints the same JSON when one is named, and creates nothing at that path. A `PrivateFile::reserved` variant had been added to the CLI crate for the file that turned out not to be needed, and a stub reply that wrote files with it; both were removed rather than left in for a case that does not exist. The general lesson is recorded here because the inventory is the input to several tickets still to come: where a note describes an interface rather than a version, the installed client is the authority and is cheap to ask.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_serve.rs`; `docs/research/tailscale-cli.md`
+
+## Q25 — build/ticket-10 — tradeoff
+
+**Question:** On a tailnet where Funnel has not been enabled in the admin console, `tailscale funnel` does not fail: it prints the URL that enables it and then waits for ever, even with `--yes` and `--bg`. A tool call against such a tailnet hits the timeout and, as the exec layer stood, returned nothing but the elapsed seconds. What should the caller get?
+**Options considered:** leave it as a bare timeout / give funnel a longer timeout / keep what the child printed before it was killed, and report it with the timeout
+**Chosen:** Keep it. `ExecError::Timeout` now carries a `printed` field holding what the child had written to either stream when it was killed, capped and cut on a character boundary; `ToolError::timeout` appends it and changes its hint to say the command was waiting on something and to act on what it printed.
+**Decided-by:** agent
+**Justification:** The bare timeout is the least actionable error this server can produce: it says a command took too long and nothing about why, and here the why was already on the wire — a one-line explanation and a URL that fixes it permanently. A longer timeout only moves the same non-answer further away. The change is in the exec layer rather than in the funnel handler because nothing about it is funnel-specific: any `tailscale` command that stops to talk to a person has something worth reading in what it printed, and `up` and `login` are the next two. The cost is that the buffers now outlive the futures that fill them, which made the read paths slightly more involved, and that a killed child's partial output could in principle carry a secret — so it goes through the redactor on the way out, like every other captured stream.
+**Outcome:** applied
+**Ref:** `crates/tailscale-cli/src/exec.rs`; `crates/tailscale-mcp/src/error.rs`; `crates/tailscale-mcp/src/cli.rs`
+
+## Q26 — build/ticket-10 — interpreted-ambiguity
+
+**Question:** Ticket 10 puts funnel at the destructive tier for publishing to the internet. `tailscale_funnel_off` un-publishes. Does it need `confirm: true` as well?
+**Options considered:** confirm both, since both are destructive / confirm only the one that exposes / drop `funnel_off` to the write tier
+**Chosen:** Both at the destructive tier; only `tailscale_funnel_set` requires confirmation.
+**Decided-by:** agent
+**Justification:** The tier and the confirmation answer different questions, and there is deliberately no rule in this server that makes one imply the other. The tier says which flag an operator had to pass to have the tool offered at all, and keeping both funnel tools behind the same flag means a session that can reach funnel reaches all of it — an operator who has granted the ability to publish should not find that turning it off again requires a different grant. The confirmation asks the caller to state an intent in the call, and the intent worth stating is exposure: `funnel_set` makes something reachable by anyone on the internet, `funnel_off` makes it unreachable. Requiring an answer to a question whose wrong answer is safe is how a caller learns to answer without reading.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_serve.rs`; `crates/tailscale-mcp/src/meta.rs`
+
+## Q27 — build/ticket-10 — interpretation
+
+**Question:** `serve get-config` and `serve set-config` each want `--service=svc:<name>` or `--all`, and refuse when given neither. `--all` on the writing side replaces the configuration of every service the node hosts. How should the scope reach the tool?
+**Options considered:** one optional `service`, where omitting it means all / two parameters, `service` and `all`, exactly one of which must be given / a single string that is either `all` or a service name
+**Chosen:** Two parameters, refusing both "neither" and "both" with `invalid_args` before anything runs; a service name without the `svc:` prefix is given one.
+**Decided-by:** agent
+**Justification:** Making "all services" the meaning of an omitted parameter puts the widest possible write one forgotten field away, on the tool that overwrites handlers — the client refuses that call for the same reason, and reproducing the safety in the schema is cheaper than explaining it in a description. Two booleans-worth of state does admit two invalid combinations, but both are refused before spawning with a message that names the choice, which a single overloaded string could not do as clearly. The prefix is added because the client rejects a bare `web` with a flag-parsing error rather than adding it, and that error reaches a caller as `cli_failed` with nothing to act on; unlike `--advertise-tags`, which the client prefixes itself, there is nothing here to defer to.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_serve.rs`

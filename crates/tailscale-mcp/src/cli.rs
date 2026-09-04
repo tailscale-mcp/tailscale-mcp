@@ -20,7 +20,7 @@ pub async fn run(ctx: &ToolContext, meta: &ToolMeta, invocation: Invocation) -> 
         .local
         .run(invocation)
         .await
-        .map_err(|e| exec_error(&display, e))?;
+        .map_err(|e| exec_error(ctx, &display, e))?;
     if output.success() {
         return Ok(output);
     }
@@ -49,7 +49,7 @@ pub async fn run_tolerant(
         .local
         .run(invocation)
         .await
-        .map_err(|e| exec_error(&display, e))?;
+        .map_err(|e| exec_error(ctx, &display, e))?;
     if output.success() {
         return Ok(output);
     }
@@ -76,12 +76,14 @@ pub async fn run_text(
 }
 
 /// Something went wrong before the command produced a result.
-fn exec_error(display: &str, error: ExecError) -> ToolError {
+fn exec_error(ctx: &ToolContext, display: &str, error: ExecError) -> ToolError {
     match error {
         ExecError::BinaryNotFound { .. } | ExecError::BinaryNotExecutable { .. } => {
             ToolError::backend_unavailable("the local surface", &error.to_string())
         }
-        ExecError::Timeout { timeout, .. } => ToolError::timeout(display, timeout.as_secs()),
+        ExecError::Timeout {
+            timeout, printed, ..
+        } => ToolError::timeout(display, timeout.as_secs(), &ctx.redactor.apply(&printed)),
         ExecError::Spawn { .. } => {
             ToolError::backend_unavailable("the local surface", &error.to_string())
         }

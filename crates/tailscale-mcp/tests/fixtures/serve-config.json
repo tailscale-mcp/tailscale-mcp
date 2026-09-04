@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "services": {
+    "svc:web": {
+      "web": {
+        "svc:web:443": {
+          "handlers": {
+            "/": {
+              "proxy": "http://127.0.0.1:3000"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # 10 — Serve and funnel toolset
 
-Status: ready-for-agent
+Status: done
 Milestone: 2 — Local surface
 Blocked by: 09
 

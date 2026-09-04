@@ -18,12 +18,13 @@ use std::time::Duration;
 use rmcp::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tailscale_cli::{Invocation, Output};
+use tailscale_cli::Invocation;
 
 use crate::cli;
 use crate::context::ToolContext;
 use crate::error::{ErrorCode, ToolError, ToolResult};
 use crate::meta::ToolMeta;
+use crate::tools::common::{flag, lines, note, report};
 use crate::version::{SUPPORTED_FLOOR, Version};
 
 crate::tools! {
@@ -164,40 +165,6 @@ pub struct NoParams {}
 /// The serde default for a flag that is on unless the caller says otherwise.
 const fn yes() -> bool {
     true
-}
-
-/// Render a boolean flag the way Go's flag package needs it: joined to its
-/// value, so that it cannot be mistaken for a positional argument.
-fn flag(name: &str, value: bool) -> String {
-    format!("--{name}={value}")
-}
-
-/// The text a command printed, with blank lines and comment lines dropped.
-fn lines(text: &str) -> impl DoubleEndedIterator<Item = &str> {
-    text.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-}
-
-/// Whatever a command said on standard error, when it said anything.
-fn note(ctx: &ToolContext, output: &Output) -> Option<String> {
-    let stderr = ctx.redactor.apply(&output.stderr);
-    let trimmed = stderr.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
-}
-
-/// Turn a serialisable report into the value a tool answers with.
-///
-/// Serialisation of a plain struct of owned strings and numbers cannot fail, so
-/// the fallback is unreachable; it exists because a panic in a tool handler
-/// would take the whole session down.
-fn report(value: impl Serialize) -> ToolResult<Value> {
-    serde_json::to_value(value).map_err(|e| {
-        ToolError::new(
-            ErrorCode::CliFailed,
-            format!("the report did not build: {e}"),
-        )
-    })
 }
 
 /// Run a command that prints a JSON document, and return the document.
@@ -731,7 +698,10 @@ async fn routecheck(ctx: &ToolContext, params: RoutecheckParams) -> ToolResult<V
     let document = serde_json::from_str::<Value>(output.stdout_str().trim()).ok();
     report(RoutecheckReport {
         available: document.is_some(),
-        note: document.is_none().then(|| note(ctx, &output)).flatten(),
+        note: document
+            .is_none()
+            .then(|| note(ctx, &output.stderr))
+            .flatten(),
         report: document,
     })
 }
@@ -778,7 +748,7 @@ async fn wait(ctx: &ToolContext, params: WaitParams) -> ToolResult<Value> {
     report(WaitReport {
         ready: output.success(),
         waited_up_to_seconds: seconds,
-        note: note(ctx, &output),
+        note: note(ctx, &output.stderr),
     })
 }
 
@@ -899,7 +869,7 @@ async fn exit_node_list(ctx: &ToolContext, params: ExitNodeListParams) -> ToolRe
     let exit_nodes = parse_exit_nodes(&output.stdout_str());
     report(ExitNodeListReport {
         available: !exit_nodes.is_empty(),
-        note: note(ctx, &output),
+        note: note(ctx, &output.stderr),
         exit_nodes,
     })
 }

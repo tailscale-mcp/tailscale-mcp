@@ -127,6 +127,31 @@ async fn a_call_that_overruns_is_cut_off() {
     );
 }
 
+#[tokio::test]
+async fn a_child_that_is_cut_off_keeps_what_it_had_already_said() {
+    // The interesting hang is the one that explains itself first. Killing the
+    // child must not throw the explanation away with it.
+    let err = stub()
+        .run(
+            stub_call(&["say-then-hang", "visit https://login.example.com/f/funnel"])
+                .with_timeout(Duration::from_millis(400)),
+        )
+        .await
+        .expect_err("the call must time out");
+
+    let ExecError::Timeout { printed, .. } = &err else {
+        panic!("{err:?}");
+    };
+    assert!(
+        printed.contains("https://login.example.com/f/funnel"),
+        "what the child said was lost: {printed:?}"
+    );
+    assert!(
+        printed.contains("still waiting"),
+        "standard error was lost: {printed:?}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_timed_out_child_is_asked_to_stop_before_it_is_killed() {

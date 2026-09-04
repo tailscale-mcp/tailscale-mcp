@@ -45,7 +45,17 @@ pub enum ExecError {
     },
 
     #[error("`{command}` did not finish within {}s", .timeout.as_secs())]
-    Timeout { command: String, timeout: Duration },
+    Timeout {
+        command: String,
+        timeout: Duration,
+        /// Whatever the child had printed by the time it was killed.
+        ///
+        /// A command that hangs usually says why first — `tailscale funnel`
+        /// prints the URL that enables Funnel and then waits for someone to
+        /// visit it — so the words are kept and handed to the caller. Empty
+        /// when the child said nothing.
+        printed: String,
+    },
 
     #[error("failed talking to `{command}`: {source}")]
     Io {
@@ -150,6 +160,13 @@ impl CliBackend {
         let mut stderr_pipe = child.stderr.take();
         let stdin_bytes = invocation.stdin;
 
+        // Owned out here rather than inside the reading futures, so that a
+        // child killed for taking too long still leaves behind whatever it had
+        // said. `read_to_end` fills the buffer as it goes, and cancelling it
+        // keeps what it filled.
+        let mut stdout_buf = Vec::new();
+        let mut stderr_buf = Vec::new();
+
         let collected = {
             let feed = async {
                 if let (Some(pipe), Some(bytes)) = (stdin_pipe.as_mut(), stdin_bytes.as_ref()) {
@@ -161,34 +178,34 @@ impl CliBackend {
                 Ok::<(), std::io::Error>(())
             };
             let read_out = async {
-                let mut buf = Vec::new();
                 if let Some(pipe) = stdout_pipe.as_mut() {
-                    pipe.read_to_end(&mut buf).await?;
+                    pipe.read_to_end(&mut stdout_buf).await?;
                 }
-                Ok::<Vec<u8>, std::io::Error>(buf)
+                Ok::<(), std::io::Error>(())
             };
             let read_err = async {
-                let mut buf = Vec::new();
                 if let Some(pipe) = stderr_pipe.as_mut() {
-                    pipe.read_to_end(&mut buf).await?;
+                    pipe.read_to_end(&mut stderr_buf).await?;
                 }
-                Ok::<Vec<u8>, std::io::Error>(buf)
+                Ok::<(), std::io::Error>(())
             };
 
             let work = async {
                 let (fed, out, err, status) = tokio::join!(feed, read_out, read_err, child.wait());
                 fed?;
-                Ok::<_, std::io::Error>((out?, err?, status?))
+                out?;
+                err?;
+                status
             };
 
             tokio::time::timeout(invocation.timeout, work).await.ok()
         };
 
         match collected {
-            Some(Ok((stdout, stderr, status))) => Ok(Output {
+            Some(Ok(status)) => Ok(Output {
                 exit_code: status.code(),
-                stdout,
-                stderr: String::from_utf8_lossy(&stderr).into_owned(),
+                stdout: stdout_buf,
+                stderr: String::from_utf8_lossy(&stderr_buf).into_owned(),
             }),
             Some(Err(source)) => Err(ExecError::Io { command, source }),
             None => {
@@ -196,6 +213,7 @@ impl CliBackend {
                 Err(ExecError::Timeout {
                     command,
                     timeout: invocation.timeout,
+                    printed: printed(&stdout_buf, &stderr_buf),
                 })
             }
         }
@@ -212,6 +230,37 @@ impl LocalBackend for CliBackend {
 ///
 /// The polite request matters: `tailscale` cleans up state on the way out, and
 /// a killed process can leave a half-applied preference behind.
+/// What a killed child had said, both streams together and in the order a
+/// person reading a terminal would have seen them: standard output first,
+/// since that is where the client puts the thing it wants acted on.
+///
+/// Kept short, because it goes into an error message rather than into a result.
+fn printed(stdout: &[u8], stderr: &[u8]) -> String {
+    const LIMIT: usize = 2_000;
+    let mut out = String::new();
+    for stream in [stdout, stderr] {
+        let text = String::from_utf8_lossy(stream);
+        let text = text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(text);
+    }
+    if out.len() > LIMIT {
+        // On a character boundary, so the result is still a string.
+        let end = (0..=LIMIT)
+            .rev()
+            .find(|i| out.is_char_boundary(*i))
+            .unwrap_or(0);
+        out.truncate(end);
+        out.push('\u{2026}');
+    }
+    out
+}
+
 async fn terminate(child: &mut tokio::process::Child) {
     #[cfg(unix)]
     if let Some(pid) = child.id() {

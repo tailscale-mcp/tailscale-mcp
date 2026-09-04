@@ -18,8 +18,8 @@ pub enum Reply {
     Ran(Output),
     /// There was no binary to run.
     Unavailable,
-    /// The command did not finish in time.
-    TimedOut,
+    /// The command did not finish in time, having printed this much first.
+    TimedOut { printed: String },
 }
 
 impl Reply {
@@ -30,6 +30,20 @@ impl Reply {
             stdout: stdout.into().into_bytes(),
             stderr: String::new(),
         })
+    }
+
+    /// A command that hung after saying nothing.
+    pub fn timed_out() -> Self {
+        Self::TimedOut {
+            printed: String::new(),
+        }
+    }
+
+    /// A command that said this and then hung.
+    pub fn hung_after(printed: impl Into<String>) -> Self {
+        Self::TimedOut {
+            printed: printed.into(),
+        }
     }
 
     /// A non-zero exit with this on standard error.
@@ -121,9 +135,10 @@ impl LocalBackend for StubBackend {
                 Reply::Unavailable => Err(ExecError::BinaryNotFound {
                     searched: vec!["a stub backend with no binary".to_owned()],
                 }),
-                Reply::TimedOut => Err(ExecError::Timeout {
+                Reply::TimedOut { printed } => Err(ExecError::Timeout {
                     command: display,
                     timeout: Duration::from_secs(30),
+                    printed,
                 }),
             }
         })

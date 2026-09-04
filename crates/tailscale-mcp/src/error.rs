@@ -196,12 +196,21 @@ impl ToolError {
         Self::new(ErrorCode::ApiError, message).with_status(status)
     }
 
-    pub fn timeout(what: &str, seconds: u64) -> Self {
-        Self::new(
-            ErrorCode::Timeout,
-            format!("{what} did not finish within {seconds}s"),
-        )
-        .with_hint("Raise the timeout, or narrow what the call asks for.")
+    /// A command that did not finish. `printed` is whatever it had said before
+    /// it was stopped, which for a command that waits on someone else is
+    /// usually the whole explanation.
+    pub fn timeout(what: &str, seconds: u64, printed: &str) -> Self {
+        let printed = printed.trim();
+        let mut message = format!("{what} did not finish within {seconds}s");
+        if !printed.is_empty() {
+            message.push_str(", having said: ");
+            message.push_str(printed);
+        }
+        Self::new(ErrorCode::Timeout, message).with_hint(if printed.is_empty() {
+            "Raise the timeout, or narrow what the call asks for."
+        } else {
+            "The command was waiting on something. Act on what it printed, then call again."
+        })
     }
 
     /// A tool was reached that this server is not permitted to run. In the
@@ -486,11 +495,35 @@ mod tests {
             ToolError::confirmation_required("tailscale_down", "disconnects this node"),
             ToolError::needs_operator(""),
             ToolError::rate_limited(Some(30)),
-            ToolError::timeout("tailscale ping", 30),
+            ToolError::timeout("tailscale ping", 30, ""),
         ];
         for err in with_hints {
             assert!(err.hint.is_some(), "{} should carry a hint", err.code);
         }
+    }
+
+    #[test]
+    fn a_command_that_hung_reports_what_it_was_waiting_on() {
+        let silent = ToolError::timeout("tailscale funnel 3000", 30, "  ");
+        assert_eq!(
+            silent.message,
+            "tailscale funnel 3000 did not finish within 30s"
+        );
+
+        let spoke = ToolError::timeout(
+            "tailscale funnel 3000",
+            30,
+            "Funnel is not enabled on your tailnet.\nTo enable, visit:\n\n\thttps://login.example.com/f/funnel\n",
+        );
+        assert!(
+            spoke.message.contains("https://login.example.com/f/funnel"),
+            "the caller cannot act on what it was not told: {}",
+            spoke.message
+        );
+        assert_ne!(
+            spoke.hint, silent.hint,
+            "a command that explained itself needs different advice from one that did not"
+        );
     }
 
     #[test]

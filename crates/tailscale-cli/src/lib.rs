@@ -23,4 +23,4 @@ pub mod stub;
 
 pub use backend::{BoxFuture, Concurrency, Invocation, LocalBackend, Output, Unavailable};
 pub use exec::{CliBackend, DEFAULT_TIMEOUT, ExecError, GRACE_PERIOD};
-pub use secret::SecretFile;
+pub use secret::{PrivateFile, SecretFile};

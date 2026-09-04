@@ -5,7 +5,9 @@
 //! module is the only place that knows about all of them, and [`entries`] is
 //! what the server is built from.
 
+pub mod common;
 pub mod local_prefs;
+pub mod local_serve;
 pub mod local_status;
 
 /// Every tool this server can offer, before any gating.
@@ -13,6 +15,7 @@ pub fn entries() -> Vec<crate::registry::ToolEntry> {
     let mut all = Vec::new();
     all.extend(local_status::entries());
     all.extend(local_prefs::entries());
+    all.extend(local_serve::entries());
     all
 }
 

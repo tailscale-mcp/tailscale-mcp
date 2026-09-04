@@ -54,6 +54,17 @@ fn main() -> std::process::ExitCode {
             std::thread::sleep(std::time::Duration::from_millis(ms));
             std::process::ExitCode::SUCCESS
         }
+        // Say something and then wait forever, the shape of a client that is
+        // waiting on a human: `tailscale funnel` prints the URL that enables
+        // Funnel and then polls until someone visits it.
+        Some("say-then-hang") => {
+            let message = rest.first().map(String::as_str).unwrap_or("waiting");
+            println!("{message}");
+            let _ = std::io::stdout().flush();
+            eprintln!("still waiting");
+            std::thread::sleep(std::time::Duration::from_secs(600));
+            std::process::ExitCode::SUCCESS
+        }
         // Refuse to die politely: record that the signal arrived, then keep
         // running so that the caller has to escalate to a kill.
         Some("ignore-term") => ignore_term(rest.first().map(String::as_str)),

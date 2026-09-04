@@ -36,7 +36,7 @@ All ran successfully as the GUI user, no sudo. (Own node: `<this-node>`, 100.x.y
 | `dns status --json` | `{TailscaleDNS, CurrentTailnet{MagicDNSEnabled, MagicDNSSuffix, SelfDNSName}, SplitDNSRoutes{domain:[{Addr}]}, SearchDomains[], CertDomains[], ExitNodeFilteredSet[], SystemDNS{Nameservers[], SearchDomains[], MatchDomains[]}}`; `--all` adds forwarder debug info. Text: sections `'Use Tailscale DNS' status`, `MagicDNS configuration`, `System DNS configuration`. |
 | `dns query --json <name> [type]` | `{Name, QueryType, Resolvers[{Addr}], ResponseCode, Answers[{Name, TTL, Class, Type, Body}]}`. |
 | `netcheck --format=json` | stderr: timestamped `portmap:` log lines + `# Warning: this JSON format is not yet considered a stable interface`; stdout JSON: `Now, UDP, IPv6, IPv4, IPv6CanSend, IPv4CanSend, OSHasIPv6, ICMPv4, MappingVariesByDestIP, UPnP, PMP, PCP, PreferredDERP, RegionLatency{id:ns}, RegionV4Latency, RegionV6Latency, GlobalV4Counters, GlobalV6Counters, GlobalV4, GlobalV6, CaptivePortal`. Text: `Report:` block (`* Time`, `* UDP`, `* IPv4: yes, ip:port`, `* IPv6`, `* MappingVariesByDestIP`, `* PortMapping: UPnP, NAT-PMP, PCP`, `* Nearest DERP`, `* DERP latency:` list `- sfo: 22ms (San Francisco)`). Took ~0.3–1 s. |
-| `serve status [--json]` / `funnel status --json` | `{}` here; text `No serve config`. Populated form (`serve get-config --all <file>` wrote `{"version":"0.0.1"}`) is the `ipn.ServeConfig` JSON (`TCP{port:{HTTPS,HTTP,TCPForward,TerminateTLS}}, Web{"host:port":{Handlers{path:{Proxy,Path,Text}}}}, AllowFunnel{}, Services{}, Foreground{}`) [K]. |
+| `serve status [--json]` / `funnel status --json` | `{}` here; text `No serve config`. Populated form (`serve get-config --all=true` **printed** `{"version":"0.0.1"}`) is the `ipn.ServeConfig` JSON (`TCP{port:{HTTPS,HTTP,TCPForward,TerminateTLS}}, Web{"host:port":{Handlers{path:{Proxy,Path,Text}}}}, AllowFunnel{}, Services{}, Foreground{}`) [K]. |
 | `exit-node list` | exit 1 + `no exit nodes found` (none on this tailnet); otherwise table `IP HOSTNAME COUNTRY CITY STATUS` [K]. `exit-node suggest` → `No exit node suggestion is available.` |
 | `lock status --json` | `{SchemaVersion, Enabled:false, PublicKey:"tlpub:…", NodeKey:"nodekey:…"}`; text `Tailnet lock is NOT enabled.` + `This node's tailnet-lock key: tlpub:…`. |
 | `whois --json <ip>` / `whoami --json` | `{Node{ID, StableID, Name, User, Key, DiscoKey, Addresses[], AllowedIPs[], Endpoints[], Hostinfo{Hostname, Services[]}, Created, MachineAuthorized, Capabilities[], CapMap{}, ComputedName, ComputedNameWithHost}, UserProfile{ID, LoginName, DisplayName, ProfilePicURL}, CapMap{}}`. Text: `Machine:` block (Name, ID, Addresses) + `User:` block (Name, ID). |
@@ -157,7 +157,7 @@ Legend — **Flags**: `--name <T=default> meaning`; T: b=bool, s=string, d=durat
 | `serve drain` | Stop advertising a service (drain) | `<service>` | none | none | W | B | L:op / M:gui | all |
 | `serve clear` | Delete a service's serve config | `<service>` | none | none | D | B | L:op / M:gui | all |
 | `serve advertise` | (Re-)advertise a service | `<service>` | none | none | W | B | L:op / M:gui | all |
-| `serve get-config` | Dump serve config to a file (flags must precede `<file>`) | `<file>` | `--all <b=false>` all services; `--service <s>` one service | writes JSON file | R | B | L:any / M:gui | all |
+| `serve get-config` | Dump serve config. **Corrected 2026-09-04 against 1.102.2: prints the JSON to stdout and ignores the `<file>` positional; nothing is written.** One of `--all`/`--service` is required or it refuses. | `<file>` (ignored) | `--all <b=false>` all services; `--service <s>` one service (needs the `svc:` prefix) | prints JSON | R | B | L:any / M:gui | all |
 | `serve set-config` | Apply serve config from a file | `<file>` | `--all <b=false>`; `--service <s>` | reads JSON file | W (replaces) | B | L:op / M:gui | all |
 | `funnel` | Expose target to the public internet (parent has Exec) | `<target>` | `--bg <b=false>`; `--https <s>`; `--proxy-protocol <s>`; `--set-path <s>`; `--tcp <s>`; `--tls-terminated-tcp <s>`; `--yes <b=false>` | none | W (public exposure) | L foreground / B with `--bg --yes` | L:op / M:gui | all |
 | `funnel status` | Show funnel config | none | `--json <b=false>` | `--json` | R | B | L:any / M:gui | all |
@@ -320,6 +320,10 @@ The parent has its own Exec: `tailscale debug --file=get` lists Taildrop inbox f
 - stderr noise: `netcheck` prints timestamped `portmap:` lines plus a JSON-instability warning; `debug hostinfo` prints a `TPM:` line; parse stdout only.
 - Non-zero exits that are not failures: `exit-node list` (none found), `routecheck` (report pending), `drive *` (unsupported here), `status` in non-Running states.
 - `status --json` peer map is keyed by `nodekey:…`; `Peer` is `null` when `--peers=false`.
+- `serve`/`funnel` run in the **foreground** by default: `--bg=true` is required or the command never returns. `--yes=true` skips the interactive prompt.
+- `funnel` on a tailnet where Funnel is not enabled **does not fail**: it prints `Funnel is not enabled on your tailnet. To enable, visit: <url>` and then polls for ever, `--yes` and `--bg` notwithstanding. Only a timeout ends it, so what the child printed before it was killed is the whole of the answer (DECISIONS Q25).
+- `serve --https=<port> off` reports `failed to remove web serve: handler does not exist` when there is no handler there, which classifies as `not_found`.
+- Service names must carry the `svc:` prefix; the client rejects a bare name with `invalid service name` rather than adding it, unlike `--advertise-tags`.
 
 ## 9. Supported version floor
 

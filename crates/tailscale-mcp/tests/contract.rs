@@ -296,6 +296,68 @@ fn contracts() -> Vec<Contract> {
             err: {"account": "nobody"} on ["switch", "remove"] =>
                 Reply::failed(1, "switch remove: the profile store is read-only"), "cli_failed"
         ),
+        contract!(
+            "tailscale_serve_set",
+            ok: {"target": "3000"} on ["serve"] => printed!("serve-set.txt"),
+            err: {"target": "3000", "http": 80, "https": 443} on ["serve"] =>
+                Reply::ok(""), "invalid_args"
+        ),
+        contract!(
+            "tailscale_serve_off",
+            ok: {"https": 8443} on ["serve"] => Reply::ok(""),
+            err: {"https": 8443} on ["serve"] =>
+                Reply::failed(1, "error: failed to remove web serve: handler does not exist"),
+                "not_found"
+        ),
+        contract!(
+            "tailscale_serve_reset",
+            ok: {} on ["serve", "reset"] => Reply::ok(""),
+            err: {} on ["serve", "reset"] =>
+                Reply::failed(1, "reset: the daemon refused the request"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_serve_drain",
+            ok: {"service": "svc:web"} on ["serve", "drain"] => Reply::ok(""),
+            err: {"service": "svc:web"} on ["serve", "drain"] =>
+                Reply::failed(1, "drain: no such service"), "not_found"
+        ),
+        contract!(
+            "tailscale_serve_clear",
+            ok: {"service": "svc:web"} on ["serve", "clear"] => Reply::ok(""),
+            err: {"service": "svc:web"} on ["serve", "clear"] =>
+                Reply::failed(1, "clear: the configuration could not be written"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_serve_advertise",
+            ok: {"service": "svc:web"} on ["serve", "advertise"] => Reply::ok(""),
+            err: {"service": "svc:web"} on ["serve", "advertise"] =>
+                Reply::failed(1, "advertise: no such service"), "not_found"
+        ),
+        contract!(
+            "tailscale_serve_get_config",
+            ok: {"all": true} on ["serve", "get-config"] => printed!("serve-config.json"),
+            err: {} on ["serve", "get-config"] => Reply::ok(""), "invalid_args"
+        ),
+        contract!(
+            "tailscale_serve_set_config",
+            ok: {"all": true, "configuration": {"version": "0.0.1"}} on ["serve", "set-config"] =>
+                Reply::ok(""),
+            err: {"all": true, "service": "svc:web", "configuration": {}}
+                on ["serve", "set-config"] => Reply::ok(""), "invalid_args"
+        ),
+        contract!(
+            "tailscale_funnel_set",
+            ok: {"target": "3000"} on ["funnel"] => printed!("serve-set.txt"),
+            err: {"target": "3000"} on ["funnel"] =>
+                Reply::hung_after("Funnel is not enabled on your tailnet."), "timeout"
+        ),
+        contract!(
+            "tailscale_funnel_off",
+            ok: {"https": 8443} on ["funnel"] => Reply::ok(""),
+            err: {"https": 8443} on ["funnel"] =>
+                Reply::failed(1, "error: failed to remove funnel: handler does not exist"),
+                "not_found"
+        ),
     ]
 }
 

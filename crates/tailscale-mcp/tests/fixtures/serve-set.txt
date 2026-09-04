@@ -1,0 +1,7 @@
+Available within your tailnet:
+
+https://workstation.example-tailnet.ts.net/
+|-- proxy http://127.0.0.1:3000
+
+Serve started and running in the background.
+To disable the proxy, run: tailscale serve --https=443 off

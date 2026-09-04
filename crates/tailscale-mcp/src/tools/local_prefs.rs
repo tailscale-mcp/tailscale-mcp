@@ -26,6 +26,9 @@ use tailscale_cli::{Invocation, SecretFile};
 use crate::cli;
 use crate::context::ToolContext;
 use crate::error::{ErrorCode, ToolError, ToolResult};
+use crate::tools::common::{
+    find_url, flag, note, only_on, push_bool, push_list, push_text, report,
+};
 
 crate::tools! {
     /// Show the node's current preferences: one setting by name, or all of
@@ -328,51 +331,6 @@ prefs_params! {
 // Argument helpers
 // ---------------------------------------------------------------------------
 
-/// Render a boolean flag joined to its value, which is what Go's flag package
-/// needs to tell it from a positional argument.
-fn flag(name: &str, value: bool) -> String {
-    format!("--{name}={value}")
-}
-
-fn push_bool(args: &mut Vec<String>, name: &str, value: Option<bool>) {
-    if let Some(value) = value {
-        args.push(flag(name, value));
-    }
-}
-
-fn push_text(args: &mut Vec<String>, name: &str, value: Option<&str>) {
-    if let Some(value) = value {
-        args.push(format!("--{name}={value}"));
-    }
-}
-
-/// A list flag. The CLI takes these comma-separated, and an empty list is an
-/// empty value, which is how a route set or an endpoint list is withdrawn.
-fn push_list(args: &mut Vec<String>, name: &str, value: Option<&[String]>) {
-    if let Some(values) = value {
-        args.push(format!("--{name}={}", values.join(",")));
-    }
-}
-
-/// Refuse a preference that does not exist on the machine we are on.
-///
-/// Before spawning, so that the answer names the setting and the platform
-/// rather than repeating a Go flag-parsing error about a flag that will never
-/// exist here.
-fn only_on(setting: &str, platforms: &[&str]) -> ToolResult<()> {
-    if platforms.contains(&std::env::consts::OS) {
-        return Ok(());
-    }
-    Err(ToolError::new(
-        ErrorCode::UnsupportedPlatform,
-        format!(
-            "`{setting}` is a {} preference, and this node runs {}",
-            platforms.join(" or "),
-            std::env::consts::OS
-        ),
-    ))
-}
-
 /// Bound a caller's wait, and give the CLI a little longer than we wait for it.
 fn connect_timeouts(requested: Option<u64>) -> (u64, Duration) {
     let seconds = requested
@@ -398,24 +356,6 @@ fn secret_argument(name: &str, value: &str) -> ToolResult<(String, Option<Secret
         )
     })?;
     Ok((format!("--{name}={}", file.arg()), Some(file)))
-}
-
-/// Whatever the command said on standard error, redacted, when it said
-/// anything. `up` and `login` talk to a person there.
-fn note(ctx: &ToolContext, stderr: &str) -> Option<String> {
-    let redacted = ctx.redactor.apply(stderr);
-    let trimmed = redacted.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
-}
-
-/// Turn a serialisable report into the value a tool answers with.
-fn report(value: impl Serialize) -> ToolResult<Value> {
-    serde_json::to_value(value).map_err(|e| {
-        ToolError::new(
-            ErrorCode::CliFailed,
-            format!("the report did not build: {e}"),
-        )
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -597,14 +537,6 @@ async fn up(ctx: &ToolContext, params: UpParams) -> ToolResult<Value> {
         timeout_seconds: seconds,
         note: note(ctx, &output.stderr),
     })
-}
-
-/// The first URL in a block of text, which is how `login` and a non-JSON `up`
-/// hand over an interactive login.
-fn find_url(text: &str) -> Option<String> {
-    text.split_whitespace()
-        .find(|word| word.starts_with("https://"))
-        .map(|url| url.trim_end_matches(['.', ',']).to_owned())
 }
 
 // ---------------------------------------------------------------------------

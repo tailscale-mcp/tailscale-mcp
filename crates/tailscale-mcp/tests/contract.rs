@@ -246,6 +246,56 @@ fn contracts() -> Vec<Contract> {
             err: {} on ["switch"] =>
                 Reply::failed(1, "switch: the profile store could not be read"), "cli_failed"
         ),
+        contract!(
+            "tailscale_prefs_get",
+            ok: {} on ["get"] => printed!("prefs.json"),
+            err: {} on ["get"] =>
+                Reply::failed(1, "tailscale: unknown subcommand \"get\""), "unsupported_version"
+        ),
+        contract!(
+            "tailscale_prefs_set",
+            ok: {"hostname": "workstation"} on ["set"] => Reply::ok(""),
+            err: {"shields_up": true} on ["set"] =>
+                Reply::failed(1, "set: shields-up is managed by policy"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_up",
+            ok: {} on ["up"] => printed!("up-running.json"),
+            err: {} on ["up"] => Reply::Unavailable, "backend_unavailable"
+        ),
+        contract!(
+            "tailscale_down",
+            ok: {} on ["down"] => Reply::ok(""),
+            err: {} on ["down"] =>
+                Reply::failed(1, "down: the daemon refused the request"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_login",
+            ok: {} on ["login"] => printed!("login.txt"),
+            // Logging in changes the node's identity, which an unprivileged
+            // caller is not allowed to do.
+            err: {} on ["login"] =>
+                Reply::failed(1, "Access denied: this operation requires the operator"),
+                "needs_operator"
+        ),
+        contract!(
+            "tailscale_logout",
+            ok: {} on ["logout"] => Reply::ok(""),
+            err: {} on ["logout"] =>
+                Reply::failed(1, "logout: the profile could not be cleared"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_switch_profile",
+            ok: {"account": "example-tailnet.ts.net"} on ["switch"] => Reply::ok(""),
+            err: {"account": "nobody"} on ["switch"] =>
+                Reply::failed(1, "switch: profile \"nobody\" not found"), "not_found"
+        ),
+        contract!(
+            "tailscale_switch_remove",
+            ok: {"account": "example-tailnet.ts.net"} on ["switch", "remove"] => Reply::ok(""),
+            err: {"account": "nobody"} on ["switch", "remove"] =>
+                Reply::failed(1, "switch remove: the profile store is read-only"), "cli_failed"
+        ),
     ]
 }
 

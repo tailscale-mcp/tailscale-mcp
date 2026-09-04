@@ -1,0 +1,4 @@
+To authenticate, visit:
+
+	https://login.example.com/a/0123456789abcdef
+

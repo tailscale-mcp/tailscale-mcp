@@ -159,3 +159,53 @@
 **Justification:** The distinction is a property of the command, not of the exit code: `exit-node list` exits non-zero when there are no exit nodes, which is the answer the command exists to give, while `netcheck` exiting non-zero means the probe did not run. Only the command knows which it is, so the list is per-command and the research notes record why each one is on it. Blanket tolerance for read-only commands was rejected because it would report a broken `dns status` as an empty one. Phrase-matching each command's stderr was rejected because the phrases are not part of any interface and change between releases, whereas the three conditions kept as failures are ones we already recognise elsewhere for the same reasons. Notably `is_not_found` is deliberately not applied in tolerant mode: "no exit nodes found" is a result, not a missing thing.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/cli.rs`; `docs/research/tailscale-cli.md` §8
+
+## Q17 — build/ticket-09 — interpreted-ambiguity
+
+**Question:** Ticket 09 says "down, logout, re-authenticate and reset refuse without a confirmation". The CLI has its own gate for the same danger — `--accept-risk` — which it demands on any command that would cut the connection it is being driven over. Which of the two gates does the server present, and does passing one imply passing the other?
+**Options considered:** surface `--accept-risk` as a parameter and let the caller set it / take the confirmation as the caller's answer and pass the CLI's risk flag on their behalf / require both, separately
+**Chosen:** One gate, ours. A tool that can sever its own connection carries `self_severing`, which implies `requires_confirmation`; the caller answers `confirm: true`, and the handler passes `--accept-risk=all` to the commands that have such a flag. `tailscale_prefs_set` is not confirmable and never passes a risk flag, so a `set` that would cut the connection fails with the CLI's own complaint.
+**Decided-by:** agent
+**Justification:** Two gates for one danger is a gate a caller learns to answer twice without reading, and the CLI's flag is the worse of the two to expose: it is spelled as a list of risk names that changes between releases, it is absent on some of the commands that need confirming, and a model filling in a schema field called `accept_risk` has no way to tell it apart from any other option. Our confirmation is the one with a stable meaning — the registry strips it before the handler runs and refuses the call outright when it is missing — so it is the one the caller sees. `prefs_set` is deliberately outside the arrangement: the ticket does not name it, and quietly accepting a risk on the routine way to change one preference would defeat the point of having asked at all. The cost is that a `set` which happens to sever fails rather than prompting; that failure carries the CLI's message, which names the flag, and the caller can reach for `tailscale_up` instead.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_prefs.rs`; `crates/tailscale-mcp/src/registry.rs`
+
+## Q18 — build/ticket-09 — deviation
+
+**Question:** Q14 settled that `LocalStatus` holds every read-only local command. `tailscale get` reads, so by that rule it belongs there — but it reads back exactly what `tailscale set` writes. Which toolset does `tailscale_prefs_get` live in?
+**Options considered:** `LocalStatus`, per Q14 as written / `LocalPrefs`, with the writer it mirrors / both
+**Chosen:** `LocalPrefs`, at the read tier. Q14 is refined rather than overturned: a read command that exists only to show what a write command in its own toolset has set stays with that writer.
+**Decided-by:** agent
+**Justification:** Q14's reasoning was that a caller opts into a toolset to decide how much a session may touch, and that reading the lock state is the same risk as reading the node's status. `get` is the case that reasoning does not reach: it is not a view of the node that stands on its own, it is the other half of `set`, sharing `set`'s vocabulary of preference names and useful mainly for reading a value back before or after changing it. Splitting the pair across two toolsets would mean a session that can change preferences cannot see them, which is the worse failure of the two — and the tier still protects, because a read-tier session that enables `LocalPrefs` is offered the getter and nothing else. `LocalStatus` keeps its 25 commands, every one of which answers a question about the node rather than about one command's own settings.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_prefs.rs`; DECISIONS Q14
+
+## Q19 — build/ticket-09 — tradeoff
+
+**Question:** `tailscale up` changes preferences, which is the write tier, and it is also how a disconnected node is brought back, which sounds like the least destructive thing in the toolset. Ticket 09 does not assign it a tier. Write or destructive?
+**Options considered:** write, since connecting is restorative / destructive, since `up` applies a whole preference set / write normally and destructive only when `--force-reauth` or `--reset` is passed
+**Chosen:** Destructive, always. Its description sends a caller who only wants to change one setting on a connected node to `tailscale_prefs_set` instead.
+**Decided-by:** agent
+**Justification:** `up` does not merge: it applies a complete preference set, and anything the caller did not restate goes back to its default. That is the same loss `--reset` makes explicit, silently, and it is exactly the mistake a model is likely to make — calling `up` with the one field it wants to change and quietly clearing advertised routes, the exit node and the hostname. On top of that, `--force-reauth` and `--reset` drop the connection the server is being reached over. A tier that depended on which optional fields were filled in would be a tier a caller cannot read off the tool list, and the annotations a client renders — the destructive hint among them — are computed from the tier, so it has to be fixed. The cost is that reconnecting a node needs `--allow-destructive`; the mitigation is that the ordinary reason to reach for `up` on a running node is served by `prefs_set` at the write tier.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_prefs.rs`
+
+## Q20 — build/ticket-09 — interpreted-ambiguity
+
+**Question:** Four preferences exist only on one operating system — `snat_subnet_routes`, `stateful_filtering` and `netfilter_mode` on Linux, `unattended` on Windows. Q15 settled what to do with a whole *tool* that does not exist here. What about a *field* that does not?
+**Options considered:** drop the field from the schema on other platforms / keep the schema everywhere and refuse the call before spawning / pass it and let the CLI complain
+**Chosen:** Keep the schema everywhere; refuse before spawning, with `unsupported_platform` naming both the field and the operating system. `only_on` applies the check, and every one of the four is offered identically on `set`, `up` and `login`.
+**Decided-by:** agent
+**Justification:** The same argument as Q15, one level down: a schema that changes shape by platform makes the generated documentation and the tool list platform-specific, and a model reading a schema on one machine cannot then be shown a different one on another. Refusing before spawning is also the only way to keep the promise ticket 09 asks for by name — "a Linux-only flag on macOS produces the platform code without spawning" — which passing the flag through could not, because the client would answer with a parse error and that is `cli_failed`, not a statement about platforms. The uncertainty accepted is which flags belong to which platform: that comes from the research notes and cannot be checked on this machine, so ticket 26's end-to-end tests are where a wrong entry will show up.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_prefs.rs`; `docs/research/tailscale-cli.md` §3.2
+
+## Q21 — build/ticket-09 — tradeoff
+
+**Question:** Sixteen preferences are accepted by three tools — `prefs_set`, `up` and `login`. The obvious way to share them is one struct embedded with `#[serde(flatten)]`. Should they be shared that way?
+**Options considered:** `#[serde(flatten)]` on a shared struct / a declarative macro that expands the fields into each struct / repeat the fields by hand three times
+**Chosen:** A `prefs_params!` macro that emits the sixteen shared fields plus each tool's own, so every parameter struct is a flat object.
+**Decided-by:** agent
+**Justification:** A flattened struct does not produce a flat schema: `schemars` renders it as an `allOf` composition with no top-level `properties` map. The registry injects the `confirm` field into that map when a tool requires confirmation, and five of these three tools' relatives do — so flattening would have silently produced tools whose confirmation field never appeared in their schema, and the failure would have surfaced as a caller unable to confirm rather than as a compile error. The macro keeps one definition of the shared fields, and with them the two methods that turn those fields into arguments, at the price of a layer of `macro_rules!` between the reader and the field list. Repeating the fields by hand was rejected for the reason it always is: three copies of sixteen fields drift.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_prefs.rs`; `crates/tailscale-mcp/src/registry.rs`

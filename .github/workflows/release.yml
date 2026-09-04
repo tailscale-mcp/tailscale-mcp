@@ -5,9 +5,18 @@
 # the tag creates the GitHub release and uploads the crates.
 #
 # This workflow is not reachable from a pull request — a fork cannot push a tag
-# to this repository — which is why it may hold what `ci.yml` may not: a token,
-# and one that can write. `ci_needs_no_credential` draws that line by asking
-# what a fork's pull request can reach, not by asking what file it is in.
+# to this repository — which is why it may hold what `ci.yml` may not: the
+# right to ask for a credential. `ci_needs_no_credential` draws that line by
+# asking what a fork's pull request can reach, not by asking what file it is
+# in.
+#
+# It holds no publishing secret. Every registry here takes this workflow's own
+# identity instead: npm and crates.io exchange it for a token that lives
+# minutes, the MCP registry for the `io.github.<owner>` namespace, and the
+# container registry answers to `GITHUB_TOKEN`. What each of the first two was
+# told about this repository is written down in
+# `packaging/registry/trusted-publishers.toml`, and `rehearse` asks them
+# whether they still agree before anything is created.
 name: Release
 
 on:
@@ -102,6 +111,12 @@ jobs:
     name: Test and rehearse the publish
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      # To ask npm and crates.io whether they would accept this workflow,
+      # which is the same question the publishing jobs ask and the only way to
+      # find out before they do.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - name: Install the stable toolchain
@@ -120,31 +135,58 @@ jobs:
       # what this catches is a tag pointing somewhere unexpected.
       - name: Test
         run: cargo test --workspace --all-targets --locked
-      # A tag that reached the publishing jobs without their tokens would
-      # leave a GitHub release with nothing behind it. Fail here instead,
-      # while nothing has been created yet. The registry that needs no token
-      # is the container one: `GITHUB_TOKEN` can write this repository's own
-      # packages.
-      - name: Check the publishing tokens are there
-        if: github.event_name == 'push'
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Everything below asks a registry a question, and every one of them runs
+      # on a rehearsal as well as on a tag. Nothing here needs a secret, so a
+      # run started by hand is a real answer to "would a release work right
+      # now" — which matters most for the trusted-publisher configurations,
+      # because they are the part that can break with nobody touching this
+      # repository: an owner renamed, a repository transferred, a
+      # configuration tidied away on a settings page.
+      #
+      # The registry's own check of the listing, which needs no credential at
+      # all. It was the first step of the publishing job; here it fails before
+      # a GitHub release exists rather than three jobs after one does.
+      - name: Check the MCP registry listing
         run: |
-          missing=false
-          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
-            echo "CARGO_REGISTRY_TOKEN is not set on this repository." >&2
-            echo "Add a crates.io token that may publish tailscale-cli," >&2
-            echo "tailscale-rest and tailscale-mcp as a repository secret." >&2
-            missing=true
+          scripts/install-mcp-publisher.sh
+          ./mcp-publisher validate
+      # crates.io mints a token for the run and this throws it away; the
+      # action revokes it when the job ends. Getting one at all is the answer:
+      # it means all three crates' configurations name this workflow.
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+      # npm has no action and no revoke, so this is the exchange by hand, and
+      # the answer is the status code. The token that comes back is never
+      # bound to a variable or written anywhere — `-o /dev/null` — so the
+      # credential exists at the registry for its hour and nowhere else. A
+      # `npm publish --dry-run` would be the obvious check and is the wrong
+      # one: npm's OIDC helper is written never to throw, so a broken
+      # configuration passes it with a warning (npm/cli#8525).
+      - name: Check npm will accept this workflow
+        run: |
+          # A `run:` block is `bash -e`, which is neither of the two this
+          # needs: without `pipefail` a failed `curl` into `jq` reports jq's
+          # status, and `jq -r .value` of nothing succeeds and prints nothing —
+          # so an unobtainable identity token would arrive at npm as an empty
+          # one and be reported below as a trust configuration that is wrong.
+          # `-u` catches the same thing one step earlier, where the identity
+          # token's own variables are missing.
+          set -euo pipefail
+          package=$(jq -r .name packaging/npm/package.json)
+          encoded=$(printf '%s' "$package" | jq -sRr @uri)
+          id_token=$(curl -fsSL \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" |
+            jq -r .value)
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $id_token" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$encoded")
+          if [ "$status" != 201 ]; then
+            echo "npm answered $status for $package, not 201." >&2
+            echo "Its trusted publisher must name ${GITHUB_REPOSITORY%%/*}," >&2
+            echo "${GITHUB_REPOSITORY#*/} and release.yml, and must allow" >&2
+            echo "npm publish. See packaging/registry/trusted-publishers.toml." >&2
+            exit 1
           fi
-          if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "NPM_TOKEN is not set on this repository." >&2
-            echo "Add an npm token that may publish to the @tailscale-mcp" >&2
-            echo "scope as a repository secret." >&2
-            missing=true
-          fi
-          if $missing; then exit 1; fi
       # Always, on a tag as well as by hand: it packages all three crates,
       # builds each from its package rather than from the working tree, and
       # names what it would upload — so the real thing is never the first time
@@ -155,7 +197,7 @@ jobs:
   release:
     name: GitHub release
     needs: [build, rehearse]
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -227,20 +269,41 @@ jobs:
     # published first, it would be a package that fetches a 404 for as long as
     # the release job took.
     needs: release
+    # Stated here rather than inherited through `needs:`, because the property
+    # worth reading off this job is "it may mint a publishing credential", and
+    # a reader should not have to follow a dependency chain to a condition on
+    # another job to confirm it. Every publishing job below says the same.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
-      # For the provenance attestation, which is what lets somebody check that
-      # this package was built from this repository by this workflow rather
-      # than uploaded from a laptop.
+      # The whole credential: npm exchanges this workflow's identity token for
+      # a short-lived publishing token, so there is no secret to hold. It also
+      # produces the provenance attestation, which is what lets somebody check
+      # that this package was built from this repository by this workflow
+      # rather than uploaded from a laptop.
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v7 and not v4: up to v6 this action exported `NODE_AUTH_TOKEN` as
+      # `XXXXX-XXXXX-XXXXX-XXXXX` whenever the caller had not set one, so
+      # removing the token from this job would have left an `.npmrc`
+      # authenticating with a placeholder rather than with nothing. v7 exports
+      # the variable only when it was actually given (actions/setup-node#1558).
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          # Trusted publishing wants npm 11.5.1 or newer, which wants Node
+          # 22.14 or newer. `registry-url` stays — npm's own example keeps it —
+          # and it writes the `.npmrc` line that names the registry.
+          node-version: "24"
           registry-url: https://registry.npmjs.org
+      # Asked for rather than inherited. The npm a Node release bundles moves
+      # with its patch releases, and the requirement here is a floor: dropping
+      # under it does not say so, it fails the publish with a `404` that
+      # points at the package rather than at the version of npm.
+      - name: Install a new enough npm
+        run: npm install -g npm@11
       # The package is a launcher and has no build step; its tests ran in
       # `ci.yml` and are run again here for the same reason `rehearse` runs
       # the Rust suite — a tag is neither a push to main nor a pull request.
@@ -250,21 +313,22 @@ jobs:
       # `--access public`, because a scoped package is private by default and
       # a private package is not one anybody can `npx`. The dist-tag is what
       # `npm install` with no version picks, so a pre-release goes somewhere
-      # else — the same rule the container image's `:latest` follows.
+      # else — the same rule the container image's `:latest` follows. No
+      # `--provenance`: publishing over OIDC attests on its own, and passing
+      # the flag as well would only be a second way to say it.
       - name: Publish
         working-directory: packaging/npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           case "${GITHUB_REF_NAME#v}" in
             *-*) tag=next ;;
             *) tag=latest ;;
           esac
-          npm publish --access public --provenance --tag "$tag"
+          npm publish --access public --tag "$tag"
 
   image:
     name: Container image (${{ matrix.platform }})
     needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     permissions:
@@ -305,6 +369,7 @@ jobs:
   image-manifest:
     name: Container image
     needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -338,6 +403,7 @@ jobs:
     # listing the registry cannot verify. It does not gate crates.io — the
     # registry is in preview, and an outage there should not stop a release.
     needs: [npm, image-manifest]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -346,26 +412,12 @@ jobs:
       # secret, and the namespace it grants is `io.github.<owner>` — which is
       # exactly the name this listing carries.
       id-token: write
-    env:
-      # Pinned by version and by digest, rather than the `latest/download`
-      # URL the registry's own instructions use. Q100 kept third-party code
-      # out of these workflows; a binary that publishes on our behalf is the
-      # last one to fetch from a moving target.
-      PUBLISHER_VERSION: "1.8.1"
-      PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
     steps:
       - uses: actions/checkout@v4
+      # The version and the digest are in the script, which `rehearse` runs
+      # too: it validated this same listing before anything was created.
       - name: Install the publisher
-        run: |
-          curl -fsSL -o publisher.tar.gz \
-            "https://github.com/modelcontextprotocol/registry/releases/download/v$PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz"
-          echo "$PUBLISHER_SHA256  publisher.tar.gz" | sha256sum -c -
-          tar xzf publisher.tar.gz mcp-publisher
-      # The suite checks `server.json` against a vendored schema; this asks the
-      # registry itself, which is the only thing that can answer for the rules
-      # the schema does not carry.
-      - name: Check the listing
-        run: ./mcp-publisher validate
+        run: scripts/install-mcp-publisher.sh
       - name: Sign in
         run: ./mcp-publisher login github-oidc
       - name: Publish
@@ -373,13 +425,23 @@ jobs:
 
   publish:
     name: Publish to crates.io
-    # Last, and only after everything else has gone out: a crates.io upload
-    # cannot be taken back, where a GitHub release can be deleted, an npm
-    # package unpublished within its first days, and a container tag removed.
-    # Everything that can be undone happens first.
+    # After everything that can be undone: a crates.io upload cannot be taken
+    # back, where a GitHub release can be deleted, an npm package unpublished
+    # within its first days, and a container tag removed. It shares its
+    # `needs:` with the MCP registry rather than waiting for it, so the two run
+    # together — Q118 declined to let a preview registry's outage stop a
+    # release, and a listing there is replaceable in a way a crate is not.
     needs: [release, npm, image-manifest]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      # crates.io exchanges this workflow's identity token for a publishing
+      # token good for thirty minutes, and covering every crate whose trusted
+      # publisher names this workflow — which is what lets one exchange upload
+      # all three.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - name: Install the stable toolchain
@@ -392,10 +454,22 @@ jobs:
             ~/.cargo/git/db
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
+      # Last, and deliberately: the token lives thirty minutes, and the
+      # toolchain install above can take several of them. Minted here, the
+      # whole of that life is available to the upload. The action revokes it
+      # when the job ends, so it does not outlive the release either.
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        id: auth
       # `--workspace` uploads the three in dependency order and refuses to
       # start if any of them would fail, which is what keeps them at one
       # version.
+      #
+      # The step's own timeout is under the token's life so that a publish
+      # which hangs fails saying so, rather than running on until the
+      # credential expires underneath it and failing somewhere in the middle
+      # of three crates.
       - name: Publish
+        timeout-minutes: 25
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: cargo publish --workspace --locked

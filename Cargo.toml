@@ -35,6 +35,9 @@ boon = "0.6"
 # YAML, for the one test that reads the vendored API description. A dev-dependency
 # of `tailscale-rest` only, so it reaches no release build.
 serde_norway = "0.9"
+# TOML, for the one test that reads the trusted-publisher coordinates. A
+# dev-dependency only, so it reaches no release build.
+toml = { version = "1", default-features = false, features = ["parse", "serde"] }
 # Signals, so that a timed-out child can be asked to stop before it is killed.
 # Used through nix's safe wrappers, which keeps `unsafe_code = "forbid"` intact.
 nix = { version = "0.31", default-features = false, features = ["signal"] }

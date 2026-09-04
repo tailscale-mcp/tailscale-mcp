@@ -42,6 +42,10 @@ rmcp = { workspace = true, features = ["client"] }
 tempfile.workspace = true
 # JSON Schema, for `registry_listing_is_valid.rs`.
 boon.workspace = true
+# TOML and YAML, for `trusted_publishing_matches.rs`: the registered
+# coordinates and the workflow they have to keep matching.
+toml.workspace = true
+serde_norway.workspace = true
 # The fake control plane, so the tailnet tools are tested against HTTP rather
 # than against a stand-in for the client that talks it.
 tailscale-rest = { workspace = true, features = ["testing"] }

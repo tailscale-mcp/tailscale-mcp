@@ -253,8 +253,9 @@ UPDATE_DOCS=1 cargo test -p tailscale-mcp --test docs_are_current
 ```
 
 Architecture decisions are in [`docs/adr/`](docs/adr/), the vocabulary this
-codebase holds itself to is in [`CONTEXT.md`](CONTEXT.md), and every judgement
-call made while building it is in [`DECISIONS.md`](DECISIONS.md).
+codebase holds itself to is in [`CONTEXT.md`](CONTEXT.md), every judgement call
+made while building it is in [`DECISIONS.md`](DECISIONS.md), and how a release
+is made is in [`RELEASING.md`](RELEASING.md).
 
 ## Licence
 

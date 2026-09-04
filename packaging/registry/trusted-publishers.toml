@@ -1,0 +1,59 @@
+# What npm and crates.io were told, so that this repository can be held to it.
+#
+# Both registries authenticate a release by exchanging the workflow's GitHub
+# Actions identity token for a short-lived publishing credential, and both
+# decide whether to do that by matching the run against a configuration a
+# person typed into a web form. The match is on owner, repository and workflow
+# filename — exactly, and case-sensitively — and neither registry checks that
+# any of those three exist when the configuration is saved.
+#
+# So nothing outside this file connects the workflow to the registrations, and
+# renaming `release.yml` would break all four of them at once, silently, with
+# the failure arriving at the next release as npm's `404 Not Found - PUT` or
+# crates.io's `No Trusted Publishing config found for repository ...`. That is
+# what `trusted_publishing_matches.rs` is for: it holds the workflow to what is
+# written here.
+#
+# EDITING THIS FILE CHANGES NOTHING BY ITSELF. These are notes about the state
+# of two systems this repository cannot reach. Changing a value here and not
+# retyping it into npmjs.com and crates.io makes the test pass and the release
+# fail. The procedure for setting them up is in issue 31.
+
+# True for every configuration below: no GitHub environment is registered, so
+# the run is matched on owner, repository and workflow alone.
+owner = "tailscale-mcp"
+repository = "tailscale-mcp"
+workflow = "release.yml"
+environment = ""
+
+# crates.io stores GitHub's numeric id for the owner alongside its name, and
+# checks it: an organisation deleted and created again under the same name gets
+# a new one, and every configuration then has to be recreated — "Please
+# recreate the Trusted Publishing config to update the repository owner ID".
+# Nothing here can check that from a test, so it is recorded for the person who
+# has to work out why a release stopped authenticating when nothing changed.
+owner_id = 324659463
+
+# npmjs.com -> the package -> Settings -> Trusted Publisher.
+#
+# `allowed_actions` is the "Allowed actions" field. Configurations created
+# after 2026-09-03 permit `npm stage publish` by default and treat direct
+# publishing as opt-in; this pipeline finishes a release on a tag with nobody
+# waiting to approve it, so it opts in.
+[[npm]]
+package = "@tailscale-mcp/tailscale-mcp"
+allowed_actions = "publish"
+
+# crates.io -> the crate -> Settings -> Trusted Publishing -> Add.
+#
+# One configuration per crate: they are keyed by crate, and a token minted for
+# a run covers every crate whose configuration matches it — which is what lets
+# `cargo publish --workspace` upload all three under one exchange.
+[[crates]]
+crate = "tailscale-rest"
+
+[[crates]]
+crate = "tailscale-cli"
+
+[[crates]]
+crate = "tailscale-mcp"

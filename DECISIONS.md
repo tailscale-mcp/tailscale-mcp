@@ -1775,3 +1775,35 @@ The environment variable is what makes one function both the generator and the c
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/tests/docs_are_current.rs`, `docs/tools.md`, `docs/configuration.md`, `docs/errors.md`, `README.md`
+
+## Q120 — build/ticket-31 — interpretation
+
+**Question:** Trusted publishing removes the publishing secrets, but neither npm nor crates.io will register a trusted publisher for a package that does not yet exist — `npm trust`'s prerequisites say "Package must exist", and crates.io's say "initial publish requires an API token". Nothing here has ever been published, so the conversion cannot be how 1.0.0 goes out. Something has to.
+
+**Options considered:** publish 1.0.0 by hand from a maintainer's machine and land the conversion first / ship 1.0.0 through the workflow as it stands with two tokens revoked the same day / convert now with a token fallback for the first release
+
+**Chosen:** the second, with the conversion waiting on a branch.
+
+**Decided-by:** user
+
+**Justification:** 1.0.0 is the release that matters most and it should run the path that ticket 28 built and ticket 29 rehearsed, rather than being the one release assembled by hand. It is also the only option where 1.0.0 carries a provenance attestation: publishing from a laptop produces none, and an unattested first release is a strange thing for a project whose README argues about supply chain. A fallback branch in the workflow was refused for the usual reason — the branch nobody exercises again is the branch that rots, and "temporary" is not a property a workflow can enforce.
+
+The conversion waits on a branch rather than on `main` because a converted `main` would make `v1.0.0` untaggable, and a release workflow that is broken until somebody remembers why is a trap laid for one's future self.
+
+**No GitHub environment.** Both registries treat it as optional and both would use it to narrow the trust. Declining it means trust is scoped to owner, repository and workflow filename alone, so any run of `release.yml` can mint a publishing credential — which, given that starting one needs write access and write access can push a tag, widens nothing that was not already open. What it costs is the option of requiring a reviewer, which this pipeline does not want: a tag is the deliberate act, and an approval gate on a job that `needs: release` means a release that has half happened and is waiting.
+
+**Direct publishing rather than staged.** Since 2026-09-03 a new npm configuration permits `npm stage publish` by default and treats direct publishing as an opt-in; staged versions are not installable until a person promotes them with 2FA, which cannot be done from CI. The security argument is real but it covers one of four registries, and crates.io — the irreversible one — has no equivalent. Paying a mandatory human step on every future npm release for partial coverage of the most reversible target is the wrong trade. It stays a toggle plus a one-word workflow change if that judgement changes.
+
+**The tag guard is stated on each job that can publish, not inherited.** It was already enforced, three jobs away, by `release`'s `if:` and a chain of `needs:`. The property worth reading off a job is "this can mint a publishing credential", and it should be readable there rather than traced. It is also the protection most likely to be lost to an innocent reordering.
+
+**`rehearse` asks the registries rather than checking for secrets.** The step it replaces existed to fail early when a token was missing; with no tokens, the equivalent failure is a trusted-publisher configuration that no longer matches — which neither registry validates when it is saved, and which surfaces at the next release as npm's `404 Not Found - PUT` or crates.io's `No Trusted Publishing config found for repository ...`, neither of which points at the cause. So the rehearsal performs the exchange for real. It runs on a by-hand run as well as on a tag, because "would a release work right now" is exactly the question a rehearsal is for, and the trust configuration is the part that can break with nobody touching this repository.
+
+`npm publish --dry-run` looks like the obvious check and is the wrong one: npm's OIDC helper is written never to throw, so a broken configuration passes it with a warning (npm/cli#8525). The exchange is done against the documented endpoint instead, and the token that comes back is written to `/dev/null` rather than to a variable — npm documents no revoke, so the credential exists at the registry for its hour, and this is what keeps a copy of it from existing anywhere else.
+
+The MCP registry is not preflighted. Its trust is the repository's own identity rather than a configuration somebody typed, so there is nothing there to drift; testing it would be testing GitHub's OIDC. Its *listing* can be wrong, so `mcp-publisher validate` moved into the rehearsal, where it costs nothing and fails before a release exists.
+
+**`rust-lang/crates-io-auth-action` is a third-party action, which Q100 refused.** The refusal was about fetching a publishing binary from a moving target, and it stands: this is pinned to a commit rather than a tag. crates.io documents this action as the way to do the exchange, it is published by the same organisation that runs crates.io and ships `cargo`, and the alternative is hand-rolling an exchange against an endpoint that is not documented for third parties. It also revokes its token when the job ends, which the hand-rolled npm exchange cannot.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/release.yml`, `packaging/registry/trusted-publishers.toml`, `crates/tailscale-mcp/tests/trusted_publishing_matches.rs`, `RELEASING.md`

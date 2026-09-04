@@ -11,6 +11,11 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 
+[features]
+# A control plane that answers on a loopback socket. Enabled by dependents'
+# dev-dependencies, so it is compiled for tests and never for a release binary.
+testing = ["tokio/net", "tokio/rt", "tokio/io-util", "tokio/macros"]
+
 [dependencies]
 reqwest.workspace = true
 serde.workspace = true
@@ -21,3 +26,8 @@ tracing.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# The fake control plane needs a socket and a runtime, which the crate itself
+# does not; enabling them here keeps them out of a release build.
+tokio = { workspace = true, features = ["net", "rt", "rt-multi-thread", "io-util", "macros"] }

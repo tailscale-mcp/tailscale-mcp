@@ -8,6 +8,8 @@
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 pub mod credentials;
+#[cfg(any(test, feature = "testing"))]
+pub mod fake;
 pub mod secret;
 
 pub use credentials::{Credentials, DEFAULT_TAILNET};

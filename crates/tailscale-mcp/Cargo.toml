@@ -38,4 +38,7 @@ tailscale-cli = { workspace = true, features = ["testing"] }
 # through the protocol rather than through its own types.
 rmcp = { workspace = true, features = ["client"] }
 tempfile.workspace = true
+# The fake control plane, so the tailnet tools are tested against HTTP rather
+# than against a stand-in for the client that talks it.
+tailscale-rest = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

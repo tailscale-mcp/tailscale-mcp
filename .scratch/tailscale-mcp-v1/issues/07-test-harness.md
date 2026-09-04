@@ -1,6 +1,6 @@
 # 07 — Contract test harness
 
-Status: ready-for-agent
+Status: done
 Milestone: 1 — Skeleton and core
 Blocked by: 06
 

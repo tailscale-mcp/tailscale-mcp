@@ -106,3 +106,33 @@ otherwise think the call failed.
 
 `tailnet_settings_update` refuses an empty document: a `PATCH` with nothing in
 it succeeds and changes nothing, which reads as the change having been made.
+
+### From the review
+
+Five things the two review passes found, all applied.
+
+Three parameters were required here that the description does not require —
+a user invitation's `role`, and `key_type` on both a create and an update. They
+are optional now, and an unstated one is not sent rather than filled in with
+the documented default, because a default copied into this server goes stale
+without failing (Q80).
+
+The three resend tools were declared idempotent. Each one mails a person again;
+the API rate-limits them at one a minute precisely because repeating has an
+effect, so `idempotent` is false on all three. The field says "repeating the
+call has the same effect as making it once", and a second email is not that.
+
+`DeviceInviteRequest` carried a `Serialize` derive with a rename and three
+`skip_serializing_if` that nothing reached, because a hand-written `to_body`
+built the same map beside it. `KeyBody` two files away does exactly this with
+the derive. The hand-written half is gone and the test now asserts the
+serialisation, so dropping the rename fails rather than passing quietly.
+
+Two tests the criteria asked for and neither pass had: a listing asserting
+`all` on the wire in both directions (Q74 had only the code), and a user
+invitation refused with a 403 whose answer is checked for the credential hint —
+the six call sites were unasserted end to end, with only the pure function
+under test.
+
+The two parameter structs behind the invitation tools were byte-identical and
+are now one, and the five copies of the same `map_err` are one `as_person`.

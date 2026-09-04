@@ -5,7 +5,7 @@
 //! `capabilities` and an expiry; an OAuth client and a federated identity take
 //! `scopes` and take neither; an API access token can be listed, read and
 //! revoked but never created here. The three lists of what `keyType` may be —
-//! [`KEY_TYPES`] on the way out, [`CREATE_KEY_TYPES`] on a create,
+//! `KEY_TYPES` on the way out, [`CREATE_KEY_TYPES`] on a create,
 //! [`UPDATE_KEY_TYPES`] on an update — are the description's own, and are what
 //! the refusals quote.
 //!
@@ -82,8 +82,15 @@ fn key_path(client: &tailscale_rest::Client, id: &str) -> ToolResult<String> {
 /// `api`, a create may not ask for one, an update may not turn a key into an
 /// auth key — so the check has to take which call it is for. Quoting the wrong
 /// list would be worse than not checking at all.
-fn checked_key_type(key_type: &str, allowed: &[&str]) -> ToolResult<String> {
-    one_of("key_type", key_type, allowed)
+/// The key type, checked against the list this call accepts.
+///
+/// `None` in and `None` out: the description gives neither endpoint a required
+/// list, so an unstated type is sent as nothing at all rather than as a default
+/// this server invented (Q80).
+fn checked_key_type(key_type: Option<&str>, allowed: &[&str]) -> ToolResult<Option<String>> {
+    key_type
+        .map(|key_type| one_of("key_type", key_type, allowed))
+        .transpose()
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -132,8 +139,10 @@ async fn key_delete(ctx: &ToolContext, params: KeyParams) -> ToolResult<Value> {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct KeyCreateParams {
     /// `auth` for a device registration key, `client` for an OAuth client,
-    /// `federated` for a federated identity.
-    pub key_type: String,
+    /// `federated` for a federated identity. Omit it and the control plane
+    /// creates an `auth` key (Q80).
+    #[serde(default)]
+    pub key_type: Option<String>,
     /// Up to 50 characters of letters, digits, hyphens and spaces.
     #[serde(default)]
     pub description: Option<String>,
@@ -175,8 +184,8 @@ pub struct KeyCreateParams {
 /// a struct that would drop anything the description has not caught up with.
 #[derive(Debug, Serialize)]
 struct KeyBody {
-    #[serde(rename = "keyType")]
-    key_type: String,
+    #[serde(rename = "keyType", skip_serializing_if = "Option::is_none")]
+    key_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -199,7 +208,7 @@ struct KeyBody {
 
 async fn key_create(ctx: &ToolContext, params: KeyCreateParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let key_type = checked_key_type(&params.key_type, CREATE_KEY_TYPES)?;
+    let key_type = checked_key_type(params.key_type.as_deref(), CREATE_KEY_TYPES)?;
     let body = KeyBody {
         key_type,
         description: params.description,
@@ -226,8 +235,10 @@ pub struct KeyUpdateParams {
     /// The key's id, as a listing reports it.
     pub key_id: String,
     /// `client` or `federated`. An auth key or an API access token cannot be
-    /// reconfigured.
-    pub key_type: String,
+    /// reconfigured. Omitted, it is not sent, and the control plane decides
+    /// whether an update without one is meaningful (Q80).
+    #[serde(default)]
+    pub key_type: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     /// The complete replacement list of scopes.
@@ -250,7 +261,7 @@ async fn key_update(ctx: &ToolContext, params: KeyUpdateParams) -> ToolResult<Va
     let client = ctx.tailnet()?;
     let path = key_path(client, &params.key_id)?;
     let body = KeyBody {
-        key_type: checked_key_type(&params.key_type, UPDATE_KEY_TYPES)?,
+        key_type: checked_key_type(params.key_type.as_deref(), UPDATE_KEY_TYPES)?,
         description: params.description,
         // An update carries neither: a key's capabilities and its expiry are
         // fixed when it is minted, and the description's update body has no
@@ -277,12 +288,15 @@ mod tests {
         // The whole reason `checked_key_type` takes the list: `api` is a real
         // key type that cannot be created, and `auth` is a real key type that
         // cannot be updated.
-        assert!(checked_key_type("auth", CREATE_KEY_TYPES).is_ok());
-        assert!(checked_key_type("api", CREATE_KEY_TYPES).is_err());
-        assert!(checked_key_type("auth", UPDATE_KEY_TYPES).is_err());
-        assert!(checked_key_type("client", UPDATE_KEY_TYPES).is_ok());
+        assert!(checked_key_type(Some("auth"), CREATE_KEY_TYPES).is_ok());
+        assert!(checked_key_type(Some("api"), CREATE_KEY_TYPES).is_err());
+        assert!(checked_key_type(Some("auth"), UPDATE_KEY_TYPES).is_err());
+        assert!(checked_key_type(Some("client"), UPDATE_KEY_TYPES).is_ok());
 
-        let error = checked_key_type("auth", UPDATE_KEY_TYPES).expect_err("not updatable");
+        // Unstated is not a value to check; it is a field that is not sent.
+        assert_eq!(checked_key_type(None, UPDATE_KEY_TYPES).expect("no type"), None);
+
+        let error = checked_key_type(Some("auth"), UPDATE_KEY_TYPES).expect_err("not updatable");
         let reported = serde_json::to_value(&error).expect("reportable");
         let message = reported["message"].as_str().expect("a message");
         assert!(
@@ -306,7 +320,7 @@ mod tests {
             }},
         });
         let body = KeyBody {
-            key_type: "auth".to_owned(),
+            key_type: Some("auth".to_owned()),
             description: Some("example".to_owned()),
             capabilities: Some(documented.clone()),
             expiry_seconds: Some(86400),

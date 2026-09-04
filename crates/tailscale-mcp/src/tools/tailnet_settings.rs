@@ -42,7 +42,7 @@ crate::tools! {
     /// Only works while a verification is pending; there is nothing to resend
     /// for an address already in use.
     tailnet_contact_verification_resend => ContactParams, contact_verification_resend,
-        toolset: TailnetSettings, tier: Write, idempotent: true;
+        toolset: TailnetSettings, tier: Write, idempotent: false;
 
     /// Read the tailnet-wide settings: device and user approval, key
     /// durations, automatic updates, network flow logging and the rest.

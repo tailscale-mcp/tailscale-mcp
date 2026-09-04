@@ -35,7 +35,7 @@ pub const DEFAULT_LOG_FILTER: &str = "warn,tailscale_mcp=info";
 /// side effect of turning up the volume.
 const SDK_CAP: &str = "rmcp=info";
 
-/// Whatever was asked for, with [`SDK_CAP`] on the end.
+/// Whatever was asked for, with `rmcp=info` on the end.
 ///
 /// Left alone if the filter already mentions the SDK: that is an operator who
 /// has said what they want from it, and overriding a deliberate choice with a

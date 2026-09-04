@@ -914,3 +914,25 @@ The cap is skipped when the filter already mentions `rmcp`, so `--log=info,rmcp=
 This was found by writing the test the criterion asked for rather than by reading the code and concluding it was fine — which is the whole difference between the two, and why the test installs the filter an operator actually gets rather than a bare `TRACE` nobody runs.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/config.rs`, `crates/tailscale-mcp/tests/minted_secrets.rs`
+
+## Q80 — build/ticket-19 — interpretation
+
+**Question:** Three write parameters were declared required here that the description does not require: a user invitation's `role` (`"Optionally specifies a user role"`, `"default": "member"`), a key create's `key_type` (`"Defaults to \"auth\" if omitted."`) and a key update's `key_type` (no `required` list on the body at all). Does this server require what the control plane does not, and does it supply the documented default itself?
+
+**Options considered:** keep them required, so a caller always states a consequential value / make them optional and send the description's default when absent / make them optional and send nothing when absent
+
+**Chosen:** Optional, and an unstated field is not sent.
+
+**Decided-by:** agent
+
+**Justification:** Neither half of the alternative survives its own reasoning.
+
+Requiring them would be this server refusing calls the API accepts. The usual argument for over-strictness — that a silent default is a decision made by omission — does not hold here, because both defaults are documented and neither is the dangerous direction: `member` is the least-privileged role, and `auth` is the key type the endpoint exists to mint. Q73's guard on the policy write is the shape that does justify over-strictness, and it earned it by having a failure mode that looks like success; there is none here.
+
+Sending the default ourselves would be worse than requiring it. A default written into this server is a copy of a value the control plane owns, and a copy goes stale silently: if `member` ever stops being the default, every omitted `role` would keep meaning `member` because we said so, and nothing would fail. Not sending the field leaves the decision where the description puts it, and the tool descriptions state what omission gets so a caller is not left guessing.
+
+This is the same rule ticket 18 already applied to MagicDNS — "the control plane owns them and states them better than a guess would" — and Q74 is not an exception to it but its converse: `all` is always sent precisely because the description contradicts itself about what an absent one means, so there is no owned default to defer to.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_keys.rs`, `crates/tailscale-mcp/src/tools/tailnet_invites.rs`

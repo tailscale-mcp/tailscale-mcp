@@ -764,3 +764,74 @@ async fn a_posture_integration_secret_is_sent_and_never_answered_with() {
 
     harness.shutdown().await;
 }
+
+#[tokio::test]
+async fn a_key_listing_states_its_scope_on_the_wire_whether_or_not_it_was_asked_to() {
+    // Q74: the parameter is never absent, because the description marks it
+    // required and calls it optional in the same breath, and an absent one
+    // would leave which listing came back up to whichever reading the control
+    // plane took.
+    let path = "/api/v2/tailnet/-/keys";
+    let harness = Setup::new()
+        .toolsets("tailnet-keys")
+        .api_answers("GET", path, Response::json(json!({"keys": []})))
+        .await
+        .api_answers("GET", path, Response::json(json!({"keys": []})))
+        .await
+        .start()
+        .await;
+
+    harness.call_ok("tailnet_key_list", json!({})).await;
+    harness
+        .call_ok("tailnet_key_list", json!({"all": false}))
+        .await;
+
+    let asked = harness.control_plane().recorded();
+    assert_eq!(
+        asked[0].query.get("all").map(String::as_str),
+        Some("true"),
+        "an unasked listing should still say which listing it wants"
+    );
+    assert_eq!(
+        asked[1].query.get("all").map(String::as_str),
+        Some("false"),
+        "and the narrower question stays available"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_invitation_refused_for_the_credential_says_which_credential_it_needs() {
+    // Ticket 19's criterion: the six endpoints that act as a person carry the
+    // requirement in the failure, since this server cannot tell what kind of
+    // credential it holds until the control plane answers (Q76).
+    let path = "/api/v2/tailnet/-/user-invites";
+    let harness = Setup::new()
+        .toolsets("tailnet-invites")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .api_answers(
+            "POST",
+            path,
+            Response::status(403, json!({"message": "calling user not found"})),
+        )
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err(
+            "tailnet_user_invite_create",
+            json!({"invites": [{"role": "member", "email": "someone@example.com"}]}),
+        )
+        .await;
+
+    let hint = error["hint"].as_str().expect("a hint");
+    assert!(
+        hint.contains("owned by a user") && hint.contains("OAuth client"),
+        "the refusal should name the requirement, not just repeat the status: {hint}"
+    );
+    assert_eq!(error["status"], 403, "and still report what came back");
+
+    harness.shutdown().await;
+}

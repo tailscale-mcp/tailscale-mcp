@@ -841,3 +841,76 @@ So the exception is not new in kind — it is the same exception, on the second 
 Separately, and found by the same review: the write is no longer declared idempotent. A guarded replace cannot be repeated — the second call fails, because the `etag` it quoted is now stale and the policy is no longer the untouched default — and `idempotent: true` was a claim the tool could not keep.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/tailnet_policy.rs`
+
+## Q74 — build/ticket-19 — interpretation
+
+**Question:** `GET /tailnet/{tailnet}/keys` takes `all`, which the description marks required while its own text calls it optional. The two readings give different listings: without it a user-owned credential sees only its own user's keys. What does the tool send?
+**Options considered:** send it only when given / always send it, defaulting to true / always send it, defaulting to false
+**Chosen:** Always sent; `all` defaults to true.
+**Decided-by:** agent
+**Justification:** "Required" and "optional" cannot both be honoured, and the parameter is not one a caller should have to know about to get a sensible answer. Sending it always removes the ambiguity from the wire: whatever the control plane does with an absent `all` stops mattering, because it is never absent.
+
+True is the default because a listing that silently omits keys is the worse failure. An operator asking what keys exist and being shown a subset — with nothing in the answer saying it is a subset — would conclude the others do not exist. `false` remains available for the narrower question, which is the one a caller has to ask for deliberately.
+
+The Go client sends `all=true` unconditionally, which is corroboration rather than the reason.
+
+`schema_drift.rs`'s `a_key_listing_requires_a_parameter_it_calls_optional` already holds the description to this disagreement, so a refresh that settles it fails the test excusing it.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_keys.rs`
+
+## Q76 — build/ticket-19 — deviation
+
+**Question:** Six invitation endpoints accept only a credential owned by a person; a token minted from an OAuth client or a federated identity is refused however wide its scopes are. Ticket 19 asks that "under a tailnet-owned credential their failure carries a hint naming the requirement". How, when this server cannot tell which kind of credential it holds?
+**Options considered:** check the credential's kind before calling / add the requirement to every failure from those tools / add it only to a refusal that could be it
+**Chosen:** Added on the way back, to a refusal carrying 400, 401 or 403 and no more specific code.
+**Decided-by:** accepted from spec
+**Justification:** Checking first is impossible in the general case and misleading in the specific one. A bearer token does not say what minted it; the server knows what it was *configured* with, but an operator may have supplied a token obtained elsewhere, and refusing a call on a guess about the credential's provenance would block calls that would have worked.
+
+Which refusals get the hint is the part worth being careful about. A 404 is a missing invitation and a 429 is the documented one-a-minute rate limit; hanging an explanation about credential ownership off either would send a caller to look at the wrong thing. So the hint goes only where the control plane has refused on permission, which is where the explanation could be the answer.
+
+The hint states the requirement rather than asserting the cause: the credential may also simply lack scopes, and the sentence is written so that a caller with the right kind of credential is not misled.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_invites.rs`
+
+## Q77 — build/ticket-19 — deviation
+
+**Question:** `suspendUser` and `restoreUser` end in verbs that Q66's closed nineteen-word vocabulary does not contain, and the test enforcing it fails. Rename the tools, or widen the vocabulary?
+**Options considered:** rename to `tailnet_user_disable`/`_enable` / fold both into one tool with a boolean / add `suspend` and `restore` to the vocabulary
+**Chosen:** Added, making the list twenty-one words.
+**Decided-by:** agent
+**Supersedes:** Q66, as to the membership of the list only
+**Justification:** Q66 said "a name that does not fit is a name to reconsider rather than a word to add", and this is that reconsideration reaching the other answer. Suspend and restore are Tailscale's own words: the operations are `suspendUser` and `restoreUser`, and the admin console's buttons say Suspend and Restore. `disable`/`enable` are in the vocabulary but would be this server renaming something Tailscale has already named, which is what ADR-0004 exists to prevent on the data and is no better on the verbs.
+
+Folding them into one tool with a `suspended` boolean was rejected because the API has two endpoints and no such boolean; inventing one would be a defaulted argument deciding whether somebody keeps their access.
+
+What Q66 was actually protecting — that the vocabulary is closed, enforced over the whole table, and verb-last — is untouched. The check did its job: it made this an explicit decision rather than a name that quietly did not fit. The list was assembled from the endpoint inventory and these two were missed; adding them is a correction of that reading, and the enforcement test is what found it.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/meta.rs`, `crates/tailscale-mcp/src/tools/tailnet_users.rs`
+
+## Q78 — build/ticket-19 — deviation
+
+**Question:** Four invitation endpoints answer with a bare JSON array at the top level, where every other listing on this surface arrives wrapped. A tool result's structured content is an object. What do those four answer with?
+**Options considered:** forward the array (impossible) / wrap in `{"invites": […]}` / wrap in a name of this server's own, like `{"items": …}`
+**Chosen:** `{"invites": […]}`, and only when the body really is an array.
+**Decided-by:** agent
+**Justification:** ADR-0004 asks that Tailscale's bodies come back in Tailscale's shape, and here there is no way to do that: the protocol cannot carry a top-level array in structured content. So the choice is which envelope, not whether.
+
+`invites` is the API's own naming convention rather than an invention — `{"devices": …}`, `{"keys": …}`, `{"users": …}`, `{"oauthApps": …}` are how it wraps every listing it does wrap, and these four look like the ones it forgot. A caller who knows the API will guess this name first.
+
+The wrap is conditional on the body being an array, so a control plane that starts wrapping them itself is followed rather than double-wrapped. That is one line and a test, and it means a refresh of the API does not silently produce `{"invites": {"invites": …}}`.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_invites.rs`
+
+## Q79 — build/ticket-19 — deviation
+
+**Question:** Ticket 19 asks that a minted key's secret appear "in no log line at any level". Nothing in this workspace logs a response body — but `rmcp` traces whole JSON-RPC messages, results included, at `TRACE` and `DEBUG`. Is that this server's problem?
+**Options considered:** narrow the claim to this server's own code / cap the SDK's verbosity in the resolved filter / stop using the SDK's logging
+**Chosen:** The resolved log filter carries `rmcp=info` on the end, unless the operator has named `rmcp` themselves.
+**Decided-by:** agent
+**Justification:** It is this server's problem, because this server builds the subscriber. The default filter never reached the SDK's message tracing, so the exposure needed an operator to raise the volume — and an operator who sets `--log=debug` to follow this server's own work is asking about this server, not asking to have every auth key, OAuth client secret and invite URL written to standard error. The two requests are different and were being served by one switch.
+
+The cap is skipped when the filter already mentions `rmcp`, so `--log=info,rmcp=trace` still gets the wire. That keeps the escape hatch for someone debugging the transport, while making it a thing they asked for by name rather than a side effect.
+
+This was found by writing the test the criterion asked for rather than by reading the code and concluding it was fine — which is the whole difference between the two, and why the test installs the filter an operator actually gets rather than a bare `TRACE` nobody runs.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/config.rs`, `crates/tailscale-mcp/tests/minted_secrets.rs`

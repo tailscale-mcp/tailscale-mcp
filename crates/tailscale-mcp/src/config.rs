@@ -22,6 +22,36 @@ pub const DEFAULT_MAX_RESULT_BYTES: usize = 1 << 20;
 /// What is logged when nothing says otherwise.
 pub const DEFAULT_LOG_FILTER: &str = "warn,tailscale_mcp=info";
 
+/// The most the MCP SDK is allowed to say unless it is asked for by name.
+///
+/// `rmcp` traces whole JSON-RPC messages at `TRACE` and `DEBUG`, results
+/// included — so an operator who set `--log=debug` to follow this server's own
+/// work would also write every minted auth key, every OAuth client secret and
+/// every invite URL to standard error, without asking for any of that (Q79).
+///
+/// So the SDK is capped at `info` on top of whatever was asked for. An
+/// operator who genuinely wants the wire can still have it, by naming the
+/// target — `--log=info,rmcp=trace` — which is a deliberate act rather than a
+/// side effect of turning up the volume.
+const SDK_CAP: &str = "rmcp=info";
+
+/// Whatever was asked for, with [`SDK_CAP`] on the end.
+///
+/// Left alone if the filter already mentions the SDK: that is an operator who
+/// has said what they want from it, and overriding a deliberate choice with a
+/// default would be worse than the exposure this prevents.
+pub fn bounded_log_filter(requested: &str) -> String {
+    if requested.split(',').any(|directive| {
+        directive
+            .split('=')
+            .next()
+            .is_some_and(|target| target.trim() == "rmcp")
+    }) {
+        return requested.to_owned();
+    }
+    format!("{requested},{SDK_CAP}")
+}
+
 pub const PRESET_ENV: &str = "TAILSCALE_MCP_PRESET";
 pub const TOOLSETS_ENV: &str = "TAILSCALE_MCP_TOOLSETS";
 pub const ALLOW_WRITE_ENV: &str = "TAILSCALE_MCP_ALLOW_WRITE";
@@ -247,10 +277,11 @@ impl Config {
             api_base_url: get(API_BASE_URL_ENV)
                 .unwrap_or_else(|| tailscale_rest::DEFAULT_BASE_URL.to_owned()),
             tailnet: tailscale_rest::credentials::tailnet_from_source(&source),
-            log_filter: cli
-                .log
-                .or_else(|| get(LOG_ENV))
-                .unwrap_or_else(|| DEFAULT_LOG_FILTER.to_owned()),
+            log_filter: bounded_log_filter(
+                &cli.log
+                    .or_else(|| get(LOG_ENV))
+                    .unwrap_or_else(|| DEFAULT_LOG_FILTER.to_owned()),
+            ),
         })
     }
 
@@ -315,7 +346,7 @@ mod tests {
         assert!(config.is_disabled(Surface::Tailnet));
         assert!(!config.is_disabled(Surface::Local));
         assert_eq!(config.max_result_bytes, 4096);
-        assert_eq!(config.log_filter, "debug");
+        assert_eq!(config.log_filter, "debug,rmcp=info");
     }
 
     #[test]
@@ -336,7 +367,7 @@ mod tests {
         )
         .expect("resolves");
         assert_eq!(config.preset, Preset::Minimal);
-        assert_eq!(config.log_filter, "trace");
+        assert_eq!(config.log_filter, "trace,rmcp=info");
         assert_eq!(config.max_result_bytes, 1024);
     }
 
@@ -415,7 +446,21 @@ mod tests {
         )
         .expect("resolves");
         assert_eq!(config.preset, Preset::Core);
-        assert_eq!(config.log_filter, DEFAULT_LOG_FILTER);
+        assert_eq!(config.log_filter, bounded_log_filter(DEFAULT_LOG_FILTER));
+    }
+
+    #[test]
+    fn turning_up_the_volume_does_not_turn_on_the_wire() {
+        // The SDK traces whole messages, results included, so `debug` alone
+        // would write every minted secret to standard error (Q79).
+        assert_eq!(bounded_log_filter("debug"), "debug,rmcp=info");
+        assert_eq!(
+            bounded_log_filter(DEFAULT_LOG_FILTER),
+            "warn,tailscale_mcp=info,rmcp=info"
+        );
+        // Unless it is asked for by name, which is a deliberate act.
+        assert_eq!(bounded_log_filter("info,rmcp=trace"), "info,rmcp=trace");
+        assert_eq!(bounded_log_filter("rmcp=debug"), "rmcp=debug");
     }
 
     #[test]

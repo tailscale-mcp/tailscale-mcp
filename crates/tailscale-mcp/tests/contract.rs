@@ -962,6 +962,182 @@ fn contracts() -> Vec<Contract> {
                 on "POST" "/api/v2/tailnet/-/acl/validate" => Response::empty(),
             err: {"tests": [{"src": "someone@example.com", "accept": ["10.0.0.1:80"]}]}
         ),
+        // ---- tailnet: keys -----------------------------------------------
+        api_contract!(
+            "tailnet_key_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/keys" => Response::json(json!({"keys": []})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_key_get",
+            ok: {"key_id": "kexample1"} on "GET" "/api/v2/tailnet/-/keys/kexample1" =>
+                Response::json(json!({"id": "kexample1", "keyType": "auth"})),
+            err: {"key_id": "kexample1"}
+        ),
+        api_contract!(
+            "tailnet_key_create",
+            ok: {"key_type": "auth", "description": "example"}
+                on "POST" "/api/v2/tailnet/-/keys" =>
+                Response::json(json!({"id": "kexample1", "keyType": "auth"})),
+            err: {"key_type": "auth", "description": "example"}
+        ),
+        api_contract!(
+            "tailnet_key_update",
+            ok: {"key_id": "kexample1", "key_type": "client", "scopes": ["devices:core:read"]}
+                on "PUT" "/api/v2/tailnet/-/keys/kexample1" =>
+                Response::json(json!({"id": "kexample1", "keyType": "client"})),
+            err: {"key_id": "kexample1", "key_type": "client", "scopes": ["devices:core:read"]}
+        ),
+        api_contract!(
+            "tailnet_key_delete",
+            ok: {"key_id": "kexample1"} on "DELETE" "/api/v2/tailnet/-/keys/kexample1" =>
+                Response::empty(),
+            err: {"key_id": "kexample1"}
+        ),
+        // ---- tailnet: users ----------------------------------------------
+        api_contract!(
+            "tailnet_user_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/users" => Response::json(json!({"users": []})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_user_get",
+            ok: {"user_id": "uexample1"} on "GET" "/api/v2/users/uexample1" =>
+                Response::json(json!({"id": "uexample1", "role": "member"})),
+            err: {"user_id": "uexample1"}
+        ),
+        api_contract!(
+            "tailnet_user_role_set",
+            ok: {"user_id": "uexample1", "role": "admin"}
+                on "POST" "/api/v2/users/uexample1/role" => Response::empty(),
+            err: {"user_id": "uexample1", "role": "admin"}
+        ),
+        api_contract!(
+            "tailnet_user_approve",
+            ok: {"user_id": "uexample1"} on "POST" "/api/v2/users/uexample1/approve" =>
+                Response::empty(),
+            err: {"user_id": "uexample1"}
+        ),
+        api_contract!(
+            "tailnet_user_suspend",
+            ok: {"user_id": "uexample1"} on "POST" "/api/v2/users/uexample1/suspend" =>
+                Response::empty(),
+            err: {"user_id": "uexample1"}
+        ),
+        api_contract!(
+            "tailnet_user_restore",
+            ok: {"user_id": "uexample1"} on "POST" "/api/v2/users/uexample1/restore" =>
+                Response::empty(),
+            err: {"user_id": "uexample1"}
+        ),
+        api_contract!(
+            "tailnet_user_delete",
+            ok: {"user_id": "uexample1"} on "POST" "/api/v2/users/uexample1/delete" =>
+                Response::empty(),
+            err: {"user_id": "uexample1"}
+        ),
+        // ---- tailnet: invitations ----------------------------------------
+        api_contract!(
+            "tailnet_device_invite_list",
+            ok: {"device_id": "n1111111CNTRL"}
+                on "GET" "/api/v2/device/n1111111CNTRL/device-invites" =>
+                Response::json(json!([])),
+            err: {"device_id": "n1111111CNTRL"}
+        ),
+        api_contract!(
+            "tailnet_device_invite_create",
+            ok: {"device_id": "n1111111CNTRL", "invites": [{"multi_use": true}]}
+                on "POST" "/api/v2/device/n1111111CNTRL/device-invites" =>
+                Response::json(json!([{"id": "di-example"}])),
+            err: {"device_id": "n1111111CNTRL", "invites": [{"multi_use": true}]}
+        ),
+        api_contract!(
+            "tailnet_device_invite_get",
+            ok: {"invite_id": "di-example"} on "GET" "/api/v2/device-invites/di-example" =>
+                Response::json(json!({"id": "di-example"})),
+            err: {"invite_id": "di-example"}
+        ),
+        api_contract!(
+            "tailnet_device_invite_delete",
+            ok: {"invite_id": "di-example"} on "DELETE" "/api/v2/device-invites/di-example" =>
+                Response::empty(),
+            err: {"invite_id": "di-example"}
+        ),
+        api_contract!(
+            "tailnet_device_invite_resend",
+            ok: {"invite_id": "di-example"}
+                on "POST" "/api/v2/device-invites/di-example/resend" => Response::empty(),
+            err: {"invite_id": "di-example"}
+        ),
+        api_contract!(
+            "tailnet_device_invite_accept",
+            ok: {"invite": "example-invite-code"}
+                on "POST" "/api/v2/device-invites/-/accept" =>
+                Response::json(json!({"device": {"id": "1"}})),
+            err: {"invite": "example-invite-code"}
+        ),
+        api_contract!(
+            "tailnet_user_invite_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/user-invites" => Response::json(json!([])),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_user_invite_create",
+            ok: {"invites": [{"role": "member"}]}
+                on "POST" "/api/v2/tailnet/-/user-invites" =>
+                Response::json(json!([{"id": "ui-example"}])),
+            err: {"invites": [{"role": "member"}]}
+        ),
+        api_contract!(
+            "tailnet_user_invite_get",
+            ok: {"invite_id": "ui-example"} on "GET" "/api/v2/user-invites/ui-example" =>
+                Response::json(json!({"id": "ui-example"})),
+            err: {"invite_id": "ui-example"}
+        ),
+        api_contract!(
+            "tailnet_user_invite_delete",
+            ok: {"invite_id": "ui-example"} on "DELETE" "/api/v2/user-invites/ui-example" =>
+                Response::empty(),
+            err: {"invite_id": "ui-example"}
+        ),
+        api_contract!(
+            "tailnet_user_invite_resend",
+            ok: {"invite_id": "ui-example"}
+                on "POST" "/api/v2/user-invites/ui-example/resend" => Response::empty(),
+            err: {"invite_id": "ui-example"}
+        ),
+        // ---- tailnet: contacts and settings ------------------------------
+        api_contract!(
+            "tailnet_contacts_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/contacts" =>
+                Response::json(json!({"account": {"email": "someone@example.com"}})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_contact_update",
+            ok: {"contact_type": "security", "email": "someone@example.com"}
+                on "PATCH" "/api/v2/tailnet/-/contacts/security" => Response::empty(),
+            err: {"contact_type": "security", "email": "someone@example.com"}
+        ),
+        api_contract!(
+            "tailnet_contact_verification_resend",
+            ok: {"contact_type": "security"}
+                on "POST" "/api/v2/tailnet/-/contacts/security/resend-verification-email" =>
+                Response::empty(),
+            err: {"contact_type": "security"}
+        ),
+        api_contract!(
+            "tailnet_settings_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/settings" =>
+                Response::json(json!({"devicesApprovalOn": true})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_settings_update",
+            ok: {"settings": {"devicesApprovalOn": true}}
+                on "PATCH" "/api/v2/tailnet/-/settings" => Response::empty(),
+            err: {"settings": {"devicesApprovalOn": true}}
+        ),
     ]
 }
 

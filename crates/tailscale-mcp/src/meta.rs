@@ -62,8 +62,12 @@ impl fmt::Display for Surface {
 ///   object and discard what is missing.
 /// - `set` — assign one named thing on a resource: `..._tags_set`. Distinct
 ///   from `update` because the resource is not what is being replaced.
-/// - `authorize`, `approve`, `expire`, `rename`, `enable`, `disable` — actions
-///   with no CRUD spelling, each the API's own word for it.
+/// - `authorize`, `approve`, `expire`, `rename`, `enable`, `disable`,
+///   `suspend`, `restore` — actions with no CRUD spelling, each the API's own
+///   word for it. `suspend` and `restore` were added at ticket 19 (Q77): the
+///   endpoints are `suspendUser` and `restoreUser`, and calling them
+///   `disable`/`enable` would have been this server renaming something
+///   Tailscale had already named.
 /// - `accept`, `resend` — what an invitation can have done to it.
 /// - `validate`, `preview` — the policy file's two dry runs.
 /// - `test`, `rotate` — a webhook's delivery check and its secret.
@@ -82,8 +86,10 @@ pub const TAILNET_VERBS: &[&str] = &[
     "rename",
     "replace",
     "resend",
+    "restore",
     "rotate",
     "set",
+    "suspend",
     "test",
     "update",
     "validate",

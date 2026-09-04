@@ -26,7 +26,7 @@ use serde_json::Value;
 use tailscale_rest::models::key::{CREATE_KEY_TYPES, UPDATE_KEY_TYPES};
 
 use crate::context::ToolContext;
-use crate::error::{ToolError, ToolResult};
+use crate::error::ToolResult;
 use crate::tools::common::{Done, one_of, path_segment, report};
 
 crate::tools! {
@@ -122,7 +122,10 @@ async fn key_get(ctx: &ToolContext, params: KeyParams) -> ToolResult<Value> {
 
 async fn key_delete(ctx: &ToolContext, params: KeyParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    client.delete(key_path(client, &params.key_id)?).send().await?;
+    client
+        .delete(key_path(client, &params.key_id)?)
+        .send()
+        .await?;
     report(Done::new("key revoked").about("key_id", params.key_id))
 }
 

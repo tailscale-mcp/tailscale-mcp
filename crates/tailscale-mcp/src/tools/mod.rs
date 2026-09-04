@@ -15,8 +15,12 @@ pub mod local_status;
 pub mod passthrough;
 pub mod tailnet_devices;
 pub mod tailnet_dns;
+pub mod tailnet_invites;
+pub mod tailnet_keys;
 pub mod tailnet_policy;
 pub mod tailnet_posture;
+pub mod tailnet_settings;
+pub mod tailnet_users;
 
 /// Every tool this server can offer, before any gating.
 pub fn entries() -> Vec<crate::registry::ToolEntry> {
@@ -31,6 +35,10 @@ pub fn entries() -> Vec<crate::registry::ToolEntry> {
     all.extend(tailnet_devices::entries());
     all.extend(tailnet_dns::entries());
     all.extend(tailnet_policy::entries());
+    all.extend(tailnet_keys::entries());
+    all.extend(tailnet_invites::entries());
+    all.extend(tailnet_users::entries());
+    all.extend(tailnet_settings::entries());
     all.extend(tailnet_posture::entries());
     all
 }

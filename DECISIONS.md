@@ -1747,3 +1747,31 @@ It is the one publishing job that does not gate crates.io. The registry is in pr
 **Outcome:** applied
 
 **Ref:** `server.json`, `packaging/npm/package.json`, `Dockerfile`, `.github/workflows/release.yml`
+
+## Q119 — build/ticket-30 — interpretation
+
+**Question:** Ticket 30 asks for a generated tool table and a test that fails when it is stale. It does not say what generates it. A generator can be a `build.rs`, a subcommand of the shipped binary, a standalone `xtask`-style bin, or the staleness test itself writing the file when asked.
+
+**Options considered:** `build.rs` / a `docs` subcommand on the server / a separate generator binary / the test, under an environment variable
+
+**Chosen:** the test, run as `UPDATE_DOCS=1 cargo test -p tailscale-mcp --test docs_are_current`.
+
+**Decided-by:** agent
+
+**Justification:** The staleness test has to render the table anyway in order to compare it, so every other option adds a second renderer to keep in step with the first — and a table generated one way and checked another is a divergence waiting to happen. A `build.rs` would write into the source tree from a build, which is the thing build scripts are told not to do. A subcommand would put a documentation feature in the shipped surface, where it would need a tier, a toolset row and a place in the help; the binary is the server, not the repo's tooling. A separate generator would be a fourth crate target for one file.
+
+The environment variable is what makes one function both the generator and the check: with it set the rendering is written, without it the rendering is compared. The file carries a header naming the command, so the failure and the fix are in the same place.
+
+**The counts in the README are written as links so that they can be checked.** `[15 tools](docs/tools.md#tailnet-devices)` is both the sentence a reader wants and a fact a test can recompute from the registry — the link text is the count and the anchor names the toolset. Plain prose ("15 tools") would have needed the test to guess which number in the sentence was the claim. The nine preset/tier counts are checked the same way, from a table whose shape the test parses.
+
+**The settings tables are hand-written, not generated.** Every environment variable and every top-level flag is required to appear with a non-empty default, and the test derives both lists from `config::ENV_VARS` and from clap — so nothing can be added without documenting it. A flag under a subcommand has to be named on the page but has no default to quote: it belongs to one question the binary answers rather than to how it serves. But the text itself is prose: clap's help is one line written for `--help`, and the table's column is written for somebody deciding whether to set the thing. Generating one from the other would make both worse.
+
+**The security section is in the README, not in `docs/`.** It is the claim the reader is deciding whether to believe before they install anything, and moving it a click away makes it easy to ship a server whose security story nobody read. The three `docs/` pages are reference — every tool, every setting, every error code — which is what belongs behind a link.
+
+**The comparison table's own column carries a count wherever the row is a whole toolset.** "yes" against three implementations' partial support says nothing about how much more is here, and it is unfalsifiable. A count is checkable, is checked, and is the honest answer to "superset by how much". Four rows are a slice of a toolset counted on another row — reading devices, device routes and tags, posture attributes, and the ping and netcheck group — and those say "yes, within `<toolset>`" rather than repeating a number that would double-count.
+
+**One row reads lower than YawLabs' and no tool was added to make it stop.** Two of their tools are aggregates over endpoints offered here one at a time: one reads both log types' stream configurations in a call, and one authorizes a list of devices in a call. Neither is a capability this server lacks — both are the per-item tool called twice, or in a loop — so adding aggregates would be adding tools to make a table look right, which is the opposite of what the table is for. The row is left as it is and the reason is written under the table, where somebody comparing the two will be reading.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/tests/docs_are_current.rs`, `docs/tools.md`, `docs/configuration.md`, `docs/errors.md`, `README.md`

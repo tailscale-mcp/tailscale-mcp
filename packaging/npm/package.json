@@ -1,0 +1,29 @@
+{
+  "name": "@tailscale-mcp/tailscale-mcp",
+  "version": "1.0.0",
+  "mcpName": "io.github.tailscale-mcp/tailscale-mcp",
+  "description": "MCP server for Tailscale: the local node through the CLI, the tailnet through the control-plane API",
+  "keywords": ["tailscale", "mcp", "model-context-protocol", "agent", "tailnet"],
+  "homepage": "https://github.com/tailscale-mcp/tailscale-mcp",
+  "bugs": "https://github.com/tailscale-mcp/tailscale-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tailscale-mcp/tailscale-mcp.git",
+    "directory": "packaging/npm"
+  },
+  "license": "Apache-2.0",
+  "author": "The tailscale-mcp authors",
+  "type": "module",
+  "bin": {
+    "tailscale-mcp": "bin/tailscale-mcp.js"
+  },
+  "files": ["bin", "lib", "LICENSE", "README.md"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "os": ["darwin", "linux", "win32"],
+  "cpu": ["arm64", "x64"]
+}

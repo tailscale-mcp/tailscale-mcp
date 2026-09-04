@@ -1,5 +1,5 @@
-//! The three crates release together, at one version, and the changelog says
-//! which one.
+//! The three crates release together, at one version, and everything built
+//! around them says the same one.
 //!
 //! `cargo publish --workspace` uploads all three in dependency order, and the
 //! published crates depend on each other by version as well as by path — so a
@@ -7,8 +7,14 @@
 //! problem, it is a release where `tailscale-mcp` asks for a `tailscale-rest`
 //! that was never uploaded. The manifest is arranged so that cannot happen
 //! (every crate inherits `version.workspace`), and this checks the
-//! arrangement rather than trusting it, along with the one thing a bump has to
-//! touch outside the manifest: the changelog's newest heading.
+//! arrangement rather than trusting it.
+//!
+//! Outside the manifest the version is written down again by each thing built
+//! around the crates, and a release is one version everywhere or it is a
+//! release where the npm package fetches an archive that was never published.
+//! This covers the changelog's newest heading and the npm package; the other
+//! two carry more than a version and are checked where they are read, in
+//! `registry_listing_is_valid.rs` and `plugin_manifest_is_valid.rs`.
 //!
 //! It is the check `scripts/prepare-release.sh` is written against: run that,
 //! and this passes.
@@ -97,6 +103,25 @@ fn the_changelog_leads_with_the_version_being_released() {
         newest, VERSION,
         "the changelog's newest release is {newest} and the crates are at {VERSION}; \
          run `scripts/prepare-release.sh`"
+    );
+}
+
+#[test]
+fn the_npm_package_is_at_the_version_being_released() {
+    // The launcher fetches
+    // `tailscale-mcp-<its own version>-<target>.tar.gz` from the release, so
+    // a package left behind at the previous version installs the previous
+    // binary — or, on a first release, nothing at all.
+    let path = repo::root()
+        .join("packaging")
+        .join("npm")
+        .join("package.json");
+    let package: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("the npm package"))
+            .expect("the npm package is JSON");
+    assert_eq!(
+        package["version"], VERSION,
+        "the npm package would fetch the archives of another release"
     );
 }
 

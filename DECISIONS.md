@@ -1579,3 +1579,171 @@ It is a script rather than steps in the workflow so that it can be run and teste
 **Outcome:** applied
 
 **Ref:** `scripts/check-commit-messages.sh`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+
+## Q111 — build/ticket-29 — spec-gap
+
+**Question:** Ticket 29 asks for a plugin manifest that "loads in its client". The MCP bundle format has two published schemas — `mcpb-manifest-v0.3.schema.json` and `mcpb-manifest-v0.4.schema.json` — and the version a manifest declares is a `const` in the schema, so the choice is not cosmetic: a host validating against one refuses a manifest written for the other. Nothing in the spec says which.
+
+**Options considered:** write for v0.4, the newest published / write for v0.3 / declare neither and hope hosts are lenient
+
+**Chosen:** v0.3, the version `mcpb-manifest-latest.schema.json` is byte-for-byte identical to.
+
+**Decided-by:** agent
+
+**Justification:** "Latest" is the schema hosts fetch when they do not pin one, and it is v0.3 today; v0.4 is published but not yet what the format calls current. The only thing v0.4 adds that this could use is a `uv` server type, which is for Python servers, so writing for v0.4 would buy nothing and cost the hosts that have not moved.
+
+The schema is vendored at `packaging/mcpb/mcpb-manifest.schema.json`, the way the registry schema and the control-plane description are, so the suite stays offline. It carries no `$id` to compare a `$schema` against, so the staleness pin is the other agreement available: the manifest's `manifest_version` has to equal the schema's `properties.manifest_version.const`. A vendored schema moved forward without the manifest moving with it fails in the suite rather than at somebody's install.
+
+Two things the format cannot express, recorded here because reading the manifest will raise both. `user_config` has no enum, so the preset is a free string whose three values are named in its description and checked by the server at startup — a typo is a server that refuses to start with a sentence saying so, which is the best the format allows. And a `user_config` value the operator leaves blank is substituted as an empty string; every variable this server reads treats empty as absent, which was checked rather than assumed, so a blank install is a read-only server with the local tools and no error.
+
+**Outcome:** applied
+
+**Ref:** `packaging/mcpb/manifest.json`, `crates/tailscale-mcp/tests/plugin_manifest_is_valid.rs`
+
+## Q112 — build/ticket-29 — interpretation
+
+**Question:** A `.mcpb` is a zip holding the manifest and a binary, so there is one per platform, and the manifest inside each says which platforms it supports. What should the checked-in manifest say, and how does a bundle get built?
+
+**Options considered:** one manifest per platform, checked in / one manifest listing every platform, shipped as-is in every bundle / one manifest listing every platform, narrowed to one as each bundle is assembled
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** The checked-in manifest describes the server, which runs on all three; a bundle describes what is in it, which is one binary for one platform. Shipping the broad manifest in every bundle would let the macOS bundle install on Windows and fail at exec, and checking in three manifests would be three copies of forty lines that have to be kept identical. So `scripts/build-mcpb.sh` writes `compatibility.platforms` as it assembles, and the test validates the checked-in manifest and every narrowing the script can produce from it.
+
+One bundle per released binary rather than only for the platforms Claude Desktop runs on: the mapping from a Rust target to a bundle platform is three lines, the bundle format names Linux among its platforms, and "every archive has a bundle beside it" is a rule that needs no exceptions explained.
+
+The entry point is `server/tailscale-mcp` in every bundle, without `.exe`, because the format says hosts append it on Windows; the file inside the Windows zip is `tailscale-mcp.exe`. The zip is written by Python's `zipfile` rather than `zip(1)` so the mode comes across, which is what leaves the server executable once a host unpacks it — checked by building all five bundles here and reading the modes back.
+
+**Outcome:** applied
+
+**Ref:** `scripts/build-mcpb.sh`, `packaging/mcpb/manifest.json`
+
+## Q113 — build/ticket-29 — interpretation
+
+**Question:** Ticket 29 asks that "the tap formula installs a working binary". A Homebrew formula names the archives it installs and their checksums, and neither exists until the release that produced them. Where does the formula live and when is it written?
+
+**Options considered:** check in a formula and update it by hand after each release / check in a formula and have the release commit the new checksums into it / check in a template and render it at release time
+
+**Chosen:** the third, with the rendered formula attached to the release rather than pushed to the tap.
+
+**Decided-by:** agent
+
+**Justification:** A checked-in formula is always the formula for the previous release: between a bump and a release it names archives that do not exist. A template cannot be wrong that way — it has markers where the checksums go, and `scripts/update-formula.sh` fills them from the release's own `SHA256SUMS`, refusing if any marker is left, which is the failure that would otherwise surface at somebody's `brew install`.
+
+It writes a file rather than pushing because the tap is a different repository (`tailscale-mcp/homebrew-tap`), and a cross-repository push needs a token with write access to it that nobody has issued. Attaching the formula to the release makes updating the tap one commit there, by a person, with the file in front of them.
+
+This was checked rather than reasoned about: the rendered formula was put in a local tap and installed with `brew install`, which downloaded the archive, verified the checksum, installed the binary and ran `brew test` against it; `brew audit` then found the one thing reading it had not, that an explicit `version` is redundant with the version Homebrew scans from the archive name, so the template does not carry one.
+
+**Outcome:** applied
+
+**Ref:** `packaging/homebrew/tailscale-mcp.rb.in`, `scripts/update-formula.sh`
+
+## Q114 — build/ticket-29 — spec-gap
+
+**Question:** The container image the ticket asks for has to run somewhere. GitHub's runners are x86_64 and Arm, and a Tailscale node is as likely to be a small Arm machine as a server. Which architectures does the published image cover?
+
+**Options considered:** x86_64 only / both, built under QEMU emulation on one runner / both, built natively on a runner of each architecture and joined into one tag
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** x86_64 only would leave every Arm user pulling an emulated image, which is the population this server is most likely to run for — a NAS, a Raspberry Pi, an Arm VM. QEMU would cover them from one runner, but installing the emulator without a third-party action means running a third-party image with `--privileged`, which is exactly the supply-chain surface Q100 refused actions to avoid, and an emulated Rust build is an hour where a native one is minutes.
+
+So each architecture builds on a runner of its own and pushes a tag of its own, and `docker buildx imagetools create` joins the two under `:<version>` and `:latest`. `latest` is skipped for a pre-release, since a version with a hyphen in it is not the newest release anybody means.
+
+The container registry is the one publishing step that needs no secret: `GITHUB_TOKEN` can write this repository's own packages. The first push creates the package private, so somebody has to make it public once; that is a one-time act in the repository's settings and not something a workflow should do.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/release.yml`
+
+## Q115 — build/ticket-29 — gate-resolution
+
+**Question:** Four distributions now ship — a launcher, an image, a bundle and a formula — and none of them is exercised by `cargo test`. What checks them, and where?
+
+**Options considered:** trust the release to find out / check them in the release workflow only / check them on every pull request
+
+**Chosen:** the third, as far as each can be checked without a release to download from.
+
+**Decided-by:** agent
+
+**Justification:** A distribution that is first exercised by the release is one whose first failure is a bad release, and three of these four have failure modes no reading catches: a manifest a host refuses, an image that builds but has no working entrypoint, a launcher that unpacks into the wrong path. So `ci.yml` gained two jobs. `launcher` runs the package's own tests on Node 20 and 24 — the floor it declares and the current release — which build a real archive, serve it through an injected fetch and check that a tampered one is refused before anything is unpacked, and then run `bin/` itself against a warmed cache so that the part `npx` actually invokes is covered too. `image` builds the `Dockerfile` and runs `scripts/check-container-image.sh`, which starts the image the way a client does, sends it an `initialize` frame, and checks that the environment reaches it.
+
+The manifest and the listing are checked inside the Rust suite, against vendored copies of the schemas that will judge them, so they cost nothing extra to run.
+
+The fake credential that check needs lives in the script and not in the workflow. `ci_needs_no_credential.rs` refuses any `TAILSCALE_`-named variable in a workflow a fork can reach, and it should keep refusing: a variable named for a credential in a fork-reachable workflow is worth a failing test even when this particular one is a fake. Putting it a file away keeps the guard mechanical rather than special-cased.
+
+`actions/setup-node@v4` is a fifth action, after the four Q100 allowed. It is GitHub's own, which is the line that decision drew — "no third-party actions" — and it pins the Node version, which the runner's default does not.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/ci.yml`, `scripts/check-container-image.sh`, `packaging/npm/test/launcher.test.js`
+
+## Q116 — build/ticket-29 — interpretation
+
+**Question:** The release now publishes to four places. In what order, and what happens if one of them fails?
+
+**Options considered:** all at once / in the order they were written / by how far each can be taken back
+
+**Chosen:** the third: GitHub release, then npm and the container registry, then crates.io.
+
+**Decided-by:** agent
+
+**Justification:** Q108 put crates.io last because a crates.io upload cannot be taken back. The same reasoning orders the rest: a GitHub release can be deleted, a container tag removed, an npm version unpublished within its first days, and a crate version never. So each step is at least as undoable as the one before it, and a failure part-way leaves the recoverable things done and the unrecoverable one not attempted.
+
+npm goes after the release rather than beside it for a second reason: the package downloads the release's archives, so publishing it first would leave a package that fetches a 404 for as long as the release job took.
+
+`npm publish --provenance` signs the package with the workflow that built it, which for a package whose whole purpose is to download a binary and vouch for it is worth the `id-token: write` permission it costs.
+
+**A fourth credential the maintainer has to supply.** `NPM_TOKEN`, with write access to the `@tailscale-mcp` scope. Like `CARGO_REGISTRY_TOKEN` it is checked for during the rehearsal on a tag, so a release fails before anything has been created rather than half-way through.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/release.yml`
+
+## Q117 — build/ticket-29 — gate-resolution
+
+**Question:** Before this ticket the version lived in the workspace manifest and the changelog. It now lives in four more files — the npm package, the bundle manifest, and the registry listing three times. What keeps them equal?
+
+**Options considered:** derive them at build time from one source / check them in and check they agree / check them in and remember
+
+**Chosen:** the second.
+
+**Decided-by:** agent
+
+**Justification:** Deriving them would mean generating `package.json`, `manifest.json` and `server.json` at release time, and all three are files people read and hosts fetch from the repository; a generated file that is not in the tree is one nobody can review. So they are checked in, `scripts/prepare-release.sh` writes all six sites and rolls every one of them back if any step fails, and three tests refuse a tree where they disagree — the npm package in `release_is_one_version.rs`, the listing and the bundle in the tests that validate them, each beside the document it is about rather than gathered into one place that would then know about all four formats.
+
+The substitution the script makes is by value rather than by position: it replaces `"version": "<the old one>"`, so it moves the version and nothing else. Something else in those files pinned at exactly the old version would move too, which is one of the things reading the diff before committing is for.
+
+This was checked by running the script against a copy of the tree at a bumped version and then running the three tests there, rather than by reading the substitutions.
+
+**Outcome:** applied
+
+**Ref:** `scripts/prepare-release.sh`, `crates/tailscale-mcp/tests/release_is_one_version.rs`
+
+## Q118 — build/ticket-29 — gate-resolution
+
+**Question:** Ticket 29 calls the registry listing one of the five channels, and the acceptance criterion asks only that it validate. A file that validates is not a channel: nothing publishes it, and — as written before this — nothing could, because the registry proves that the packages a listing offers belong to whoever is publishing it, and neither of ours carried the proof.
+
+**Options considered:** leave the listing as a file and let the maintainer publish it by hand / add the ownership proofs and leave publishing by hand / add the proofs and publish from the release
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** The proofs are not optional and they are not obvious: the registry fetches the npm package and looks for `mcpName`, and pulls the image and looks for an `io.modelcontextprotocol.server.name` label, and both must equal the listing's name. Without them the first publish is refused, and the schema cannot say so — which is exactly the class of failure a vendored-schema test creates a false sense of safety about. So all three now carry the same string and a test holds them to it. The OCI identifier gained the version as a tag for the same reason: that is the format the registry documents, and an untagged identifier offers whatever `:latest` happens to be when somebody reads the listing.
+
+Publishing from the release rather than by hand because the alternative is a listing that goes stale silently — a release whose listing still names the previous version is one nobody notices until a client installs the wrong thing.
+
+The publisher is a binary this repository did not write, which is the surface Q100 refused actions for. The registry's own instructions fetch it from `releases/latest/download`; this pins the version and the sha256 in the workflow and checks the download against them, because a binary that publishes on our behalf is the last one to take from a moving target. Authentication is a GitHub Actions identity token rather than a secret: the namespace that grants is `io.github.<owner>`, which is the name this listing already had.
+
+It is the one publishing job that does not gate crates.io. The registry is in preview and says so; an outage there should not stop a release from reaching the registries that are not.
+
+**What is left out.** The registry can also list an MCP bundle, but a bundle package must carry the `fileSha256` of an artefact that does not exist until the release has built it, so a checked-in listing cannot name one. Adding the bundles would mean generating `server.json` at release time, which Q117 declined for the version and declines here for the same reason: a file hosts fetch from this repository should be one people can read in it.
+
+**Outcome:** applied
+
+**Ref:** `server.json`, `packaging/npm/package.json`, `Dockerfile`, `.github/workflows/release.yml`

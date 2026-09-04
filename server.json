@@ -1,0 +1,140 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.tailscale-mcp/tailscale-mcp",
+  "title": "Tailscale",
+  "description": "Drive a Tailscale node and its tailnet through the CLI and the control-plane API",
+  "version": "1.0.0",
+  "websiteUrl": "https://github.com/tailscale-mcp/tailscale-mcp",
+  "repository": {
+    "url": "https://github.com/tailscale-mcp/tailscale-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@tailscale-mcp/tailscale-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TAILSCALE_API_KEY",
+          "description": "A control-plane API access token. One of this, the OAuth client pair, or the OAuth JWT file is needed for the tailnet tools; without any of them only the local tools are offered.",
+          "isSecret": true,
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_OAUTH_CLIENT_ID",
+          "description": "An OAuth client id, used with TAILSCALE_OAUTH_CLIENT_SECRET when there is no API access token.",
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_OAUTH_CLIENT_SECRET",
+          "description": "The OAuth client secret that goes with TAILSCALE_OAUTH_CLIENT_ID.",
+          "isSecret": true,
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_TAILNET",
+          "description": "The tailnet the control-plane tools act on. Without it they act on the one the credential belongs to.",
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_MCP_PRESET",
+          "description": "Which tools are offered: minimal, core or full.",
+          "default": "core",
+          "choices": [
+            "minimal",
+            "core",
+            "full"
+          ],
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_MCP_ALLOW_WRITE",
+          "description": "Offer the tools that change something. Read-only without it.",
+          "default": "false",
+          "choices": [
+            "true",
+            "false"
+          ],
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_MCP_ALLOW_DESTRUCTIVE",
+          "description": "Offer the tools that remove or sever something. Implies the write tier.",
+          "default": "false",
+          "choices": [
+            "true",
+            "false"
+          ],
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/tailscale-mcp/tailscale-mcp:1.0.0",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TAILSCALE_API_KEY",
+          "description": "A control-plane API access token. One of this, the OAuth client pair, or the OAuth JWT file is needed for the tailnet tools; without any of them only the local tools are offered.",
+          "isSecret": true,
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_OAUTH_CLIENT_ID",
+          "description": "An OAuth client id, used with TAILSCALE_OAUTH_CLIENT_SECRET when there is no API access token.",
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_OAUTH_CLIENT_SECRET",
+          "description": "The OAuth client secret that goes with TAILSCALE_OAUTH_CLIENT_ID.",
+          "isSecret": true,
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_TAILNET",
+          "description": "The tailnet the control-plane tools act on. Without it they act on the one the credential belongs to.",
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_MCP_PRESET",
+          "description": "Which tools are offered: minimal, core or full.",
+          "default": "core",
+          "choices": [
+            "minimal",
+            "core",
+            "full"
+          ],
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_MCP_ALLOW_WRITE",
+          "description": "Offer the tools that change something. Read-only without it.",
+          "default": "false",
+          "choices": [
+            "true",
+            "false"
+          ],
+          "isRequired": false
+        },
+        {
+          "name": "TAILSCALE_MCP_ALLOW_DESTRUCTIVE",
+          "description": "Offer the tools that remove or sever something. Implies the write tier.",
+          "default": "false",
+          "choices": [
+            "true",
+            "false"
+          ],
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

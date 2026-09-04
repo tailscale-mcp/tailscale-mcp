@@ -120,20 +120,31 @@ jobs:
       # what this catches is a tag pointing somewhere unexpected.
       - name: Test
         run: cargo test --workspace --all-targets --locked
-      # A tag that reached `publish` without a registry token would leave a
-      # GitHub release with no crates behind it. Fail here instead, while
-      # nothing has been created yet.
-      - name: Check the registry token is there
+      # A tag that reached the publishing jobs without their tokens would
+      # leave a GitHub release with nothing behind it. Fail here instead,
+      # while nothing has been created yet. The registry that needs no token
+      # is the container one: `GITHUB_TOKEN` can write this repository's own
+      # packages.
+      - name: Check the publishing tokens are there
         if: github.event_name == 'push'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          missing=false
           if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
             echo "CARGO_REGISTRY_TOKEN is not set on this repository." >&2
             echo "Add a crates.io token that may publish tailscale-cli," >&2
             echo "tailscale-rest and tailscale-mcp as a repository secret." >&2
-            exit 1
+            missing=true
           fi
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "NPM_TOKEN is not set on this repository." >&2
+            echo "Add an npm token that may publish to the @tailscale-mcp" >&2
+            echo "scope as a repository secret." >&2
+            missing=true
+          fi
+          if $missing; then exit 1; fi
       # Always, on a tag as well as by hand: it packages all three crates,
       # builds each from its package rather than from the working tree, and
       # names what it would upload — so the real thing is never the first time
@@ -156,12 +167,35 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Settle the version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      # A bundle for each archive: the same binary, zipped with the manifest an
+      # MCP client such as Claude Desktop installs by double-click. Building
+      # them here rather than in the matrix keeps the assembly in one place and
+      # off five runners, since it repacks what those runners already produced.
+      - name: Assemble the plugin bundles
+        run: |
+          for archive in artifacts/*.tar.gz; do
+            name=$(basename "$archive" .tar.gz)
+            target="${name#tailscale-mcp-$VERSION-}"
+            scripts/build-mcpb.sh "$target" "$archive" "artifacts/$name.mcpb"
+          done
       # One `SHA256SUMS`, in the format `sha256sum -c` reads, so that anything
       # downloading a binary — the npm launcher included — has one file to
       # fetch and one line to check.
       - name: Checksum
         working-directory: artifacts
-        run: sha256sum *.tar.gz > SHA256SUMS
+        run: sha256sum *.tar.gz *.mcpb > SHA256SUMS
+      # The tap lives in another repository, so this renders the formula and
+      # attaches it rather than pushing it: updating the tap is committing this
+      # file there. It can only be written once the checksums exist, which is
+      # why no formula is checked in.
+      - name: Render the tap formula
+        run: |
+          scripts/update-formula.sh "$VERSION" artifacts/SHA256SUMS artifacts/tailscale-mcp.rb
+          # Afterwards, and appended rather than recomputed: the formula is
+          # written from the sums, so it cannot be in the file it reads.
+          (cd artifacts && sha256sum tailscale-mcp.rb >> SHA256SUMS)
       # The notes are the changelog's newest section, taken out of the file
       # rather than generated again: a second generator run on a different day
       # would date the release differently from the file the repository ships,
@@ -172,7 +206,7 @@ jobs:
       - name: Write the release notes
         run: |
           newest=$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')
-          if [ "$newest" != "${GITHUB_REF_NAME#v}" ]; then
+          if [ "$newest" != "$VERSION" ]; then
             echo "the changelog's newest release is $newest, not $GITHUB_REF_NAME" >&2
             exit 1
           fi
@@ -187,12 +221,163 @@ jobs:
             --verify-tag \
             artifacts/*
 
+  npm:
+    name: Publish to npm
+    # After the release, because the package downloads the release's archives:
+    # published first, it would be a package that fetches a 404 for as long as
+    # the release job took.
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # For the provenance attestation, which is what lets somebody check that
+      # this package was built from this repository by this workflow rather
+      # than uploaded from a laptop.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: https://registry.npmjs.org
+      # The package is a launcher and has no build step; its tests ran in
+      # `ci.yml` and are run again here for the same reason `rehearse` runs
+      # the Rust suite — a tag is neither a push to main nor a pull request.
+      - name: Test the launcher
+        run: node --test
+        working-directory: packaging/npm
+      # `--access public`, because a scoped package is private by default and
+      # a private package is not one anybody can `npx`. The dist-tag is what
+      # `npm install` with no version picks, so a pre-release goes somewhere
+      # else — the same rule the container image's `:latest` follows.
+      - name: Publish
+        working-directory: packaging/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          case "${GITHUB_REF_NAME#v}" in
+            *-*) tag=next ;;
+            *) tag=latest ;;
+          esac
+          npm publish --access public --provenance --tag "$tag"
+
+  image:
+    name: Container image (${{ matrix.platform }})
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # `GITHUB_TOKEN` can write this repository's own packages, so the
+      # container registry is the one publishing step that needs no secret of
+      # its own.
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: amd64
+          - os: ubuntu-24.04-arm
+            platform: arm64
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      # Each architecture is built on a runner of that architecture rather than
+      # emulated, so the build is the one the users of that architecture get
+      # and takes minutes rather than an hour.
+      - name: Settle the version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Build
+        run: docker build -t "$IMAGE:$VERSION-${{ matrix.platform }}" .
+      # The same check `ci.yml` runs, against the image about to be pushed:
+      # what is published has been started and asked a question, on both
+      # architectures.
+      - name: Check
+        run: scripts/check-container-image.sh "$IMAGE:$VERSION-${{ matrix.platform }}"
+      - name: Sign in to the registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Push
+        run: docker push "$IMAGE:$VERSION-${{ matrix.platform }}"
+
+  image-manifest:
+    name: Container image
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - name: Sign in to the registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      # The two per-architecture tags are what was pushed; this is what people
+      # pull. `docker pull ghcr.io/…/tailscale-mcp` then picks the right one
+      # for the machine doing the pulling.
+      - name: Join the two architectures under one tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # `latest` means the newest release, and a pre-release is not that.
+          case "$version" in
+            *-*) tags="$version" ;;
+            *) tags="$version latest" ;;
+          esac
+          for tag in $tags; do
+            docker buildx imagetools create -t "$IMAGE:$tag" \
+              "$IMAGE:$version-amd64" "$IMAGE:$version-arm64"
+          done
+
+  registry:
+    name: Publish to the MCP registry
+    # After both packages it offers: the registry pulls each one and looks for
+    # this server's name inside, so a listing published first would be a
+    # listing the registry cannot verify. It does not gate crates.io — the
+    # registry is in preview, and an outage there should not stop a release.
+    needs: [npm, image-manifest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # The registry accepts a GitHub Actions identity token in place of a
+      # secret, and the namespace it grants is `io.github.<owner>` — which is
+      # exactly the name this listing carries.
+      id-token: write
+    env:
+      # Pinned by version and by digest, rather than the `latest/download`
+      # URL the registry's own instructions use. Q100 kept third-party code
+      # out of these workflows; a binary that publishes on our behalf is the
+      # last one to fetch from a moving target.
+      PUBLISHER_VERSION: "1.8.1"
+      PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the publisher
+        run: |
+          curl -fsSL -o publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v$PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz"
+          echo "$PUBLISHER_SHA256  publisher.tar.gz" | sha256sum -c -
+          tar xzf publisher.tar.gz mcp-publisher
+      # The suite checks `server.json` against a vendored schema; this asks the
+      # registry itself, which is the only thing that can answer for the rules
+      # the schema does not carry.
+      - name: Check the listing
+        run: ./mcp-publisher validate
+      - name: Sign in
+        run: ./mcp-publisher login github-oidc
+      - name: Publish
+        run: ./mcp-publisher publish
+
   publish:
     name: Publish to crates.io
-    # Last, and only after the release exists: a crates.io upload cannot be
-    # taken back, and a GitHub release can. Everything that can be undone
-    # happens first.
-    needs: release
+    # Last, and only after everything else has gone out: a crates.io upload
+    # cannot be taken back, where a GitHub release can be deleted, an npm
+    # package unpublished within its first days, and a container tag removed.
+    # Everything that can be undone happens first.
+    needs: [release, npm, image-manifest]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

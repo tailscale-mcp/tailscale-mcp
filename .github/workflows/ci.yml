@@ -194,3 +194,50 @@ jobs:
       # `--all-features` so a feature-gated dependency is judged too.
       - name: Check the dependency policy
         run: cargo deny --all-features check
+
+  launcher:
+    name: npm launcher (node ${{ matrix.node }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both first-class platforms, because the launcher unpacks with `tar`,
+        # renames across directories and marks a file executable, and those are
+        # exactly the things that differ between them.
+        os: [ubuntu-latest, macos-latest]
+        # The floor the package declares, and the current release. What breaks
+        # between them is the standard library the launcher leans on — `fetch`,
+        # the test runner, `node:crypto` — so both ends are worth knowing about.
+        node: ["20", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # The launcher downloads a release archive and refuses to run it unless
+      # the published checksum vouches for it. The tests build a real archive
+      # and serve it through an injected fetch, so this needs no network and
+      # no release: what is being checked is the refusal, and a refusal that
+      # only fires against the real internet is one nobody can rely on.
+      - name: Test the launcher
+        run: node --test
+        working-directory: packaging/npm
+
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # No cache: the build happens inside the image, where a cached host
+      # registry would not reach it, and a `Dockerfile` that only works with a
+      # warm cache is a `Dockerfile` that does not work.
+      - name: Build the image
+        run: docker build -t tailscale-mcp:check .
+      # A `Dockerfile` that builds is not one that runs. The check starts the
+      # image the way a client does and asks it something; the fake credential
+      # it needs lives in the script rather than here, so that no variable
+      # named for a credential appears in a workflow a fork can reach.
+      - name: Check the image
+        run: scripts/check-container-image.sh tailscale-mcp:check

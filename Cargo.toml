@@ -29,6 +29,9 @@ anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
 tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
+# JSON Schema, for the one test that checks the registry listing against the
+# registry's own schema. A dev-dependency only, so it reaches no release build.
+boon = "0.6"
 # YAML, for the one test that reads the vendored API description. A dev-dependency
 # of `tailscale-rest` only, so it reaches no release build.
 serde_norway = "0.9"

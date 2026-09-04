@@ -1,0 +1,7 @@
+# The build happens inside the image; sending the host's build output would
+# mean shipping gigabytes of context to build a few megabytes of binary.
+target
+.git
+.scratch
+docs
+packaging/npm/node_modules

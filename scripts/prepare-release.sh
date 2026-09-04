@@ -73,6 +73,20 @@ fi
 echo "current: $current"
 echo "next:    $next"
 
+# Every file a bump writes to. The crates take their version from the
+# workspace manifest, but the things built around them do not: each
+# distribution carries the version in its own file, and
+# `tests/release_is_one_version.rs` is what refuses a release where one of
+# them has been left behind.
+touched=(
+    Cargo.toml
+    Cargo.lock
+    CHANGELOG.md
+    packaging/npm/package.json
+    packaging/mcpb/manifest.json
+    server.json
+)
+
 scratch=$(mktemp -d)
 editing=false
 finished=false
@@ -81,7 +95,9 @@ cleanup() {
     # version, a lockfile naming another and a changelog naming neither.
     if $editing && ! $finished; then
         echo "putting back what was already changed" >&2
-        cp "$scratch/Cargo.toml" "$scratch/Cargo.lock" "$scratch/CHANGELOG.md" .
+        for file in "${touched[@]}"; do
+            cp "$scratch/$file" "$file"
+        done
     fi
     rm -rf "$scratch"
 }
@@ -93,7 +109,8 @@ git-cliff --tag "v$next" --output "$changelog"
 if $dry_run; then
     echo
     if [ "$current" != "$next" ]; then
-        echo "would set the workspace version and both internal dependencies to $next"
+        echo "would set the version to $next, writing:"
+        printf '  %s\n' "${touched[@]}"
     else
         echo "the version is already $next; only the changelog would change"
     fi
@@ -107,16 +124,32 @@ if $dry_run; then
     exit 0
 fi
 
-cp Cargo.toml Cargo.lock CHANGELOG.md "$scratch/"
+for file in "${touched[@]}"; do
+    mkdir -p "$scratch/$(dirname "$file")"
+    cp "$file" "$scratch/$file"
+done
 editing=true
 
 if [ "$current" != "$next" ]; then
-    # Three places carry the version: the workspace package, and the two
-    # internal dependencies, which name a version as well as a path so that
-    # the published crates depend on each other by version.
+    # Three places in the manifest carry the version: the workspace package,
+    # and the two internal dependencies, which name a version as well as a
+    # path so that the published crates depend on each other by version.
     perl -pi -e "s/^version = \"\Q$current\E\"/version = \"$next\"/" Cargo.toml
     perl -pi -e "s/^(tailscale-(?:rest|cli) = \{ version = )\"\Q$current\E\"/\$1\"$next\"/" Cargo.toml
     cargo update --workspace --quiet
+
+    # And one `"version"` field per distribution — three of them in the
+    # registry listing, which repeats it for each package it offers. The
+    # substitution is by value rather than by position, so it moves the
+    # version and nothing else; anything else in these files that happened to
+    # be pinned at the old version would move too, which is one of the things
+    # reading the diff is for.
+    for file in packaging/npm/package.json packaging/mcpb/manifest.json server.json; do
+        perl -pi -e "s/\"version\": \"\Q$current\E\"/\"version\": \"$next\"/g" "$file"
+    done
+    # And once more for the image the listing offers, which names the version
+    # as a tag rather than as a field.
+    perl -pi -e "s/(\"identifier\": \"[^\"]*):\Q$current\E\"/\$1:$next\"/g" server.json
 fi
 
 cp "$changelog" CHANGELOG.md

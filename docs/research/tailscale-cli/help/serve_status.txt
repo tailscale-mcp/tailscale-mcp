@@ -1,0 +1,8 @@
+View current serve configuration
+
+USAGE
+  tailscale serve status [--json]
+
+FLAGS
+  --json, --json=false
+    	output JSON (default false)

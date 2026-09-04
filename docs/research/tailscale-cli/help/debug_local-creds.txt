@@ -1,0 +1,4 @@
+Print how to access Tailscale LocalAPI
+
+USAGE
+  tailscale debug local-creds

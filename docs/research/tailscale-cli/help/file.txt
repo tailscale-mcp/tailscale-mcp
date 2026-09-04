@@ -1,0 +1,8 @@
+Send or receive files
+
+USAGE
+  tailscale file <cp|get> ...
+
+SUBCOMMANDS
+  cp   Copy file(s) to a host
+  get  Move files out of the Tailscale file inbox

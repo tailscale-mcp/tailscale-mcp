@@ -1,0 +1,4 @@
+Print the current set of candidate peer relay servers
+
+USAGE
+  tailscale debug peer-relay-servers

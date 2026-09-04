@@ -1,0 +1,8 @@
+Print tailscaled's metrics
+
+USAGE
+  tailscale debug metrics
+
+FLAGS
+  --watch, --watch=false
+    	print JSON dump of delta values (default false)

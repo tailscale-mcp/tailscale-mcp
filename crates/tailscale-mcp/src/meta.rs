@@ -1,0 +1,319 @@
+//! Tool metadata: the single table that the router, the `tools` subcommand,
+//! the contract tests and the generated documentation all read.
+//!
+//! A tool cannot exist without a row here. Ticket 02 makes that structural: the
+//! declaration macro in [`crate::registry`] emits the row and the handler from
+//! one declaration, so the two cannot drift apart.
+
+use std::fmt;
+
+/// Which of the two backends a tool acts through.
+///
+/// The distinction is not cosmetic: the local surface can only ever act on the
+/// node the server runs on, while the tailnet surface acts on the whole tailnet
+/// and needs a credential rather than a binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Surface {
+    /// The `tailscale` command-line interface, acting on the local node.
+    Local,
+    /// The control-plane REST API, acting on the tailnet.
+    Tailnet,
+}
+
+impl Surface {
+    /// The prefix every tool name on this surface carries.
+    pub const fn prefix(self) -> &'static str {
+        match self {
+            Self::Local => "tailscale_",
+            Self::Tailnet => "tailnet_",
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Tailnet => "tailnet",
+        }
+    }
+}
+
+impl fmt::Display for Surface {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A tool's risk class.
+///
+/// The ordering is meaningful and is relied upon by the gate: a server allowed
+/// to run destructive tools may also run write and read tools.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Tier {
+    /// Changes nothing. Available by default.
+    Read,
+    /// Changes configuration that can be changed back.
+    Write,
+    /// Removes something, or exposes something, in a way that is not simply
+    /// undone: deleting a device, revoking a key, publishing to the internet.
+    Destructive,
+}
+
+impl Tier {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+            Self::Destructive => "destructive",
+        }
+    }
+
+    /// The flag an operator passes to permit this tier, if any.
+    pub const fn flag(self) -> Option<&'static str> {
+        match self {
+            Self::Read => None,
+            Self::Write => Some("--allow-write"),
+            Self::Destructive => Some("--allow-destructive"),
+        }
+    }
+}
+
+impl fmt::Display for Tier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A named group of tools switched on or off together.
+///
+/// Kept as an enum rather than a string so that a preset cannot name a toolset
+/// that does not exist, and so that adding a toolset forces every preset to be
+/// reconsidered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Toolset {
+    // Local surface.
+    LocalStatus,
+    LocalPrefs,
+    LocalServe,
+    LocalFiles,
+    LocalLock,
+    LocalDebug,
+    LocalPassthrough,
+    // Tailnet surface.
+    TailnetDevices,
+    TailnetInvites,
+    TailnetLogging,
+    TailnetDns,
+    TailnetKeys,
+    TailnetPolicy,
+    TailnetPosture,
+    TailnetUsers,
+    TailnetSettings,
+    TailnetWebhooks,
+    TailnetServices,
+    TailnetOauthApps,
+    TailnetOrg,
+}
+
+impl Toolset {
+    /// Every toolset, in listing order. Adding a variant without adding it here
+    /// is caught by [`Self::all_is_exhaustive`].
+    pub const ALL: &'static [Toolset] = &[
+        Self::LocalStatus,
+        Self::LocalPrefs,
+        Self::LocalServe,
+        Self::LocalFiles,
+        Self::LocalLock,
+        Self::LocalDebug,
+        Self::LocalPassthrough,
+        Self::TailnetDevices,
+        Self::TailnetInvites,
+        Self::TailnetLogging,
+        Self::TailnetDns,
+        Self::TailnetKeys,
+        Self::TailnetPolicy,
+        Self::TailnetPosture,
+        Self::TailnetUsers,
+        Self::TailnetSettings,
+        Self::TailnetWebhooks,
+        Self::TailnetServices,
+        Self::TailnetOauthApps,
+        Self::TailnetOrg,
+    ];
+
+    /// The name an operator writes in configuration.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalStatus => "local-status",
+            Self::LocalPrefs => "local-prefs",
+            Self::LocalServe => "local-serve",
+            Self::LocalFiles => "local-files",
+            Self::LocalLock => "local-lock",
+            Self::LocalDebug => "local-debug",
+            Self::LocalPassthrough => "local-passthrough",
+            Self::TailnetDevices => "tailnet-devices",
+            Self::TailnetInvites => "tailnet-invites",
+            Self::TailnetLogging => "tailnet-logging",
+            Self::TailnetDns => "tailnet-dns",
+            Self::TailnetKeys => "tailnet-keys",
+            Self::TailnetPolicy => "tailnet-policy",
+            Self::TailnetPosture => "tailnet-posture",
+            Self::TailnetUsers => "tailnet-users",
+            Self::TailnetSettings => "tailnet-settings",
+            Self::TailnetWebhooks => "tailnet-webhooks",
+            Self::TailnetServices => "tailnet-services",
+            Self::TailnetOauthApps => "tailnet-oauth-apps",
+            Self::TailnetOrg => "tailnet-org",
+        }
+    }
+
+    /// Which surface this toolset belongs to. Used to hide a whole surface when
+    /// its backend is absent or has been disabled.
+    pub const fn surface(self) -> Surface {
+        match self {
+            Self::LocalStatus
+            | Self::LocalPrefs
+            | Self::LocalServe
+            | Self::LocalFiles
+            | Self::LocalLock
+            | Self::LocalDebug
+            | Self::LocalPassthrough => Surface::Local,
+            _ => Surface::Tailnet,
+        }
+    }
+
+    /// Parse an operator-written toolset name.
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|t| t.as_str() == s)
+    }
+
+    #[cfg(test)]
+    fn all_is_exhaustive() {}
+}
+
+impl fmt::Display for Toolset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The hints a client sees on a tool.
+///
+/// These are advisory in the protocol but load-bearing for a planning model, so
+/// they are derived from the tier wherever the tier determines them and stated
+/// explicitly only where it does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Annotations {
+    pub read_only: bool,
+    pub destructive: bool,
+    pub idempotent: bool,
+    pub open_world: bool,
+}
+
+/// One row of the tool table.
+#[derive(Debug, Clone, Copy)]
+pub struct ToolMeta {
+    /// The tool name as the client sees it, including its surface prefix.
+    pub name: &'static str,
+    pub toolset: Toolset,
+    pub tier: Tier,
+    /// One sentence, shown to the model. The full description lives on the
+    /// generated schema; this is what the tool table prints.
+    pub summary: &'static str,
+    /// Whether calling this can cut the server off from the tailnet or from the
+    /// client it serves. Self-severing tools always require confirmation; the
+    /// two are separate fields because the tailnet surface has irreversible
+    /// operations that are not self-severing but still require it.
+    pub self_severing: bool,
+    /// Whether the caller must state intent in the call itself. No flag can
+    /// pre-authorise this.
+    pub requires_confirmation: bool,
+    /// Repeating the call has the same effect as making it once.
+    pub idempotent: bool,
+    /// The lowest `tailscale` version that accepts this command, where the
+    /// command is newer than our supported floor.
+    pub min_version: Option<&'static str>,
+}
+
+impl ToolMeta {
+    pub const fn surface(&self) -> Surface {
+        self.toolset.surface()
+    }
+
+    /// Annotations are derived, not stored, so that a tool cannot claim to be
+    /// read-only while sitting at the destructive tier.
+    pub const fn annotations(&self) -> Annotations {
+        Annotations {
+            read_only: matches!(self.tier, Tier::Read),
+            destructive: matches!(self.tier, Tier::Destructive),
+            idempotent: self.idempotent,
+            // Both surfaces reach a network the server does not control.
+            open_world: true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toolset_all_covers_every_variant() {
+        // A cheap stand-in for exhaustiveness: every name round-trips, and the
+        // list has no duplicates. A new variant missing from ALL fails the
+        // count assertions in the registry tests.
+        let mut names: Vec<&str> = Toolset::ALL.iter().map(|t| t.as_str()).collect();
+        names.sort_unstable();
+        let before = names.len();
+        names.dedup();
+        assert_eq!(before, names.len(), "duplicate toolset name");
+
+        for t in Toolset::ALL {
+            assert_eq!(Toolset::parse(t.as_str()), Some(*t));
+        }
+        Toolset::all_is_exhaustive();
+    }
+
+    #[test]
+    fn toolset_names_are_prefixed_by_surface() {
+        for t in Toolset::ALL {
+            let expected = match t.surface() {
+                Surface::Local => "local-",
+                Surface::Tailnet => "tailnet-",
+            };
+            assert!(
+                t.as_str().starts_with(expected),
+                "{t} does not carry its surface prefix"
+            );
+        }
+    }
+
+    #[test]
+    fn tiers_order_from_least_to_most_dangerous() {
+        assert!(Tier::Read < Tier::Write);
+        assert!(Tier::Write < Tier::Destructive);
+    }
+
+    #[test]
+    fn annotations_follow_the_tier() {
+        let read = ToolMeta {
+            name: "tailscale_status",
+            toolset: Toolset::LocalStatus,
+            tier: Tier::Read,
+            summary: "",
+            self_severing: false,
+            requires_confirmation: false,
+            idempotent: true,
+            min_version: None,
+        };
+        assert!(read.annotations().read_only);
+        assert!(!read.annotations().destructive);
+        assert!(read.annotations().open_world);
+
+        let destructive = ToolMeta {
+            tier: Tier::Destructive,
+            ..read
+        };
+        assert!(!destructive.annotations().read_only);
+        assert!(destructive.annotations().destructive);
+    }
+}

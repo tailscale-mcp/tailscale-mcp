@@ -1,0 +1,17 @@
+Show current preference values
+
+USAGE
+  tailscale get [flags] [setting-name | all]
+
+"tailscale get" shows the current value of one or all preferences.
+
+With no argument or "all", all preferences are shown.
+With a specific setting name, only that value is shown.
+
+The setting names are the same flag names accepted by "tailscale set".
+
+FLAGS
+  --json, --json=false
+    	output as JSON (default false)
+  --set-flags, --set-flags=false
+    	output as "tailscale set" flag arguments (default false)

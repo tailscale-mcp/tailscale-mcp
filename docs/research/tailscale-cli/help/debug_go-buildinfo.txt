@@ -1,0 +1,4 @@
+Print Go's runtime/debug.BuildInfo
+
+USAGE
+  tailscale debug go-buildinfo

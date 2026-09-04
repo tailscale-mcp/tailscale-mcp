@@ -1,0 +1,10 @@
+Disconnect from Tailscale
+
+USAGE
+  tailscale down
+
+FLAGS
+  --accept-risk value
+    	accept risk and skip confirmation for risk types: lose-ssh,mac-app-connector,all
+  --reason value
+    	reason for the disconnect, if required by a policy

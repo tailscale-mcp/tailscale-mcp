@@ -1,0 +1,6 @@
+Write the Tailscale VPN configuration to the macOS settings
+
+USAGE
+  tailscale configure mac-vpn install
+
+This command writes the Tailscale VPN configuration to the macOS settings. This is the entry that appears in System Settings > VPN. If you are running the Standalone variant of the client, you'll also need to install the system extension separately (run `tailscale configure sysext activate`).

@@ -1,0 +1,21 @@
+Switch to a different Tailscale account
+
+USAGE
+  tailscale switch <id>
+  tailscale switch --list [--json]
+
+"tailscale switch" switches between logged in accounts. You can
+use the ID that's returned from 'tailnet switch -list'
+to pick which profile you want to switch to. Alternatively, you
+can use the Tailnet, account names, or display names to switch as well.
+
+This command is currently in alpha and may change in the future.
+
+SUBCOMMANDS
+  remove  Remove a Tailscale account
+
+FLAGS
+  --json, --json=false
+    	list available accounts in JSON format (default false)
+  --list, --list=false
+    	list available accounts (default false)

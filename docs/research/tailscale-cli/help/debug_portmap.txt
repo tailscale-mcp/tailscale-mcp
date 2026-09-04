@@ -1,0 +1,16 @@
+Run portmap debugging
+
+USAGE
+  tailscale debug portmap
+
+FLAGS
+  --duration value
+    	timeout for port mapping (default 5s)
+  --gateway-addr value
+    	override gateway IP (must also pass --self-addr)
+  --log-http, --log-http=false
+    	print all HTTP requests and responses to the log (default false)
+  --self-addr value
+    	override self IP (must also pass --gateway-addr)
+  --type value
+    	portmap debug type (one of "", "pmp", "pcp", or "upnp")

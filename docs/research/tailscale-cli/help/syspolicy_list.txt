@@ -1,0 +1,10 @@
+Print effective policy settings
+
+USAGE
+  tailscale syspolicy list
+
+The 'tailscale syspolicy list' subcommand displays the effective policy settings and their sources (e.g., MDM or environment variables).
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)

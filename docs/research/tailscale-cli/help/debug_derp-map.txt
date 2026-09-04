@@ -1,0 +1,4 @@
+Print DERP map
+
+USAGE
+  tailscale debug derp-map

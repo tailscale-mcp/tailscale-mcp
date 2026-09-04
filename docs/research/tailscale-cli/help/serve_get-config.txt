@@ -1,0 +1,14 @@
+Get service configuration to save to a file
+
+USAGE
+  tailscale serve get-config <file> [--service=<service>] [--all]
+
+Get the configuration for services that this node is currently hosting in a
+format that can later be provided to set-config. This can be used to declaratively set
+configuration for a service host.
+
+FLAGS
+  --all, --all=false
+    	read config from all services (default false)
+  --service value
+    	read config from a particular service

@@ -1,0 +1,6 @@
+Compute a disablement value from a disablement secret (advanced users only)
+
+USAGE
+  tailscale lock disablement-kdf <hex-encoded-disablement-secret>
+
+Compute a disablement value from a disablement secret (advanced users only)

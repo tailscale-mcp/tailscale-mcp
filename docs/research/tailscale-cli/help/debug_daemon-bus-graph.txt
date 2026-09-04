@@ -1,0 +1,8 @@
+Print graph for the tailscaled bus
+
+USAGE
+  tailscale debug daemon-bus-graph
+
+FLAGS
+  --format value
+    	output format [json/dot] (default json)

@@ -1,0 +1,8 @@
+Print debug information about connecting to a given host or IP
+
+USAGE
+  tailscale debug dial-types <hostname-or-IP> <port>
+
+FLAGS
+  --network value
+    	network type to dial ("tcp", "udp", etc.) (default tcp)

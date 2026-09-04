@@ -1,0 +1,8 @@
+Enable/disable debug logs for a component
+
+USAGE
+  tailscale debug component-logs [magicsock|sockstats|syspolicy]
+
+FLAGS
+  --for value
+    	how long to enable debug logs for; zero or negative means to disable (default 1h0m0s)

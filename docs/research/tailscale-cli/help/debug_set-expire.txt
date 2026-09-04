@@ -1,0 +1,8 @@
+Manipulate node key expiry for testing
+
+USAGE
+  tailscale debug set-expire --in=1m
+
+FLAGS
+  --in value
+    	if non-zero, set node key to expire this duration from now (default 0s)

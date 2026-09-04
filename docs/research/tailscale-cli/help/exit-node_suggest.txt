@@ -1,0 +1,6 @@
+Suggest the best available exit node
+
+USAGE
+  tailscale exit-node suggest
+
+FLAGS

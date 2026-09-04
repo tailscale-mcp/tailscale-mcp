@@ -1,0 +1,4 @@
+Remove and discard cached network maps (if any)
+
+USAGE
+  tailscale debug clear-netmap-cache

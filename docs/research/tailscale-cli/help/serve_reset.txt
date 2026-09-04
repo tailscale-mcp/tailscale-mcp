@@ -1,0 +1,4 @@
+Reset current serve config
+
+USAGE
+  tailscale serve reset

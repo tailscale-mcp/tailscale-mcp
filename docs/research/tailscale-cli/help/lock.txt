@@ -1,0 +1,18 @@
+Manage tailnet lock
+
+USAGE
+  tailscale lock <subcommand> [arguments...]
+
+Manage tailnet lock
+
+SUBCOMMANDS
+  init             Initialize tailnet lock
+  status           Output the state of tailnet lock
+  add              Add one or more trusted signing keys to tailnet lock
+  remove           Remove one or more trusted signing keys from tailnet lock
+  sign             Sign a node or pre-approved auth key
+  disable          Consume a disablement secret to shut down tailnet lock for the tailnet
+  disablement-kdf  Compute a disablement value from a disablement secret (advanced users only)
+  log              List changes applied to tailnet lock
+  local-disable    Disable tailnet lock for this node only
+  revoke-keys      Revoke compromised tailnet-lock keys

@@ -1,0 +1,4 @@
+Print debug information about a peer's endpoint changes
+
+USAGE
+  tailscale debug peer-endpoint-changes <hostname-or-IP>

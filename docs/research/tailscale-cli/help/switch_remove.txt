@@ -1,0 +1,11 @@
+Remove a Tailscale account
+
+USAGE
+  tailscale switch remove <id>
+
+"tailscale switch remove" removes a Tailscale account from the
+local machine. This does not delete the account itself, but
+it will no longer be available for switching to. You can
+add it back by logging in again.
+
+This command is currently in alpha and may change in the future.

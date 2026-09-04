@@ -1,0 +1,4 @@
+Print current metric values in Prometheus text format
+
+USAGE
+  tailscale metrics print

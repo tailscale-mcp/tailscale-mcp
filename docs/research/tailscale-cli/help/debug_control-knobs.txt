@@ -1,0 +1,4 @@
+See current control knobs
+
+USAGE
+  tailscale debug control-knobs

@@ -1,0 +1,8 @@
+Do a fake risky action
+
+USAGE
+  tailscale debug test-risk
+
+FLAGS
+  --accept-risk value
+    	comma-separated list of accepted risks

@@ -1,0 +1,29 @@
+Download a signed Tailscale appliance image and write it to a local disk [experimental]
+
+USAGE
+  tailscale configure flash-appliance [flags]
+
+This experimental command downloads a signed Tailscale appliance image (Gokrazy archive
+format, "GAF") from pkgs.tailscale.com, verifies its signature, and writes
+it to a local block device (SD card, USB drive, virtual disk).
+
+On macOS, the target disk is auto-discovered from 'diskutil list physical',
+excluding whichever disks back the running root. On Linux, you must pass
+--disk=/dev/sdX explicitly.
+
+This command requires mkfs.ext4 in $PATH to format the writable /perm
+partition. On macOS, 'brew install e2fsprogs' provides it.
+
+FLAGS
+  --add-ssh-authorized-keys value
+    	path to an authorized_keys file to include on the appliance for breakglass SSH access
+  --disk value
+    	target block device (e.g. /dev/sdb or /dev/disk4)
+  --gaf value
+    	use a local GAF file instead of downloading (skips signature verification)
+  --track value
+    	which track to download from; defaults to "stable"
+  --variant value
+    	appliance variant: "pi-arm64", "vm-amd64", or "vm-arm64". Empty prompts interactively.
+  --yes, --yes=false
+    	skip the destructive-write confirmation prompt (default false)

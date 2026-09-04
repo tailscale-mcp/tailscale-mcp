@@ -1,0 +1,50 @@
+Serve content and local servers on the internet
+
+USAGE
+  tailscale funnel <target>
+  tailscale funnel status [--json]
+  tailscale funnel reset
+
+Funnel enables you to share a local server on the internet using Tailscale.
+
+To share only within your tailnet, use `tailscale serve`
+
+<target> can be a file, directory, text, or most commonly the location to a service running on the
+local machine. The location to the location service can be expressed as a port number (e.g., 3000),
+a partial URL (e.g., localhost:3000), or a full URL including a path (e.g., http://localhost:3000/foo).
+On Unix-like systems, you can also specify a Unix domain socket (e.g., unix:/tmp/myservice.sock).
+
+EXAMPLES
+  - Expose an HTTP server running at 127.0.0.1:3000 in the foreground:
+    $ tailscale funnel 3000
+
+  - Expose an HTTP server running at 127.0.0.1:3000 in the background:
+    $ tailscale funnel --bg 3000
+
+  - Expose an HTTPS server with invalid or self-signed certificates at https://localhost:8443
+    $ tailscale funnel https+insecure://localhost:8443
+
+  - Expose a service listening on a Unix socket (Linux/macOS/BSD only):
+    $ tailscale funnel unix:/var/run/myservice.sock
+
+For more examples and use cases visit our docs site https://tailscale.com/kb/1247/funnel-serve-use-cases
+
+SUBCOMMANDS
+  status  View current funnel configuration
+  reset   Reset current funnel config
+
+FLAGS
+  --bg, --bg=false
+    	Run the command as a background process (default false, when --service is set defaults to true).
+  --https value
+    	Expose an HTTPS server at the specified port (default mode)
+  --proxy-protocol value
+    	PROXY protocol version (1 or 2) for TCP forwarding
+  --set-path value
+    	Appends the specified path to the base URL for accessing the underlying service
+  --tcp value
+    	Expose a TCP forwarder to forward raw TCP packets at the specified port
+  --tls-terminated-tcp value
+    	Expose a TCP forwarder to forward TLS-terminated TCP packets at the specified port
+  --yes, --yes=false
+    	Update without interactive prompts (default false)

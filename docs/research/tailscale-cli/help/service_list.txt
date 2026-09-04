@@ -1,0 +1,8 @@
+List the Tailscale Services your node can access
+
+USAGE
+  tailscale service list
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)

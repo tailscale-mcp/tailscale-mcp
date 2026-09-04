@@ -1,0 +1,26 @@
+Revoke compromised tailnet-lock keys
+
+USAGE
+  tailscale lock revoke-keys <tailnet-lock-key>...
+    revoke-keys [--cosign] [--finish] <recovery-blob>
+
+Retroactively revoke the specified tailnet lock keys (tlpub:abc).
+
+Revoked keys are prevented from being used in the future. Any nodes previously signed
+by revoked keys lose their authorization and must be signed again.
+
+Revocation is a multi-step process that requires several signing nodes to `--cosign` the revocation. Use `tailscale lock remove` instead if the key has not been compromised.
+
+1. To start, run `tailscale revoke-keys <tlpub-keys>` with the tailnet lock keys to revoke.
+2. Re-run the `--cosign` command output by `revoke-keys` on other signing nodes. Use the
+   most recent command output on the next signing node in sequence.
+3. Once the number of `--cosign`s is greater than the number of keys being revoked,
+   run the command one final time with `--finish` instead of `--cosign`.
+
+FLAGS
+  --cosign, --cosign=false
+    	continue generating the recovery using the tailnet lock key on this device and the provided recovery blob (default false)
+  --finish, --finish=false
+    	finish the recovery process by transmitting the revocation (default false)
+  --fork-from value
+    	parent AUM hash to rewrite from (advanced users only)

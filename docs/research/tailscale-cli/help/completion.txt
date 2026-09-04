@@ -1,0 +1,54 @@
+Shell tab-completion scripts
+
+USAGE
+  tailscale completion <shell> [--flags] [--descs]
+
+To load completions:
+
+Bash:
+
+	$ source <(tailscale completion bash)
+
+	# To load completions for each session, execute once:
+	# Linux:
+	$ tailscale completion bash > /etc/bash_completion.d/tailscale
+	# macOS:
+	$ tailscale completion bash > $(brew --prefix)/etc/bash_completion.d/tailscale
+
+Zsh:
+
+	# If shell completion is not already enabled in your environment,
+	# you will need to enable it.  You can execute the following once:
+
+	$ echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+	# To load completions for each session, execute once:
+	$ tailscale completion zsh > "${fpath[1]}/_tailscale"
+
+	# You will need to start a new shell for this setup to take effect.
+
+fish:
+
+	$ tailscale completion fish | source
+
+	# To load completions for each session, execute once:
+	$ tailscale completion fish > ~/.config/fish/completions/tailscale.fish
+
+PowerShell:
+
+	PS> tailscale completion powershell | Out-String | Invoke-Expression
+
+	# To load completions for every new session, run:
+	PS> tailscale completion powershell > tailscale.ps1
+	# and source this file from your PowerShell profile.
+
+The shell scripts and this help message have been adapted from the
+Cobra project (https://cobra.dev, https://github.com/spf13/cobra)
+under the Apache-2.0 license. Thank you for making these available.
+
+
+SUBCOMMANDS
+  bash        Generate bash shell completion script
+  zsh         Generate zsh shell completion script
+  fish        Generate fish shell completion script
+  powershell  Generate powershell completion script

@@ -1,0 +1,16 @@
+Show Tailscale IP addresses
+
+USAGE
+  tailscale ip [-1] [-4] [-6] [peer or service hostname or ip address]
+
+Show Tailscale IP addresses for peer or service. Peer defaults to the current machine.
+
+FLAGS
+  --1, --1=false
+    	only print one IP address (default false)
+  --4, --4=false
+    	only print IPv4 address (default false)
+  --6, --6=false
+    	only print IPv6 address (default false)
+  --assert value
+    	assert that one of the node's IP(s) matches this IP address

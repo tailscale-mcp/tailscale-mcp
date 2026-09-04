@@ -1,0 +1,6 @@
+Deactivate the Tailscale system extension on macOS
+
+USAGE
+  tailscale configure sysext deactivate
+
+This command deactivates the Tailscale system extension on macOS. To completely remove Tailscale, you'll also need to delete the VPN configuration separately (use `tailscale configure vpn-config uninstall`).

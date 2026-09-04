@@ -1,0 +1,14 @@
+Print a reachability report for routes with multiple paths
+
+USAGE
+  tailscale routecheck
+
+"tailscale routecheck" is an experimental feature; it is not a stable interface
+
+FLAGS
+  --format value
+    	output format: empty (for human-readable), "json" or "json-line"
+  --json, --json=false
+    	output in JSON format (default false)
+  --probe, --probe=false
+    	probe now to generate a new reachability report (default false)

@@ -1,0 +1,62 @@
+Debug commands
+
+USAGE
+  tailscale debug <debug-flags | subcommand>
+
+"tailscale debug" contains misc debug facilities; it is not a stable interface.
+
+SUBCOMMANDS
+  derp-map               Print DERP map
+  component-logs         Enable/disable debug logs for a component
+  daemon-goroutines      Print tailscaled's goroutines
+  daemon-logs            Watch tailscaled's server logs
+  daemon-bus-events      Watch events on the tailscaled bus
+  daemon-bus-graph       Print graph for the tailscaled bus
+  daemon-bus-queues      Print event bus queue depths per client
+  metrics                Print tailscaled's metrics
+  env                    Print cmd/tailscale environment
+  stat                   Stat a file
+  hostinfo               Print hostinfo
+  local-creds            Print how to access Tailscale LocalAPI
+  localapi               Call a LocalAPI method directly
+  restun                 Force a magicsock restun
+  rebind                 Force a magicsock rebind
+  rotate-disco-key       Rotate the discovery key
+  derp-set-on-demand     Enable DERP on-demand mode (breaks reachability)
+  derp-unset-on-demand   Disable DERP on-demand mode
+  break-tcp-conns        Break any open TCP connections from the daemon
+  break-derp-conns       Break any open DERP connections from the daemon
+  pick-new-derp          Switch to some other random DERP home region for a short time
+  force-prefer-derp      Prefer the given region ID if reachable (until restart, or 0 to clear)
+  force-netmap-update    Force a full no-op netmap update (for load testing)
+  reload-config          Reload config
+  control-knobs          See current control knobs
+  prefs                  Print prefs
+  watch-ipn              Subscribe to IPN message bus
+  netmap                 Print the current network map
+  via                    Convert between site-specific IPv4 CIDRs and IPv6 'via' routes
+  ts2021                 Debug ts2021 protocol connectivity
+  set-expire             Manipulate node key expiry for testing
+  dev-store-set          Set a key/value pair during development
+  derp                   Test a DERP configuration
+  capture                Stream pcaps for debugging
+  portmap                Run portmap debugging
+  peer-endpoint-changes  Print debug information about a peer's endpoint changes
+  dial-types             Print debug information about connecting to a given host or IP
+  resolve                Does a DNS lookup
+  go-buildinfo           Print Go's runtime/debug.BuildInfo
+  peer-relay-servers     Print the current set of candidate peer relay servers
+  test-risk              Do a fake risky action
+  statedir               Print the location of the state directory (if any)
+  peer-relay-sessions    Print the current set of active peer relay sessions relayed through this node
+  clear-netmap-cache     Remove and discard cached network maps (if any)
+
+FLAGS
+  --cpu-profile value
+    	if non-empty, grab a CPU profile for --profile-seconds seconds and write it to this file; - for stdout
+  --file value
+    	get, delete:NAME, or NAME
+  --mem-profile value
+    	if non-empty, grab a memory profile and write it to this file; - for stdout
+  --profile-seconds value
+    	number of seconds to run a CPU profile for, when --cpu-profile is non-empty (default 15)

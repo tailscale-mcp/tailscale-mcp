@@ -1,0 +1,14 @@
+Print Tailscale version
+
+USAGE
+  tailscale version [flags]
+
+FLAGS
+  --daemon, --daemon=false
+    	also print local node's daemon version (default false)
+  --json, --json=false
+    	output in JSON format (default false)
+  --track value
+    	which track to check for updates: "stable", "release-candidate", or "unstable" (dev); empty means same as current
+  --upstream, --upstream=false
+    	fetch and print the latest upstream release version from pkgs.tailscale.com (default false)

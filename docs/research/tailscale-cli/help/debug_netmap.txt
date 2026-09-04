@@ -1,0 +1,4 @@
+Print the current network map
+
+USAGE
+  tailscale debug netmap

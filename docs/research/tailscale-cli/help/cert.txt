@@ -1,0 +1,14 @@
+Get TLS certs
+
+USAGE
+  tailscale cert [flags] <domain>
+
+FLAGS
+  --cert-file value
+    	output cert file or "-" for stdout; defaults to DOMAIN.crt if --cert-file and --key-file are both unset
+  --key-file value
+    	output key file or "-" for stdout; defaults to DOMAIN.key if --cert-file and --key-file are both unset
+  --min-validity value
+    	ensure the certificate is valid for at least this duration; the output certificate is never expired if this flag is unset or 0, but the lifetime may vary; the maximum allowed min-validity depends on the CA (default 0s)
+  --serve-demo, --serve-demo=false
+    	if true, serve on port :443 using the cert as a demo, instead of writing out the files to disk (default false)

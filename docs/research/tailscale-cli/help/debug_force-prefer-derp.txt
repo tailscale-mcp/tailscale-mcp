@@ -1,0 +1,4 @@
+Prefer the given region ID if reachable (until restart, or 0 to clear)
+
+USAGE
+  tailscale debug force-prefer-derp

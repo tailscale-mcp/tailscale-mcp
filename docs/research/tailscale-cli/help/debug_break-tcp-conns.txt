@@ -1,0 +1,4 @@
+Break any open TCP connections from the daemon
+
+USAGE
+  tailscale debug break-tcp-conns

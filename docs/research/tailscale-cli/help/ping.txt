@@ -1,0 +1,38 @@
+Ping a host at the Tailscale layer, see how it routed
+
+USAGE
+  tailscale ping <hostname-or-IP>
+
+The 'tailscale ping' command pings a peer node from the Tailscale layer
+and reports which route it took for each response. The first ping or
+so will likely go over DERP (Tailscale's TCP relay protocol) while NAT
+traversal finds a direct path through.
+
+If 'tailscale ping' works but a normal ping does not, that means one
+side's operating system firewall is blocking packets; 'tailscale ping'
+does not inject packets into either side's TUN devices.
+
+By default, 'tailscale ping' stops after 10 pings or once a direct
+(non-DERP) path has been established, whichever comes first.
+
+The provided hostname must resolve to or be a Tailscale IP
+(e.g. 100.x.y.z) or a subnet IP advertised by a Tailscale
+relay node.
+
+FLAGS
+  --c value
+    	max number of pings to send. 0 for infinity. (default 10)
+  --icmp, --icmp=false
+    	do a ICMP-level ping (through WireGuard, but not the local host OS stack) (default false)
+  --peerapi, --peerapi=false
+    	try hitting the peer's peerapi HTTP server (default false)
+  --size value
+    	size of the ping message (disco pings only). 0 for minimum size. (default 0)
+  --timeout value
+    	timeout before giving up on a ping (default 5s)
+  --tsmp, --tsmp=false
+    	do a TSMP-level ping (through WireGuard, but not either host OS stack) (default false)
+  --until-direct, --until-direct=false
+    	stop once a direct path is established (default true)
+  --verbose, --verbose=false
+    	verbose output (default false)

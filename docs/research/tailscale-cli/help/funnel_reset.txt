@@ -1,0 +1,4 @@
+Reset current funnel config
+
+USAGE
+  tailscale funnel reset

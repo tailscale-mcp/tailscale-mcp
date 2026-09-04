@@ -1,0 +1,4 @@
+Print the current set of active peer relay sessions relayed through this node
+
+USAGE
+  tailscale debug peer-relay-sessions

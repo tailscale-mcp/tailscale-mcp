@@ -1,0 +1,4 @@
+Add one or more trusted signing keys to tailnet lock
+
+USAGE
+  tailscale lock add <public-key>...

@@ -1,0 +1,54 @@
+Create a Proxmox VE VM running the Tailscale appliance image [experimental]
+
+USAGE
+  tailscale configure pve-appliance --storage=<name> [flags]
+
+This experimental command downloads a signed Tailscale appliance GAF from
+pkgs.tailscale.com, builds a raw disk image in /var/tmp, then invokes
+'qm create' / 'qm disk import' / 'qm set' on the local Proxmox VE host to
+create a new VM backed by that image. It must be run on the PVE host
+itself (where the 'qm' CLI is available).
+
+The imported disk is attached as scsi0 on a virtio-scsi-single controller
+with iothread, the network attaches to the given bridge (default vmbr0),
+and the guest agent is enabled — pair with the appliance's built-in
+qemu-guest-kragent so PVE can see the guest's IPs.
+
+The VM is created with a virtio-serial console (--serial0 socket). Once
+the VM is running, 'qm terminal <vmid>' on the PVE host — then press
+Enter — drops you into a busybox shell inside the appliance without
+needing an SSH key.
+
+Defaults are chosen so a bare invocation like:
+
+    tailscale configure pve-appliance --storage=local-lvm
+
+is enough to produce a bootable Tailscale appliance VM.
+
+FLAGS
+  --add-ssh-authorized-keys value
+    	path to an authorized_keys file to include on the appliance for breakglass SSH access
+  --bridge value
+    	network bridge to attach virtio net0 to (default vmbr0)
+  --cores value
+    	vCPU cores (default 2)
+  --disk-size value
+    	raw image size (accepts K/M/G suffixes, e.g. 4G, 8192M) (default 4G)
+  --gaf value
+    	use a local GAF file instead of downloading (skips signature verification)
+  --memory value
+    	memory in MiB (default 1024)
+  --name value
+    	VM name; defaults to "tsapp-<vmid>"
+  --start, --start=false
+    	start the VM after import (default true)
+  --storage value
+    	PVE storage to import the disk into (e.g. local-lvm, ssd2); required
+  --track value
+    	which track to download from; defaults to "stable"
+  --variant value
+    	appliance variant: "vm-amd64" or "vm-arm64" (default vm-amd64)
+  --vmid value
+    	target VM ID; 0 asks Proxmox for the next available ID (default 0)
+  --yes, --yes=false
+    	skip the confirmation prompt (default false)

@@ -1,0 +1,4 @@
+Break any open DERP connections from the daemon
+
+USAGE
+  tailscale debug break-derp-conns

@@ -1,0 +1,6 @@
+Register the Tailscale system extension with macOS.
+
+USAGE
+  tailscale configure sysext activate
+
+This command registers the Tailscale system extension with macOS. To run Tailscale, you'll also need to install the VPN configuration separately (run `tailscale configure vpn-config install`). After running this command, you need to approve the extension in System Settings > Login Items and Extensions > Network Extensions.

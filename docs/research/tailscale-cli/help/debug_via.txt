@@ -1,0 +1,5 @@
+Convert between site-specific IPv4 CIDRs and IPv6 'via' routes
+
+USAGE
+  tailscale debug via <site-id> <v4-cidr>
+  tailscale debug via <v6-route>

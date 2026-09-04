@@ -1,0 +1,12 @@
+Consume a disablement secret to shut down tailnet lock for the tailnet
+
+USAGE
+  tailscale lock disable <disablement-secret>
+
+The 'tailscale lock disable' command uses the specified disablement
+secret to disable tailnet lock.
+
+If tailnet lock is re-enabled, new disablement secrets can be generated.
+
+Once this secret is used, it has been distributed
+to all nodes in the tailnet and should be considered public.

@@ -1,0 +1,15 @@
+Diagnose the internal DNS forwarder
+
+USAGE
+  tailscale dns status [--all] [--json]
+  tailscale dns query [--json] <name> [type]
+
+The 'tailscale dns' subcommand provides tools for diagnosing the internal DNS
+forwarder (100.100.100.100).
+
+For more information about the DNS functionality built into Tailscale, refer to
+https://tailscale.com/kb/1054/dns.
+
+SUBCOMMANDS
+  status  Print the current DNS status and configuration
+  query   Perform a DNS query

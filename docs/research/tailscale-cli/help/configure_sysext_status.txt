@@ -1,0 +1,6 @@
+Print the enablement status of the Tailscale system extension
+
+USAGE
+  tailscale configure sysext status
+
+This command prints the enablement status of the Tailscale system extension. If the extension is not enabled, run `tailscale sysext activate` to enable it.

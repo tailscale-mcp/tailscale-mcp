@@ -1,0 +1,4 @@
+Switch to some other random DERP home region for a short time
+
+USAGE
+  tailscale debug pick-new-derp

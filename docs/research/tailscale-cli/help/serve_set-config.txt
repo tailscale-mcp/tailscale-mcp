@@ -1,0 +1,17 @@
+Define service configuration from a file
+
+USAGE
+  tailscale serve set-config <file> [--service=<service>] [--all]
+
+Read the provided configuration file and use it to declaratively set the configuration
+for either a single service, or for all services that this node is hosting. If --service is specified,
+all endpoint handlers for that service are overwritten. If --all is specified, all endpoint handlers for
+all services are overwritten.
+
+For information on the file format, see tailscale.com/kb/1589/tailscale-services-configuration-file
+
+FLAGS
+  --all, --all=false
+    	apply config to all services (default false)
+  --service value
+    	apply config to a particular service

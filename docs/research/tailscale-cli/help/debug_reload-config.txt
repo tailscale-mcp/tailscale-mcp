@@ -1,0 +1,4 @@
+Reload config
+
+USAGE
+  tailscale debug reload-config

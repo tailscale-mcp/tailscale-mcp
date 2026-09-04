@@ -1,0 +1,8 @@
+Output the state of tailnet lock
+
+USAGE
+  tailscale lock status
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)

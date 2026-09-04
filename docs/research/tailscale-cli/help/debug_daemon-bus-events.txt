@@ -1,0 +1,4 @@
+Watch events on the tailscaled bus
+
+USAGE
+  tailscale debug daemon-bus-events

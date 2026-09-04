@@ -1,0 +1,10 @@
+Generate fish shell completion script
+
+USAGE
+  tailscale completion fish | source
+
+FLAGS
+  --descs, --descs=false
+    	Include flag, subcommand, and other descriptions in completions (default true)
+  --flags, --flags=false
+    	Suggest flag completions with subcommands (default true)

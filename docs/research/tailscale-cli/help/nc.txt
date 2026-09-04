@@ -1,0 +1,4 @@
+Connect to a port on a host, connected to stdin/stdout
+
+USAGE
+  tailscale nc <hostname-or-IP> <port>

@@ -1,0 +1,34 @@
+Wait for Tailscale interface/IPs to be ready for binding
+
+USAGE
+  tailscale wait
+
+Wait for Tailscale resources to be available. As of 2026-01-02, the only
+resource that's available to wait for by is the Tailscale interface and its
+IPs.
+
+With no arguments, this command will block until tailscaled is up, its backend is running,
+and the Tailscale interface is up and has a Tailscale IP address assigned to it.
+
+If running in userspace-networking mode, this command only waits for tailscaled and
+the Running state, as no physical network interface exists.
+
+A future version of this command may support waiting for other types of resources.
+
+The command returns exit code 0 on success, and non-zero on failure or timeout.
+
+To wait on a specific type of IP address, use 'tailscale ip' in combination with
+the 'tailscale wait' command. For example, to wait for an IPv4 address:
+
+    tailscale wait && tailscale ip --assert=<specific-IP-address>
+
+Linux systemd users can wait for the "tailscale-online.target" target, which runs
+this command.
+
+More generally, a service that wants to bind to (listen on) a Tailscale interface or IP address
+can run it like 'tailscale wait && /path/to/service [...]' to ensure that Tailscale is ready
+before the program starts.
+
+FLAGS
+  --timeout value
+    	how long to wait before giving up (0 means wait indefinitely) (default 0s)

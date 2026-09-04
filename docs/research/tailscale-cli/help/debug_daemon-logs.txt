@@ -1,0 +1,10 @@
+Watch tailscaled's server logs
+
+USAGE
+  tailscale debug daemon-logs
+
+FLAGS
+  --time, --time=false
+    	include client time (default false)
+  --verbose value
+    	verbosity level (default 0)

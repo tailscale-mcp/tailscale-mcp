@@ -1,0 +1,8 @@
+Stream pcaps for debugging
+
+USAGE
+  tailscale debug capture
+
+FLAGS
+  --o value
+    	path to stream the pcap (or - for stdout), leave empty to start wireshark

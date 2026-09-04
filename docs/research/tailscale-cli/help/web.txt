@@ -1,0 +1,22 @@
+Run a web server for controlling Tailscale
+
+USAGE
+  tailscale web [flags]
+
+"tailscale web" runs a webserver for controlling the Tailscale daemon.
+
+It's primarily intended for use on Synology, QNAP, and other
+NAS devices where a web interface is the natural place to control
+Tailscale, as opposed to a CLI or a native app.
+
+FLAGS
+  --cgi, --cgi=false
+    	run as CGI script (default false)
+  --listen value
+    	listen address; use port 0 for automatic (default localhost:8088)
+  --origin value
+    	origin at which the web UI is served (if behind a reverse proxy or used with cgi)
+  --prefix value
+    	URL prefix added to requests (for cgi or reverse proxies)
+  --readonly, --readonly=false
+    	run web UI in read-only mode (default false)

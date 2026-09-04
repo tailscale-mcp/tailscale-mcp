@@ -1,0 +1,8 @@
+Call a LocalAPI method directly
+
+USAGE
+  tailscale debug localapi [<method>] <path> [<body| "-">]
+
+FLAGS
+  --v, --v=false
+    	verbose; dump HTTP headers (default false)

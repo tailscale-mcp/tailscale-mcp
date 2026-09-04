@@ -1,0 +1,4 @@
+Disable DERP on-demand mode
+
+USAGE
+  tailscale debug derp-unset-on-demand

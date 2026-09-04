@@ -1,0 +1,6 @@
+Remove all config for a service
+
+USAGE
+  tailscale serve clear <service>
+
+Remove all handlers configured for the specified service.

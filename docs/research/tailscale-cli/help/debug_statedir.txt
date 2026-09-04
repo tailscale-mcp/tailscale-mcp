@@ -1,0 +1,4 @@
+Print the location of the state directory (if any)
+
+USAGE
+  tailscale debug statedir

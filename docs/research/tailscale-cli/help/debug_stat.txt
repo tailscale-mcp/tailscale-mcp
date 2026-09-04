@@ -1,0 +1,4 @@
+Stat a file
+
+USAGE
+  tailscale debug stat <files...>

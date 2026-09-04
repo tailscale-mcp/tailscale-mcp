@@ -1,0 +1,4 @@
+Force a magicsock rebind
+
+USAGE
+  tailscale debug rebind

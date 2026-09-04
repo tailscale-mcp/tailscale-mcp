@@ -1,0 +1,4 @@
+Print hostinfo
+
+USAGE
+  tailscale debug hostinfo

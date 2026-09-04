@@ -1,0 +1,6 @@
+Get open source license information
+
+USAGE
+  tailscale licenses
+
+Get open source license information

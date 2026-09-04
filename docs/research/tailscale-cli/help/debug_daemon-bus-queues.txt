@@ -1,0 +1,4 @@
+Print event bus queue depths per client
+
+USAGE
+  tailscale debug daemon-bus-queues

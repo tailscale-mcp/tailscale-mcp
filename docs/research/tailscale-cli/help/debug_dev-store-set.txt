@@ -1,0 +1,8 @@
+Set a key/value pair during development
+
+USAGE
+  tailscale debug dev-store-set
+
+FLAGS
+  --danger, --danger=false
+    	accept danger (default false)

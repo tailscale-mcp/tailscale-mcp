@@ -1,0 +1,8 @@
+Show exit nodes
+
+USAGE
+  tailscale exit-node list [flags]
+
+FLAGS
+  --filter value
+    	filter exit nodes by country

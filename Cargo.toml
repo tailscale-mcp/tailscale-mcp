@@ -1,0 +1,45 @@
+[workspace]
+resolver = "3"
+members = ["crates/tailscale-rest", "crates/tailscale-cli", "crates/tailscale-mcp"]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0"
+repository = "https://github.com/tailscale-mcp/tailscale-mcp"
+homepage = "https://github.com/tailscale-mcp/tailscale-mcp"
+authors = ["The tailscale-mcp authors"]
+
+[workspace.dependencies]
+tailscale-rest = { version = "1.0.0", path = "crates/tailscale-rest" }
+tailscale-cli = { version = "1.0.0", path = "crates/tailscale-cli" }
+
+rmcp = "3.2.0"
+tokio = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "charset", "http2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+thiserror = "2"
+anyhow = "1"
+tempfile = "3"
+# Signals, so that a timed-out child can be asked to stop before it is killed.
+# Used through nix's safe wrappers, which keeps `unsafe_code = "forbid"` intact.
+nix = { version = "0.31", default-features = false, features = ["signal"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# The server must never write to stdout on the stdio transport, and must never
+# panic on input it was handed. These are the lints that enforce both.
+print_stdout = "deny"
+print_stderr = "allow"
+unwrap_used = "deny"
+expect_used = "warn"

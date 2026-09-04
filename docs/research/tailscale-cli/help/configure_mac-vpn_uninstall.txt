@@ -1,0 +1,6 @@
+Delete the Tailscale VPN configuration from the macOS settings
+
+USAGE
+  tailscale configure mac-vpn uninstall
+
+This command removes the Tailscale VPN configuration from the macOS settings. This is the entry that appears in System Settings > VPN. If you are running the Standalone variant of the client, you'll also need to deactivate the system extension separately (run `tailscale configure sysext deactivate`).

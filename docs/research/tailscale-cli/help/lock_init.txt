@@ -1,0 +1,30 @@
+Initialize tailnet lock
+
+USAGE
+  tailscale lock init [--gen-disablement-for-support] --gen-disablements N <trusted-key>...
+
+The 'tailscale lock init' command initializes tailnet lock for the
+entire tailnet. The tailnet lock keys specified are those initially
+trusted to sign nodes or to make further changes to tailnet lock.
+
+You can identify the tailnet lock key for a node you wish to trust by
+running 'tailscale lock' on that node, and copying the node's tailnet
+lock key.
+
+To disable tailnet lock, use the 'tailscale lock disable' command
+along with one of the disablement secrets.
+The number of disablement secrets to be generated is specified using the
+--gen-disablements flag. Initializing tailnet lock requires at least
+one disablement.
+
+If --gen-disablement-for-support is specified, an additional disablement secret
+will be generated and transmitted to Tailscale, which support can use to disable
+tailnet lock. We recommend setting this flag.
+
+FLAGS
+  --confirm, --confirm=false
+    	do not prompt for confirmation (default false)
+  --gen-disablement-for-support, --gen-disablement-for-support=false
+    	generates and transmits a disablement secret for Tailscale support (default false)
+  --gen-disablements value
+    	number of disablement secrets to generate (default 1)

@@ -1,0 +1,10 @@
+Diagnose the MDM and system policy configuration
+
+USAGE
+  tailscale syspolicy <subcommand>
+
+The 'tailscale syspolicy' command provides tools for diagnosing the MDM and system policy configuration.
+
+SUBCOMMANDS
+  list    Print effective policy settings
+  reload  Force a reload of policy settings, even if no changes are detected, and prints the result

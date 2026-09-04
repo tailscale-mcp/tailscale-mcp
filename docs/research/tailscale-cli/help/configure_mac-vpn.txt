@@ -1,0 +1,10 @@
+Manage the VPN configuration on macOS (App Store and Standalone variants)
+
+USAGE
+  tailscale configure mac-vpn [install|uninstall]
+
+The vpn-config set of commands provides a way to add or remove the Tailscale VPN configuration from the macOS settings. This is the entry that appears in System Settings > VPN.
+
+SUBCOMMANDS
+  install    Write the Tailscale VPN configuration to the macOS settings
+  uninstall  Delete the Tailscale VPN configuration from the macOS settings

@@ -1,0 +1,55 @@
+Log in to a Tailscale account
+
+USAGE
+  tailscale login [flags]
+
+"tailscale login" logs this machine in to your Tailscale network.
+This command is currently in alpha and may change in the future.
+
+FLAGS
+  --accept-dns, --accept-dns=false
+    	accept DNS configuration from the admin panel (default true)
+  --accept-routes, --accept-routes=false
+    	accept routes advertised by other Tailscale nodes (default false)
+  --advertise-connector, --advertise-connector=false
+    	advertise this node as an app connector (default false)
+  --advertise-exit-node, --advertise-exit-node=false
+    	offer to be an exit node for internet traffic for the tailnet (default false)
+  --advertise-routes value
+    	routes to advertise to other nodes (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24") or empty string to not advertise routes
+  --advertise-tags value
+    	comma-separated ACL tags to request (e.g. "tag:eng,tag:montreal,tag:ssh"); the "tag:" prefix is optional and added automatically when omitted (e.g. "eng,montreal,ssh")
+  --audience value
+    	Audience used when requesting an ID token from an identity provider for auth keys via workload identity federation
+  --auth-key value
+    	node authorization key; if it begins with "file:", then it's a path to a file containing the authkey
+  --client-id value
+    	Client ID used to generate authkeys via workload identity federation
+  --client-secret value
+    	Client Secret used to generate authkeys via OAuth; if it begins with "file:", then it's a path to a file containing the secret
+  --exit-node value
+    	Tailscale exit node (IP, base name, or auto:any) for internet traffic, or empty string to not use an exit node
+  --exit-node-allow-lan-access, --exit-node-allow-lan-access=false
+    	allow direct access to the local network when routing traffic via an exit node (default false)
+  --hostname value
+    	hostname to use instead of the one provided by the OS
+  --id-token value
+    	ID token from the identity provider to exchange with the control server for workload identity federation; if it begins with "file:", then it's a path to a file containing the token
+  --login-server value
+    	base URL of control server (default https://controlplane.tailscale.com)
+  --nickname value
+    	short name for the account
+  --operator value
+    	Unix username to allow to operate on tailscaled without sudo
+  --qr, --qr=false
+    	show QR code for login URLs (default false)
+  --qr-format value
+    	QR code formatting (auto, ascii, large, small) (default auto)
+  --report-posture, --report-posture=false
+    	allow management plane to gather device posture information (default false)
+  --shields-up, --shields-up=false
+    	don't allow incoming connections (default false)
+  --ssh, --ssh=false
+    	run an SSH server, permitting access per tailnet admin's declared policy (default false)
+  --timeout value
+    	maximum amount of time to wait for tailscaled to enter a Running state; default (0s) blocks forever (default 0s)

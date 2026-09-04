@@ -1,0 +1,12 @@
+List changes applied to tailnet lock
+
+USAGE
+  tailscale lock log [--limit N]
+
+List changes applied to tailnet lock
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)
+  --limit value
+    	max number of updates to list (default 50)

@@ -1,0 +1,4 @@
+Rotate the discovery key
+
+USAGE
+  tailscale debug rotate-disco-key

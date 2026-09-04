@@ -1,0 +1,4 @@
+Print tailscaled's goroutines
+
+USAGE
+  tailscale debug daemon-goroutines

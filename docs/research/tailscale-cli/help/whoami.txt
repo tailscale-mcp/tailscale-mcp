@@ -1,0 +1,11 @@
+Show the machine and user identity of the current machine
+
+USAGE
+  tailscale whoami [--json]
+
+'tailscale whoami' shows the machine and user identity of the current machine.
+	It is equivalent to running 'tailscale whois' against one of the current machine's own Tailscale IP addresses.
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)

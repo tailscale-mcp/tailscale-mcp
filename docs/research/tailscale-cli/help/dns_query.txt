@@ -1,0 +1,17 @@
+Perform a DNS query
+
+USAGE
+  tailscale dns query [--json] <name> [type]
+
+The 'tailscale dns query' subcommand performs a DNS query for the specified name
+using the internal DNS forwarder (100.100.100.100).
+
+By default, the DNS query will request an A record. Specify the record type as
+a second argument after the name (e.g. AAAA, CNAME, MX, NS, PTR, SRV, TXT).
+
+The output also provides information about the resolver(s) used to resolve the
+query.
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)

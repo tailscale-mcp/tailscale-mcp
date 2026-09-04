@@ -1,0 +1,16 @@
+Debug ts2021 protocol connectivity
+
+USAGE
+  tailscale debug ts2021
+
+FLAGS
+  --ace value
+    	if non-empty, use this ACE server IP/hostname as a candidate path
+  --dial-plan value
+    	if non-empty, use this JSON file to configure the dial plan
+  --host value
+    	hostname of control plane (default controlplane.tailscale.com)
+  --verbose, --verbose=false
+    	be extra verbose (default false)
+  --version value
+    	protocol version (default 142)

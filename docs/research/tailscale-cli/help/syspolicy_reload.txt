@@ -1,0 +1,10 @@
+Force a reload of policy settings, even if no changes are detected, and prints the result
+
+USAGE
+  tailscale syspolicy reload
+
+The 'tailscale syspolicy reload' subcommand forces a reload of policy settings, even if no changes are detected, and prints the result.
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)

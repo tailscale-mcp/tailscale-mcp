@@ -1,0 +1,10 @@
+Update Tailscale to the latest/different version
+
+USAGE
+  tailscale update
+
+FLAGS
+  --dry-run, --dry-run=false
+    	print what update would do without doing it, or prompts (default false)
+  --yes, --yes=false
+    	update without interactive prompts (default false)

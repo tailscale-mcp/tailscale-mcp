@@ -1,0 +1,14 @@
+Show Tailscale metrics
+
+USAGE
+  tailscale metrics <subcommand> [flags]
+
+The 'tailscale metrics' command shows Tailscale user-facing metrics (as opposed
+to internal metrics printed by 'tailscale debug metrics').
+
+For more information about Tailscale metrics, refer to
+https://tailscale.com/s/client-metrics
+
+SUBCOMMANDS
+  print  Print current metric values in Prometheus text format
+  write  Write metric values to a file

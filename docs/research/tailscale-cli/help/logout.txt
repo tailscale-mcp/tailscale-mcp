@@ -1,0 +1,12 @@
+Disconnect from Tailscale and expire current node key
+
+USAGE
+  tailscale logout
+
+"tailscale logout" brings the network down and invalidates
+the current node key, forcing a future use of it to cause
+a reauthentication.
+
+FLAGS
+  --reason value
+    	reason for the logout, if required by a policy

@@ -1,0 +1,4 @@
+Print cmd/tailscale environment
+
+USAGE
+  tailscale debug env

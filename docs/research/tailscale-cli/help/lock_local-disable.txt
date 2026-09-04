@@ -1,0 +1,12 @@
+Disable tailnet lock for this node only
+
+USAGE
+  tailscale lock local-disable
+
+The 'tailscale lock local-disable' command disables tailnet lock for only
+the current node.
+
+If the current node is locked out, this does not mean that it can initiate
+connections in a tailnet with tailnet lock enabled. Rather, this means
+that the current node will accept traffic from other nodes in the tailnet
+that are locked out.

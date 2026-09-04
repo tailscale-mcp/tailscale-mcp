@@ -1,0 +1,4 @@
+Force a full no-op netmap update (for load testing)
+
+USAGE
+  tailscale debug force-netmap-update

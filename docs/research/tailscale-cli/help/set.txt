@@ -1,0 +1,50 @@
+Change specified preferences
+
+USAGE
+  tailscale set [flags]
+
+"tailscale set" allows changing specific preferences.
+
+Unlike "tailscale up", this command does not require the complete set of desired settings.
+
+Only settings explicitly mentioned will be set. There are no default values.
+
+FLAGS
+  --accept-dns, --accept-dns=false
+    	accept DNS configuration from the admin panel
+  --accept-risk value
+    	accept risk and skip confirmation for risk types: lose-ssh,mac-app-connector,all
+  --accept-routes, --accept-routes=false
+    	accept routes advertised by other Tailscale nodes
+  --advertise-connector, --advertise-connector=false
+    	offer to be an app connector for domain specific internet traffic for the tailnet
+  --advertise-exit-node, --advertise-exit-node=false
+    	offer to be an exit node for internet traffic for the tailnet
+  --advertise-routes value
+    	routes to advertise to other nodes (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24") or empty string to not advertise routes
+  --auto-update, --auto-update=false
+    	automatically update to the latest available version
+  --exit-node value
+    	Tailscale exit node (IP, base name, or auto:any) for internet traffic, or empty string to not use an exit node
+  --exit-node-allow-lan-access, --exit-node-allow-lan-access=false
+    	allow direct access to the local network when routing traffic via an exit node
+  --hostname value
+    	hostname to use instead of the one provided by the OS
+  --nickname value
+    	nickname for the current account
+  --operator value
+    	Unix username to allow to operate on tailscaled without sudo
+  --relay-server-port value
+    	UDP port number (0 will pick a random unused port) for the relay server to bind to, on all interfaces, or empty string to disable relay server functionality
+  --relay-server-static-endpoints value
+    	static IP:port endpoints to advertise as candidates for relay connections (comma-separated, e.g. "[2001:db8::1]:40000,192.0.2.1:40000") or empty string to not advertise any static endpoints
+  --report-posture, --report-posture=false
+    	allow management plane to gather device posture information
+  --shields-up, --shields-up=false
+    	don't allow incoming connections
+  --ssh, --ssh=false
+    	run an SSH server, permitting access per tailnet admin's declared policy
+  --update-check, --update-check=false
+    	notify about available Tailscale updates
+  --webclient, --webclient=false
+    	expose the web interface for managing this node over Tailscale at port 5252

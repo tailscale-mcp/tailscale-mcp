@@ -1,0 +1,27 @@
+Print the current app connector routes
+
+USAGE
+  tailscale appc-routes
+
+The 'tailscale appc-routes' command prints the current App Connector route status.
+
+By default this command prints the domains configured in the app connector configuration and how many routes have been
+learned for each domain.
+
+--all prints the routes learned from the domains configured in the app connector configuration; and any extra routes provided
+in the policy app connector 'routes' field.
+
+--map prints the routes learned from the domains configured in the app connector configuration.
+
+-n prints the total number of routes advertised by this device, whether learned, set in the policy, or set locally.
+
+For more information about App Connectors, refer to
+https://tailscale.com/kb/1281/app-connectors
+
+FLAGS
+  --all, --all=false
+    	print learned domains and routes and extra policy configured routes. (default false)
+  --map, --map=false
+    	print the map of learned domains: [routes]. (default false)
+  --n, --n=false
+    	print the total number of routes this node advertises. (default false)

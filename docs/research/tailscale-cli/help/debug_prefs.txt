@@ -1,0 +1,8 @@
+Print prefs
+
+USAGE
+  tailscale debug prefs
+
+FLAGS
+  --pretty, --pretty=false
+    	if true, pretty-print output (default false)

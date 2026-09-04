@@ -1,0 +1,4 @@
+Fetch an OIDC id-token for the Tailscale machine
+
+USAGE
+  tailscale id-token <aud>

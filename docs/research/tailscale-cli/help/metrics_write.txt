@@ -1,0 +1,12 @@
+Write metric values to a file
+
+USAGE
+  tailscale metrics write <path>
+
+The 'tailscale metrics write' command writes metric values to a text file provided as its
+only argument. It's meant to be used alongside Prometheus node exporter, allowing Tailscale
+metrics to be consumed and exported by the textfile collector.
+
+As an example, to export Tailscale metrics on an Ubuntu system running node exporter, you
+can regularly run 'tailscale metrics write /var/lib/prometheus/node-exporter/tailscaled.prom'
+using cron or a systemd timer.

@@ -1,0 +1,4 @@
+Enable DERP on-demand mode (breaks reachability)
+
+USAGE
+  tailscale debug derp-set-on-demand

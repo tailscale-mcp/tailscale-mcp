@@ -1,0 +1,48 @@
+# Dependency licence policy. ADR-0002 turns the licence boundary into a design
+# constraint: this project is Apache-2.0 and must not take on a copyleft
+# dependency, so the check is mechanical rather than a review habit.
+
+[licenses]
+version = 2
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "Unlicense",
+    "BSL-1.0",
+    # Not a code licence: webpki-roots ships Mozilla's root certificate store,
+    # and the Community Data License Agreement is how that data is published.
+    # Permissive, no share-alike obligation, so it clears the ADR-0002 boundary.
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.93
+# The allow-list is deliberately wider than the current tree, so an unused
+# entry is not a finding.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[[bans.deny]]
+name = "openssl"
+reason = "rustls only; see the workspace dependency policy"
+
+[[bans.deny]]
+name = "openssl-sys"
+reason = "rustls only; see the workspace dependency policy"
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

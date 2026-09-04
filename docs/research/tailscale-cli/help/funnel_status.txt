@@ -1,0 +1,8 @@
+View current funnel configuration
+
+USAGE
+  tailscale funnel status [--json]
+
+FLAGS
+  --json, --json=false
+    	output JSON (default false)

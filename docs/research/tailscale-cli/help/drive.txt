@@ -1,0 +1,6 @@
+Share a directory with your tailnet
+
+USAGE
+  tailscale drive [...any]
+
+Taildrive allows you to share directories with other machines on your tailnet.

@@ -1,0 +1,11 @@
+Manage the system extension for macOS (Standalone variant)
+
+USAGE
+  tailscale configure sysext [activate|deactivate|status]
+
+The sysext set of commands provides a way to activate, deactivate, or manage the state of the Tailscale system extension on macOS. This is only relevant if you are running the Standalone variant of the Tailscale client for macOS. To access more detailed information about system extensions installed on this Mac, run 'systemextensionsctl list'.
+
+SUBCOMMANDS
+  activate    Register the Tailscale system extension with macOS.
+  deactivate  Deactivate the Tailscale system extension on macOS
+  status      Print the enablement status of the Tailscale system extension

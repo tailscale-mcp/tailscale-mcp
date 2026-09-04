@@ -1,0 +1,37 @@
+[package]
+name = "tailscale-cli"
+description = "Wrapper around the tailscale command-line interface for driving the local node"
+keywords = ["tailscale", "cli", "wrapper", "tailnet"]
+categories = ["api-bindings", "command-line-utilities"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+# The stub binary exists only so that process execution can be tested without a
+# real daemon. It is not part of what this crate offers, so it does not ship.
+exclude = ["src/bin/**"]
+
+[features]
+# A scriptable `LocalBackend` for tests. Enabled by dependents' dev-dependencies,
+# so it is compiled for tests and never for a release binary.
+testing = []
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["process", "sync", "time", "io-util", "fs", "rt", "signal", "macros"] }
+tracing.workspace = true
+tempfile.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

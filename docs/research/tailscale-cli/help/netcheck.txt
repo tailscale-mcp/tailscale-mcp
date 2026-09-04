@@ -1,0 +1,16 @@
+Print an analysis of local network conditions
+
+USAGE
+  tailscale netcheck
+
+FLAGS
+  --bind-address value
+    	send and receive connectivity probes using this locally bound IP address; default: OS-assigned
+  --bind-port value
+    	send and receive connectivity probes using this UDP port; default: OS-assigned (default 0)
+  --every value
+    	if non-zero, do an incremental report with the given frequency (default 0s)
+  --format value
+    	output format; empty (for human-readable), "json" or "json-line"
+  --verbose, --verbose=false
+    	verbose logs (default false)

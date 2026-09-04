@@ -1,0 +1,8 @@
+Does a DNS lookup
+
+USAGE
+  tailscale debug resolve <hostname>
+
+FLAGS
+  --net value
+    	network type to resolve (ip, ip4, ip6) (default ip)

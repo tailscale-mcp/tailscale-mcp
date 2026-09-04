@@ -1,0 +1,9 @@
+Advertise this node as a service proxy to the tailnet
+
+USAGE
+  tailscale serve advertise <service>
+
+Advertise this node as a service proxy to the tailnet. This command is used
+to make the current node be considered as a service host for a service. This is
+useful to bring a service back after it has been drained. (i.e. after running 
+`tailscale serve drain <service>`). This is not needed if you are using `tailscale serve` to initialize a service.

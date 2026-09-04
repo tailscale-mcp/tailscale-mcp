@@ -1,0 +1,14 @@
+Copy file(s) to a host
+
+USAGE
+  tailscale file cp <files...> <target>:
+
+FLAGS
+  --name value
+    	alternate filename to use, especially useful when <file> is "-" (stdin)
+  --targets, --targets=false
+    	list possible file cp targets (default false)
+  --update-interval value
+    	how often to repaint the progress line; zero or negative disables progress display entirely (default 250ms)
+  --verbose, --verbose=false
+    	verbose output (default false)

@@ -1,0 +1,14 @@
+Sign a node or pre-approved auth key
+
+USAGE
+  tailscale lock sign <node-key> [<rotation-key>]
+  tailscale lock sign <auth-key>
+
+Either:
+  - signs a node key and transmits the signature to the coordination
+    server, or
+  - signs a pre-approved auth key, printing it in a form that can be
+    used to bring up nodes under tailnet lock
+
+If any of the key arguments begin with "file:", the key is retrieved from
+the file at the path specified in the argument suffix.

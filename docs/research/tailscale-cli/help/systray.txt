@@ -1,0 +1,7 @@
+Not available in this client build
+
+USAGE
+  tailscale systray
+
+The Tailscale systray app is not included in this client build.
+To run it manually, see https://github.com/tailscale/tailscale/tree/main/cmd/systray

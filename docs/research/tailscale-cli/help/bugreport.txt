@@ -1,0 +1,10 @@
+Print a shareable identifier to help diagnose issues
+
+USAGE
+  tailscale bugreport [note]
+
+FLAGS
+  --diagnose, --diagnose=false
+    	run additional in-depth checks (default false)
+  --record, --record=false
+    	if true, pause and then write another bugreport (default false)

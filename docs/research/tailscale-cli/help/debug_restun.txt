@@ -1,0 +1,4 @@
+Force a magicsock restun
+
+USAGE
+  tailscale debug restun

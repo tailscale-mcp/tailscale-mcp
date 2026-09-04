@@ -1,0 +1,13 @@
+Interact with Tailscale Services
+
+USAGE
+  tailscale service
+
+The 'tailscale service' command groups subcommands for Tailscale Services.
+
+A Tailscale Service is a virtual service with its own IP addresses. Which
+Services this node can reach is determined by the tailnet's ACLs. Use the 'list'
+subcommand to see the Services currently available to this node.
+
+SUBCOMMANDS
+  list  List the Tailscale Services your node can access

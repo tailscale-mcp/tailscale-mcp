@@ -1,0 +1,32 @@
+Subscribe to IPN message bus
+
+USAGE
+  tailscale debug watch-ipn
+
+FLAGS
+  --count value
+    	exit after printing this many statuses, or 0 to keep going forever (default 0)
+  --engine-updates, --engine-updates=false
+    	set NotifyWatchEngineUpdates: send Engine updates (default false)
+  --health-actions, --health-actions=false
+    	set NotifyHealthActions: include PrimaryActions in health.State (default false)
+  --initial, --initial=false
+    	include the initial backend State and Prefs in the first message (default false)
+  --initial-client-version, --initial-client-version=false
+    	set NotifyInitialClientVersion: send current ClientVersion in first message (default false)
+  --initial-drive-shares, --initial-drive-shares=false
+    	set NotifyInitialDriveShares: send current Taildrive Shares in first message (default false)
+  --initial-health, --initial-health=false
+    	set NotifyInitialHealthState: send current health.State in first message (default false)
+  --initial-outgoing-files, --initial-outgoing-files=false
+    	set NotifyInitialOutgoingFiles: send current Taildrop OutgoingFiles in first message (default false)
+  --initial-status, --initial-status=false
+    	set NotifyInitialStatus: send current ipnstate.Status in first message (default false)
+  --initial-suggested-exit-node, --initial-suggested-exit-node=false
+    	set NotifyInitialSuggestedExitNode: send current SuggestedExitNode in first message (default false)
+  --peer-changes, --peer-changes=false
+    	set NotifyPeerChanges: send PeersChanged and PeersRemoved updates (default true)
+  --peer-patches, --peer-patches=false
+    	set NotifyPeerPatches: send narrow per-field peer patches (default true)
+  --peer-wireguard-state, --peer-wireguard-state=false
+    	set NotifyPeerWireGuardState: send WireGuard session state notifications (default false)

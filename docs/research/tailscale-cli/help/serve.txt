@@ -1,0 +1,63 @@
+Serve content and local servers on your tailnet
+
+USAGE
+  tailscale serve <target>
+  tailscale serve status [--json]
+  tailscale serve reset
+
+Tailscale Serve enables you to share a local server securely within your tailnet.
+
+To share a local server on the internet, use `tailscale funnel`
+
+<target> can be a file, directory, text, or most commonly the location to a service running on the
+local machine. The location to the location service can be expressed as a port number (e.g., 3000),
+a partial URL (e.g., localhost:3000), or a full URL including a path (e.g., http://localhost:3000/foo).
+On Unix-like systems, you can also specify a Unix domain socket (e.g., unix:/tmp/myservice.sock).
+
+EXAMPLES
+  - Expose an HTTP server running at 127.0.0.1:3000 in the foreground:
+    $ tailscale serve 3000
+
+  - Expose an HTTP server running at 127.0.0.1:3000 in the background:
+    $ tailscale serve --bg 3000
+
+  - Expose an HTTPS server with invalid or self-signed certificates at https://localhost:8443
+    $ tailscale serve https+insecure://localhost:8443
+
+  - Expose a service listening on a Unix socket (Linux/macOS/BSD only):
+    $ tailscale serve unix:/var/run/myservice.sock
+
+For more examples and use cases visit our docs site https://tailscale.com/kb/1247/funnel-serve-use-cases
+
+SUBCOMMANDS
+  status      View current serve configuration
+  reset       Reset current serve config
+  drain       Drain a service from the current node
+  clear       Remove all config for a service
+  advertise   Advertise this node as a service proxy to the tailnet
+  get-config  Get service configuration to save to a file
+  set-config  Define service configuration from a file
+
+FLAGS
+  --accept-app-caps value
+    	App capabilities to forward to the server (specify multiple capabilities with a comma-separated list)
+  --bg, --bg=false
+    	Run the command as a background process (default false, when --service is set defaults to true).
+  --http value
+    	Expose an HTTP server at the specified port
+  --https value
+    	Expose an HTTPS server at the specified port (default mode)
+  --proxy-protocol value
+    	PROXY protocol version (1 or 2) for TCP forwarding
+  --service value
+    	Serve for a service with distinct virtual IP instead on node itself.
+  --set-path value
+    	Appends the specified path to the base URL for accessing the underlying service
+  --tcp value
+    	Expose a TCP forwarder to forward raw TCP packets at the specified port
+  --tls-terminated-tcp value
+    	Expose a TCP forwarder to forward TLS-terminated TCP packets at the specified port
+  --tun, --tun=false
+    	Forward all traffic to the local machine (default false), only supported for services. Refer to docs for more information.
+  --yes, --yes=false
+    	Update without interactive prompts (default false)

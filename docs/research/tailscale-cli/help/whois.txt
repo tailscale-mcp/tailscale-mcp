@@ -1,0 +1,12 @@
+Show the machine and user associated with a Tailscale IP (v4 or v6)
+
+USAGE
+  tailscale whois [--json] ip[:port]
+
+'tailscale whois' shows the machine and user associated with a Tailscale IP (v4 or v6).
+
+FLAGS
+  --json, --json=false
+    	output in JSON format (default false)
+  --proto value
+    	protocol; one of "tcp" or "udp"; empty means both

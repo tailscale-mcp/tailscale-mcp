@@ -1,0 +1,34 @@
+Show state of tailscaled and its connections
+
+USAGE
+  tailscale status [--active] [--web] [--json]
+
+JSON FORMAT
+
+Warning: this format has changed between releases and might change more
+in the future.
+
+For a description of the fields, see the "type Status" declaration at:
+
+https://github.com/tailscale/tailscale/blob/main/ipn/ipnstate/ipnstate.go
+
+(and be sure to select branch/tag that corresponds to the version
+ of Tailscale you're running)
+
+FLAGS
+  --active, --active=false
+    	filter output to only peers with active sessions (not applicable to web mode) (default false)
+  --browser, --browser=false
+    	open a browser in web mode (default true)
+  --header, --header=false
+    	show column headers in table format (default false)
+  --json, --json=false
+    	output in JSON format (WARNING: format subject to change) (default false)
+  --listen value
+    	listen address for web mode; use port 0 for automatic (default 127.0.0.1:8384)
+  --peers, --peers=false
+    	show status of peers (default true)
+  --self, --self=false
+    	show status of local machine (default true)
+  --web, --web=false
+    	run webserver with HTML showing status (default false)

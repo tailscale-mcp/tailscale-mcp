@@ -1,0 +1,9 @@
+Drain a service from the current node
+
+USAGE
+  tailscale serve drain <service>
+
+Make the current node no longer accept new connections for the specified service.
+Existing connections will continue to work until they are closed, but no new connections will be accepted.
+Use this command to gracefully remove a service from the current node without disrupting existing connections.
+<service> should be a service name (e.g., svc:my-service).

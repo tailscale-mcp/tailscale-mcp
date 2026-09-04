@@ -1,0 +1,8 @@
+Remove one or more trusted signing keys from tailnet lock
+
+USAGE
+  tailscale lock remove [--re-sign=false] <public-key>...
+
+FLAGS
+  --re-sign, --re-sign=false
+    	resign signatures which would be invalidated by removal of trusted signing keys (default true)

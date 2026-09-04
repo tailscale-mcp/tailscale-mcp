@@ -438,24 +438,26 @@ pub struct SelfConfirmation {
 /// node's own device", not the tool name — because the caller is being told
 /// what would happen, not which function it reached.
 ///
-/// Identity is read from local status at startup, and a session with no local
-/// surface has none: `SelfIdentity::default()` matches nothing, so the call is
-/// treated as ordinary. That is deliberate. The alternative is refusing every
-/// device operation on a suspicion the server cannot check, which would make
-/// the tailnet surface unusable on its own for the sake of a guess (Q83).
-pub fn not_at_ourselves(
+/// Identity is read from local status and refreshed as it ages, and a session
+/// with no local surface has none: `SelfIdentity::default()` matches nothing,
+/// so the call is treated as ordinary. That is deliberate. The alternative is
+/// refusing every device operation on a suspicion the server cannot check,
+/// which would make the tailnet surface unusable on its own for the sake of a
+/// guess (Q83).
+pub async fn not_at_ourselves(
     ctx: &ToolContext,
     what: &str,
     target: &str,
     confirmation: &SelfConfirmation,
 ) -> ToolResult<()> {
-    if !ctx.identity.matches(target) || confirmation.confirm == Some(true) {
+    if confirmation.confirm == Some(true) || !ctx.names_us(target).await {
         return Ok(());
     }
     Err(ToolError::new(
         ErrorCode::ConfirmationRequired,
         format!(
-            "`{target}` is the device this server runs on, so {what} can disconnect it,              and this call did not say it meant to"
+            "`{target}` is the device this server runs on, so {what} can cut this \
+             session off from it, and this call did not say it meant to"
         ),
     )
     .with_hint("Pass `confirm: true` to do it anyway."))

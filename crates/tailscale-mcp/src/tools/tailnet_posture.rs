@@ -63,8 +63,6 @@ fn integration_path(id: &str) -> ToolResult<String> {
     Ok(format!("/api/v2/posture/integrations/{id}"))
 }
 
-/// The provider names the description knows, quoted into the refusal.
-///
 /// The provider, present and sendable.
 ///
 /// Not held to `POSTURE_PROVIDERS`. That list names six endpoint-security

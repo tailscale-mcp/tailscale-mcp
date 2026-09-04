@@ -113,7 +113,12 @@ pub struct NoParams {}
 
 async fn service_list(ctx: &ToolContext, _params: NoParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    either_spelling(|base| client.get(client.tailnet_path(None, base)).send_as::<Value>()).await
+    either_spelling(|base| {
+        client
+            .get(client.tailnet_path(None, base))
+            .send_as::<Value>()
+    })
+    .await
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -125,7 +130,12 @@ pub struct ServiceParams {
 async fn service_get(ctx: &ToolContext, params: ServiceParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let name = &path_segment("service_name", &params.service_name)?;
-    either_spelling(|base| client.get(service_path(client, base, name, "")).send_as::<Value>()).await
+    either_spelling(|base| {
+        client
+            .get(service_path(client, base, name, ""))
+            .send_as::<Value>()
+    })
+    .await
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -222,7 +232,10 @@ async fn service_approval_get(ctx: &ToolContext, params: ServiceDeviceParams) ->
     .await
 }
 
-async fn service_approval_set(ctx: &ToolContext, params: ServiceApprovalParams) -> ToolResult<Value> {
+async fn service_approval_set(
+    ctx: &ToolContext,
+    params: ServiceApprovalParams,
+) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     // The danger is in the argument, not the tool: approving adds a host,
     // withdrawing removes a working one. The row carries the floor and the

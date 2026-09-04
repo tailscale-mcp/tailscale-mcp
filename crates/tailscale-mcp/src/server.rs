@@ -22,7 +22,7 @@ use tailscale_cli::{CliBackend, LocalBackend, Unavailable};
 use tailscale_rest::Credentials;
 
 use crate::config::Config;
-use crate::context::{PathPolicy, SelfIdentity, ToolContext};
+use crate::context::{Identity, PathPolicy, SelfIdentity, ToolContext};
 use crate::error::{ToolError, ToolResult};
 use crate::gating::{ConfigError, Gate};
 use crate::meta::Surface;
@@ -154,9 +154,17 @@ pub async fn build(
             ),
             Some(_) => {}
         }
-        (version, cli::probe_identity(backends.local.as_ref()).await)
+        (
+            version,
+            // Live: it may be read again as it ages, because a node can be
+            // renamed or moved onto a different address under a running
+            // server (Q87).
+            Identity::probed(cli::probe_identity(backends.local.as_ref()).await),
+        )
     } else {
-        (None, SelfIdentity::default())
+        // Nothing was read, so there is nothing to re-read: a fixed identity
+        // that matches nothing rather than a timer asking a missing binary.
+        (None, Identity::fixed(SelfIdentity::default()))
     };
 
     // Only when the surface is on offer: a credential in the environment is
@@ -311,7 +319,7 @@ impl ServerHandler for TailscaleMcpServer {
                 .enable_prompts()
                 .build(),
         )
-            .with_instructions(instructions::render(&self.gate, &self.ctx));
+        .with_instructions(instructions::render(&self.gate, &self.ctx));
         // Not `from_build_env`: that reads the *SDK*'s package metadata.
         info.server_info = Implementation::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
             .with_title("Tailscale")
@@ -825,7 +833,7 @@ mod tests {
     #[tokio::test]
     async fn the_identity_probe_fills_in_who_we_are() {
         let startup = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        let identity = &startup.server.context().identity;
+        let identity = startup.server.context().identity.last_known();
         assert!(identity.matches("n1234567CNTRL"));
         assert!(identity.matches("100.64.0.1"));
         assert!(identity.matches("workstation"));
@@ -834,7 +842,7 @@ mod tests {
     #[tokio::test]
     async fn without_a_local_surface_we_claim_no_identity() {
         let startup = server(Cli::default(), backends(None, true)).await;
-        let identity = &startup.server.context().identity;
+        let identity = startup.server.context().identity.last_known();
         assert!(!identity.matches("n1234567CNTRL"));
         assert_eq!(startup.server.context().cli_version, None);
     }

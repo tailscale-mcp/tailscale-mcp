@@ -208,11 +208,7 @@ pub struct DeviceInviteCreateParams {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct DeviceInviteRequest {
     /// Whether more than one person may accept this invitation.
-    #[serde(
-        rename = "multiUse",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "multiUse", default, skip_serializing_if = "Option::is_none")]
     pub multi_use: Option<bool>,
     /// Whether the invited user may route through this device as an exit
     /// node, where it advertises as one.
@@ -276,11 +272,7 @@ async fn resend(
     path: String,
     invite_id: String,
 ) -> ToolResult<Value> {
-    let answer = client
-        .post(path)
-        .send()
-        .await
-        .map_err(as_person)?;
+    let answer = client.post(path).send().await.map_err(as_person)?;
     crate::tools::common::answered_or(
         answer,
         Done::new("invitation sent again").about("invite_id", invite_id),

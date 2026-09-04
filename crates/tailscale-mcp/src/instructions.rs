@@ -95,7 +95,7 @@ pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
             "The local `tailscale` binary reports version {version}."
         );
     }
-    if let Some(name) = ctx.identity.dns_name.as_deref() {
+    if let Some(name) = ctx.identity.last_known().dns_name.as_deref() {
         let _ = writeln!(out, "This node is {}.", name.trim_end_matches('.'));
     }
 
@@ -127,7 +127,7 @@ mod tests {
     use tailscale_cli::Unavailable;
 
     use super::*;
-    use crate::context::{PathPolicy, SelfIdentity};
+    use crate::context::{Identity, PathPolicy, SelfIdentity};
     use crate::error::Redactor;
     use crate::gating::Preset;
     use crate::meta::Toolset;
@@ -142,7 +142,8 @@ mod tests {
             identity: SelfIdentity {
                 dns_name: Some("workstation.example-tailnet.ts.net.".to_owned()),
                 ..SelfIdentity::default()
-            },
+            }
+            .into(),
             cli_version: Some(Version::new(1, 102, 2)),
             paths: PathPolicy::default(),
             max_tier: Tier::Destructive,
@@ -240,7 +241,7 @@ mod tests {
     #[test]
     fn nothing_is_claimed_that_was_not_learned() {
         let bare = ToolContext {
-            identity: SelfIdentity::default(),
+            identity: Identity::default(),
             cli_version: None,
             paths: PathPolicy::default(),
             ..context()

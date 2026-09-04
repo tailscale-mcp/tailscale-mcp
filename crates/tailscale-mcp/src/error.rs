@@ -896,6 +896,9 @@ mod tests {
         assert!(left.contains("nlpriv:[redacted]"), "{left}");
 
         // A bare prefix with nothing after it is not key material.
-        assert_eq!(redact("privkey: is a field name"), "privkey: is a field name");
+        assert_eq!(
+            redact("privkey: is a field name"),
+            "privkey: is a field name"
+        );
     }
 }

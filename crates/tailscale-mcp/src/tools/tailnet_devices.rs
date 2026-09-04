@@ -28,7 +28,10 @@ use tailscale_rest::models::device::DEVICE_FIELDS;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{SelfConfirmation, not_at_ourselves, require_destructive, Done, answered_or, one_of, path_segment, report};
+use crate::tools::common::{
+    Done, SelfConfirmation, answered_or, not_at_ourselves, one_of, path_segment, report,
+    require_destructive,
+};
 
 crate::tools! {
     /// List the devices in the tailnet. Answers with the control plane's own
@@ -74,7 +77,7 @@ crate::tools! {
     /// Rename a device. Its old MagicDNS names stop resolving, so anything
     /// addressing it by name has to be updated.
     tailnet_device_rename => DeviceRenameParams, device_rename,
-        toolset: TailnetDevices, tier: Write, idempotent: true;
+        toolset: TailnetDevices, tier: Write, idempotent: true, severs_local: true;
 
     /// Replace a device's tags. Tags must already be defined in the tailnet
     /// policy file, and the credential's own tags limit what it may assign.
@@ -146,7 +149,7 @@ crate::tools! {
 /// control plane resolves which tailnet it belongs to. Only the two
 /// tailnet-wide endpoints — the listing and the batch attribute update — go
 /// through [`tailscale_rest::Client::tailnet_path`].
-fn device_path(device: &str, rest: &str) -> ToolResult<String> {
+pub(crate) fn device_path(device: &str, rest: &str) -> ToolResult<String> {
     let id = device_id("device_id", device)?;
     Ok(format!("/api/v2/device/{id}{rest}"))
 }
@@ -373,7 +376,8 @@ async fn device_delete(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolR
         "removing it from the tailnet",
         &params.device_id,
         &params.confirmation,
-    )?;
+    )
+    .await?;
     let client = ctx.tailnet()?;
     client
         .delete(device_path(&params.device_id, "")?)
@@ -388,7 +392,8 @@ async fn device_expire(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolR
         "expiring its node key",
         &params.device_id,
         &params.confirmation,
-    )?;
+    )
+    .await?;
     let client = ctx.tailnet()?;
     client
         .post(device_path(&params.device_id, "/expire")?)
@@ -417,6 +422,9 @@ async fn device_authorize(ctx: &ToolContext, params: DeviceAuthorizeParams) -> T
     // calls, so the row carries the floor and the call decides (Q70) — the
     // same arrangement the passthrough uses, and what `varying: true` means.
     if !params.authorized {
+        // The tier first: a session that may not do this at all should hear
+        // that, not be asked to confirm something it would then be refused.
+        require_destructive(ctx, "revoking a device's authorisation")?;
         // Only revoking can sever: authorising this node changes nothing about
         // the connection the caller is already using.
         not_at_ourselves(
@@ -424,10 +432,8 @@ async fn device_authorize(ctx: &ToolContext, params: DeviceAuthorizeParams) -> T
             "revoking its authorisation",
             &params.device_id,
             &params.confirmation,
-        )?;
-    }
-    if !params.authorized {
-        require_destructive(ctx, "revoking a device's authorisation")?;
+        )
+        .await?;
     }
     let client = ctx.tailnet()?;
     client
@@ -451,9 +457,16 @@ pub struct DeviceRenameParams {
     pub device_id: String,
     /// The new name. The control plane derives the MagicDNS name from it.
     pub name: String,
+    #[serde(flatten)]
+    pub confirmation: SelfConfirmation,
 }
 
 async fn device_rename(ctx: &ToolContext, params: DeviceRenameParams) -> ToolResult<Value> {
+    // A rename does not drop the connection the caller is on, but it does take
+    // away the name it dialled: anything that reconnects by MagicDNS stops
+    // finding this node. That is the same loss as an address change, arriving
+    // one round-trip later (Q88).
+    not_at_ourselves(ctx, "renaming it", &params.device_id, &params.confirmation).await?;
     let client = ctx.tailnet()?;
     client
         .post(device_path(&params.device_id, "/name")?)
@@ -482,7 +495,8 @@ async fn device_tags_set(ctx: &ToolContext, params: DeviceTagsParams) -> ToolRes
         "replacing its tags",
         &params.device_id,
         &params.confirmation,
-    )?;
+    )
+    .await?;
     let client = ctx.tailnet()?;
     client
         .post(device_path(&params.device_id, "/tags")?)
@@ -537,7 +551,8 @@ async fn device_ip_set(ctx: &ToolContext, params: DeviceIpParams) -> ToolResult<
         "moving it to another address",
         &params.device_id,
         &params.confirmation,
-    )?;
+    )
+    .await?;
     let client = ctx.tailnet()?;
     client
         .post(device_path(&params.device_id, "/ip")?)
@@ -578,7 +593,8 @@ async fn device_routes_set(ctx: &ToolContext, params: DeviceRoutesParams) -> Too
         "changing which of its routes are enabled",
         &params.device_id,
         &params.confirmation,
-    )?;
+    )
+    .await?;
     let client = ctx.tailnet()?;
     // This one answers with the routes it settled on, which is worth more to a
     // caller than a report that it worked.

@@ -223,7 +223,10 @@ async fn organization_tailnet_delete(
     // Named explicitly rather than taken from the session's default tailnet:
     // deleting whatever `TAILSCALE_TAILNET` happens to say is exactly the
     // accident the confirmation exists to prevent.
-    let path = format!("/api/v2/tailnet/{}", path_segment("tailnet", &params.tailnet)?);
+    let path = format!(
+        "/api/v2/tailnet/{}",
+        path_segment("tailnet", &params.tailnet)?
+    );
     client.delete(path).send().await?;
     report(Done::new("tailnet deleted").about("tailnet", params.tailnet))
 }
@@ -250,8 +253,8 @@ mod tests {
 
     #[test]
     fn an_empty_cursor_ends_the_walk_rather_than_repeating_the_last_page() {
-        let (tailnets, cursor) = page_of(&json!({"tailnets": [{"id": "T1"}], "cursor": ""}))
-            .expect("a page");
+        let (tailnets, cursor) =
+            page_of(&json!({"tailnets": [{"id": "T1"}], "cursor": ""})).expect("a page");
         assert_eq!(tailnets.len(), 1);
         assert_eq!(cursor, None, "an empty cursor is not a cursor");
 

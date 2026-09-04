@@ -35,7 +35,7 @@ pub(crate) mod testing {
     #[allow(unused_imports)]
     pub(crate) use tailscale_cli::stub::{Reply, StubBackend};
 
-    use crate::context::{PathPolicy, SelfIdentity, ToolContext};
+    use crate::context::{Identity, PathPolicy, ToolContext};
     use crate::error::Redactor;
     use crate::meta::Tier;
 
@@ -53,7 +53,7 @@ pub(crate) mod testing {
             tailnet: None,
             redactor: Redactor::default(),
             max_result_bytes: 1 << 20,
-            identity: SelfIdentity::default(),
+            identity: Identity::default(),
             cli_version: None,
             paths: PathPolicy::default(),
             max_tier: Tier::Destructive,

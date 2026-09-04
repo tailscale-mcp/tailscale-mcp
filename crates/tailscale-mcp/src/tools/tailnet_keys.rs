@@ -294,7 +294,10 @@ mod tests {
         assert!(checked_key_type(Some("client"), UPDATE_KEY_TYPES).is_ok());
 
         // Unstated is not a value to check; it is a field that is not sent.
-        assert_eq!(checked_key_type(None, UPDATE_KEY_TYPES).expect("no type"), None);
+        assert_eq!(
+            checked_key_type(None, UPDATE_KEY_TYPES).expect("no type"),
+            None
+        );
 
         let error = checked_key_type(Some("auth"), UPDATE_KEY_TYPES).expect_err("not updatable");
         let reported = serde_json::to_value(&error).expect("reportable");

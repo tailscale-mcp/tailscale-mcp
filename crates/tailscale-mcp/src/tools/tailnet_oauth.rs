@@ -60,7 +60,10 @@ fn oauth_apps_path(client: &tailscale_rest::Client) -> String {
 }
 
 fn oauth_app_path(client: &tailscale_rest::Client, app_id: &str) -> ToolResult<String> {
-    Ok(client.tailnet_path(None, &format!("/oauth-apps/{}", path_segment("app_id", app_id)?)))
+    Ok(client.tailnet_path(
+        None,
+        &format!("/oauth-apps/{}", path_segment("app_id", app_id)?),
+    ))
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

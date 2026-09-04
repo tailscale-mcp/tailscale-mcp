@@ -36,7 +36,11 @@ async fn listed(harness: &harness::Harness) -> Vec<String> {
 async fn every_resource_is_listed_when_both_surfaces_are_there() {
     let harness = Setup::new()
         .toolsets("local-status,tailnet-devices")
-        .api_answers("GET", "/api/v2/tailnet/-/devices", Response::json(json!({})))
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/devices",
+            Response::json(json!({})),
+        )
         .await
         .start()
         .await;
@@ -66,7 +70,11 @@ async fn a_resource_whose_surface_is_not_there_is_absent_rather_than_refused() {
     // backend is on offer and no `tailscale://` resource is either.
     let harness = Setup::new()
         .toolsets("tailnet-devices")
-        .api_answers("GET", "/api/v2/tailnet/-/devices", Response::json(json!({})))
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/devices",
+            Response::json(json!({})),
+        )
         .await
         .start()
         .await;
@@ -102,7 +110,10 @@ async fn reading_a_local_resource_answers_what_the_command_printed() {
     let contents = &result.contents[0];
     let (uri, mime, text) = match contents {
         rmcp::model::ResourceContents::TextResourceContents {
-            uri, mime_type, text, ..
+            uri,
+            mime_type,
+            text,
+            ..
         } => (uri, mime_type, text),
         other => panic!("a status resource is text: {other:?}"),
     };
@@ -134,8 +145,9 @@ async fn the_policy_resource_is_served_as_the_document_it_is() {
         .read_resource("tailnet://policy")
         .await
         .expect("on offer");
-    let rmcp::model::ResourceContents::TextResourceContents { mime_type, text, .. } =
-        &result.contents[0]
+    let rmcp::model::ResourceContents::TextResourceContents {
+        mime_type, text, ..
+    } = &result.contents[0]
     else {
         panic!("a policy is text");
     };
@@ -235,8 +247,14 @@ async fn no_resource_answers_with_something_a_tool_result_would_have_redacted() 
     .to_string();
     let harness = Setup::new()
         .toolsets("local-status,local-lock")
-        .cli_answers(&["status", "--json"], tailscale_cli::stub::Reply::ok(&leaky))
-        .cli_answers(&["lock", "status", "--json"], tailscale_cli::stub::Reply::ok(&leaky))
+        .cli_answers(
+            &["status", "--json"],
+            tailscale_cli::stub::Reply::ok(&leaky),
+        )
+        .cli_answers(
+            &["lock", "status", "--json"],
+            tailscale_cli::stub::Reply::ok(&leaky),
+        )
         .start()
         .await;
 
@@ -315,6 +333,121 @@ async fn the_policy_prompt_puts_the_write_last_and_only_as_the_operators_call() 
     assert!(at("tailnet_policy_get") < at("tailnet_policy_validate"));
     assert!(at("tailnet_policy_validate") < at("tailnet_policy_preview"));
     assert!(at("tailnet_policy_preview") < at("tailnet_policy_set"));
+
+    harness.shutdown().await;
+}
+
+/// Every resource, read through the client, answering with what its own
+/// backend was told to say.
+///
+/// The listing test above proves the nine are offered; this proves the nine
+/// are *readable*, which is a different claim and the one that catches a
+/// resource wired to a path or a command that does not exist. It caught two.
+#[tokio::test]
+async fn reading_every_resource_reaches_the_backend_behind_it() {
+    let hujson = "{\n  // Who may reach what.\n  \"acls\": [],\n}";
+    let harness = Setup::new()
+        .toolsets("local-status,tailnet-devices")
+        .cli_answers(
+            &["get", "--json"],
+            tailscale_cli::stub::Reply::ok("{\"RouteAll\":true}\n"),
+        )
+        .cli_answers(
+            &["netcheck", "--format=json"],
+            tailscale_cli::stub::Reply::ok("{\"UDP\":true}\n"),
+        )
+        .cli_answers(
+            &["lock", "status", "--json"],
+            tailscale_cli::stub::Reply::ok("{\"Enabled\":false}\n"),
+        )
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/acl",
+            Response::text("application/hujson", hujson),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/devices",
+            Response::json(json!({"devices": [{"nodeId": "n2222222CNTRL"}]})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/device/n2222222CNTRL",
+            Response::json(json!({"nodeId": "n2222222CNTRL", "name": "peer"})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/dns/configuration",
+            Response::json(json!({"magicDNS": true})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/settings",
+            Response::json(json!({"devicesApprovalOn": false})),
+        )
+        .await
+        .start()
+        .await;
+
+    for (uri, expected) in [
+        ("tailscale://status", "n1111111CNTRL"),
+        ("tailscale://prefs", "RouteAll"),
+        ("tailscale://netcheck", "UDP"),
+        ("tailscale://lock", "Enabled"),
+        ("tailnet://policy", "Who may reach what"),
+        ("tailnet://devices", "n2222222CNTRL"),
+        ("tailnet://device/n2222222CNTRL", "peer"),
+        ("tailnet://dns", "magicDNS"),
+        ("tailnet://settings", "devicesApprovalOn"),
+    ] {
+        let result = harness
+            .read_resource(uri)
+            .await
+            .unwrap_or_else(|error| panic!("`{uri}` should be readable: {error}"));
+        let rmcp::model::ResourceContents::TextResourceContents { text, .. } = &result.contents[0]
+        else {
+            panic!("`{uri}` should answer with text");
+        };
+        assert!(
+            text.contains(expected),
+            "`{uri}` should have reached its backend, and answered `{text}`"
+        );
+    }
+
+    harness.shutdown().await;
+}
+
+/// The preferences resource does not go round an exclusion.
+///
+/// `debug prefs` prints this node's private keys, which is why the passthrough
+/// and the tool surface both refuse it. A resource reading the same thing by
+/// another door would undo that, so the resource is held to the same argv the
+/// preference tool uses (Q89).
+#[tokio::test]
+async fn the_preferences_resource_does_not_run_an_excluded_command() {
+    let harness = Setup::new()
+        .toolsets("local-status")
+        .cli_answers(
+            &["get", "--json"],
+            tailscale_cli::stub::Reply::ok("{\"RouteAll\":true}\n"),
+        )
+        .start()
+        .await;
+
+    harness
+        .read_resource("tailscale://prefs")
+        .await
+        .expect("the sanctioned command answers");
+    let ran = harness.cli_calls();
+    assert!(
+        !ran.iter()
+            .any(|argv| argv.starts_with(&["debug".to_owned()])),
+        "no `debug` subcommand should have run: {ran:?}"
+    );
 
     harness.shutdown().await;
 }

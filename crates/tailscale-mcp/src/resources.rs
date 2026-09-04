@@ -21,8 +21,6 @@
 //! `status --json` needs: it carries key material for this node, and a
 //! resource is exactly as public as a tool result.
 
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use rmcp::model::{
@@ -35,14 +33,11 @@ use tailscale_cli::Invocation;
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
 use crate::meta::Surface;
-use crate::tools::common::path_segment;
 
 /// The media type everything but the policy answers with.
 const JSON: &str = "application/json";
 /// The policy file's own, which is not JSON: the comments are the point.
 const HUJSON: &str = "application/hujson";
-
-type Reading = Pin<Box<dyn Future<Output = ToolResult<String>> + Send>>;
 
 /// One resource: what it is called, what answers it, and which surface it
 /// needs to be there.
@@ -56,7 +51,7 @@ pub struct ResourceEntry {
     pub surface: Surface,
     /// `true` for the one entry that is a template rather than a URI.
     pub templated: bool,
-    read: fn(Arc<ToolContext>, String) -> Reading,
+    read: fn(Arc<ToolContext>, String) -> tailscale_cli::BoxFuture<'static, ToolResult<String>>,
 }
 
 impl std::fmt::Debug for ResourceEntry {
@@ -119,12 +114,7 @@ macro_rules! resources {
                     mime_type: $mime,
                     surface: Surface::$surface,
                     templated: $templated,
-                    read: |ctx, id| Box::pin(async move {
-                        let reader: fn(Arc<ToolContext>, String) -> Reading = |ctx, id| {
-                            Box::pin($read(ctx, id))
-                        };
-                        reader(ctx, id).await
-                    }),
+                    read: |ctx, id| Box::pin($read(ctx, id)),
                 },
             )*]
         }
@@ -144,7 +134,12 @@ resources! {
         "How this node is configured: routes it advertises, whether it is an \
          exit node, DNS and subnet-route acceptance, and the rest of what \
          `tailscale set` writes.",
-        |ctx, _id| local_json(ctx, ["debug", "prefs"]);
+        // `tailscale get --json`, not `debug prefs`: the latter prints this
+        // node's private keys along with its preferences and is on
+        // `local_debug::EXCLUDED` for that reason, which a resource must not
+        // be a way around (Q89). `tailscale_prefs_get` reads the same
+        // preferences from the same place.
+        |ctx, _id| local_json(ctx, ["get", "--json"]);
 
     "tailscale://netcheck" => "netcheck", "Connectivity report", JSON, Local,
         templated: false,
@@ -180,7 +175,7 @@ resources! {
         templated: false,
         "The tailnet's whole DNS configuration: nameservers, split DNS, \
          search paths and MagicDNS.",
-        |ctx, _id| tailnet_json(ctx, "/dns/config");
+        |ctx, _id| tailnet_json(ctx, "/dns/configuration");
 
     "tailnet://settings" => "settings", "Tailnet settings", JSON, Tailnet,
         templated: false,
@@ -215,14 +210,22 @@ async fn tailnet_json(ctx: Arc<ToolContext>, rest: &str) -> ToolResult<String> {
         .get(client.tailnet_path(None, rest))
         .send_as::<Value>()
         .await?;
-    Ok(serde_json::to_string_pretty(&answer).unwrap_or_else(|_| answer.to_string()))
+    Ok(printed(&answer))
 }
 
 async fn device(ctx: Arc<ToolContext>, device_id: String) -> ToolResult<String> {
     let client = ctx.tailnet()?;
-    let path = format!("/api/v2/device/{}", path_segment("device_id", &device_id)?);
-    let answer = client.get(path).send_as::<Value>().await?;
-    Ok(serde_json::to_string_pretty(&answer).unwrap_or_else(|_| answer.to_string()))
+    let answer = client
+        .get(crate::tools::tailnet_devices::device_path(&device_id, "")?)
+        .send_as::<Value>()
+        .await?;
+    Ok(printed(&answer))
+}
+
+/// An answer as the text a resource carries: indented, so that a person
+/// reading it in a client sees the shape.
+fn printed(answer: &Value) -> String {
+    serde_json::to_string_pretty(answer).unwrap_or_else(|_| answer.to_string())
 }
 
 /// The policy file as text, which is what makes it the odd one out.
@@ -318,7 +321,10 @@ pub fn prompts() -> Vec<PromptEntry> {
             name: "diagnose_connectivity",
             title: "Diagnose connectivity",
             description: "Work out why this node cannot reach something, using only reads.",
-            argument: ("peer", "The peer that cannot be reached, by name or address."),
+            argument: (
+                "peer",
+                "The peer that cannot be reached, by name or address.",
+            ),
             expand: |peer| {
                 let subject = match peer {
                     Some(peer) => format!("the peer `{peer}`"),
@@ -348,7 +354,10 @@ pub fn prompts() -> Vec<PromptEntry> {
             name: "review_policy_change",
             title: "Review a policy change",
             description: "Read, validate and preview a policy change before anyone writes it.",
-            argument: ("goal", "What the change is meant to achieve, in a sentence."),
+            argument: (
+                "goal",
+                "What the change is meant to achieve, in a sentence.",
+            ),
             expand: |goal| {
                 let purpose = match goal {
                     Some(goal) => format!("The change is meant to: {goal}\n\n"),
@@ -454,7 +463,10 @@ mod tests {
             .find(|r| r.uri == "tailnet://device/{device_id}")
             .expect("declared");
 
-        assert_eq!(device.captures("tailnet://device/n1111111CNTRL").as_deref(), Some("n1111111CNTRL"));
+        assert_eq!(
+            device.captures("tailnet://device/n1111111CNTRL").as_deref(),
+            Some("n1111111CNTRL")
+        );
         // Not a device: no identifier, or one carrying a path.
         assert_eq!(device.captures("tailnet://device/"), None);
         assert_eq!(device.captures("tailnet://device/n1/routes"), None);
@@ -505,7 +517,10 @@ mod tests {
             .expect("declared");
         let text = format!("{:?}", policy.expand(None));
 
-        let at = |needle: &str| text.find(needle).unwrap_or_else(|| panic!("{needle} is named"));
+        let at = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle} is named"))
+        };
         assert!(at("tailnet_policy_get") < at("tailnet_policy_validate"));
         assert!(at("tailnet_policy_validate") < at("tailnet_policy_preview"));
         assert!(

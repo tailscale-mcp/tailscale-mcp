@@ -5,7 +5,8 @@
 //! then the tests would have to construct one to call anything.
 
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use tailscale_cli::LocalBackend;
 
@@ -54,10 +55,20 @@ impl PathPolicy {
 /// is talking over.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SelfIdentity {
-    /// The control-plane device id of this node, when it could be determined.
-    pub device_id: Option<String>,
-    /// The node's stable id as the CLI reports it.
+    /// The node id, which is the identifier the control plane prefers:
+    /// `status --json` reports it as `Self.ID`, and it looks like
+    /// `n1234567CNTRL`.
     pub node_id: Option<String>,
+    /// The numeric device id, which the control plane accepts for the same
+    /// device.
+    ///
+    /// Not in status — the local node has never been told it — so it is
+    /// resolved from the control plane when there is a credential, and stays
+    /// `None` when there is not. A caller naming this node by its numeric id
+    /// in a session with no credential is therefore not recognised, which is
+    /// the same blind spot as a session with no local surface and is handled
+    /// the same way: the call is treated as ordinary.
+    pub numeric_id: Option<String>,
     /// Tailscale addresses assigned to this node.
     pub addresses: Vec<String>,
     /// The node's MagicDNS name.
@@ -78,8 +89,8 @@ impl SelfIdentity {
                 .as_deref()
                 .is_some_and(|c| c.trim_end_matches('.').eq_ignore_ascii_case(target))
         };
-        same(&self.device_id)
-            || same(&self.node_id)
+        same(&self.node_id)
+            || same(&self.numeric_id)
             || same(&self.dns_name)
             || self.addresses.iter().any(|a| a == target)
             // A MagicDNS name may be given unqualified.
@@ -88,6 +99,114 @@ impl SelfIdentity {
                 .as_deref()
                 .and_then(|n| n.split('.').next())
                 .is_some_and(|short| short.eq_ignore_ascii_case(target))
+    }
+}
+
+/// How long a reading of who we are is trusted before status is asked again.
+///
+/// An address or a name can change under a running server — a node is renamed,
+/// re-tagged, or moves onto a different address — and an identity that went
+/// stale would stop recognising an operation aimed at this node, which is the
+/// expensive direction to be wrong in. A minute is short enough that the window
+/// is small and long enough that a burst of device calls does not become a
+/// burst of `tailscale status` (Q87).
+pub const IDENTITY_FRESH_FOR: Duration = Duration::from_secs(60);
+
+/// The local node's identity, kept current.
+///
+/// Cheap to clone and shared between clones, so that one refresh serves every
+/// handler rather than each holding its own idea of who we are.
+#[derive(Clone, Default)]
+pub struct Identity {
+    held: Arc<Mutex<Held>>,
+    /// Whether status can be asked again at all. False when the local surface
+    /// is not offered, in which case there was nothing to read to begin with
+    /// and re-reading nothing on a timer is only noise.
+    live: bool,
+}
+
+#[derive(Debug, Default)]
+struct Held {
+    known: SelfIdentity,
+    /// When `known` was read. `None` before the first reading.
+    read_at: Option<Instant>,
+}
+
+impl Identity {
+    /// An identity that was read from status and may be read again.
+    pub fn probed(known: SelfIdentity) -> Self {
+        Self {
+            held: Arc::new(Mutex::new(Held {
+                known,
+                read_at: Some(Instant::now()),
+            })),
+            live: true,
+        }
+    }
+
+    /// An identity fixed at what it was given: what tests and a session with
+    /// no local surface get.
+    pub fn fixed(known: SelfIdentity) -> Self {
+        Self {
+            held: Arc::new(Mutex::new(Held {
+                known,
+                read_at: None,
+            })),
+            live: false,
+        }
+    }
+
+    /// The last reading, without asking for a new one.
+    ///
+    /// For the places that run once at startup and would gain nothing from a
+    /// refresh, such as the instructions.
+    pub fn last_known(&self) -> SelfIdentity {
+        self.held
+            .lock()
+            .map(|held| held.known.clone())
+            .unwrap_or_default()
+    }
+
+    /// Whether the last reading is old enough to be worth replacing.
+    fn stale(&self) -> bool {
+        self.live
+            && self.held.lock().is_ok_and(|held| {
+                held.read_at
+                    .is_none_or(|at| at.elapsed() >= IDENTITY_FRESH_FOR)
+            })
+    }
+
+    /// Store a fresh reading, keeping a numeric id the reading cannot carry.
+    fn store(&self, mut known: SelfIdentity) {
+        if let Ok(mut held) = self.held.lock() {
+            if known.numeric_id.is_none() && held.known.node_id == known.node_id {
+                known.numeric_id = held.known.numeric_id.take_if(|_| true);
+            }
+            held.known = known;
+            held.read_at = Some(Instant::now());
+        }
+    }
+
+    /// Store a numeric id resolved from the control plane.
+    fn store_numeric(&self, numeric_id: String) {
+        if let Ok(mut held) = self.held.lock() {
+            held.known.numeric_id = Some(numeric_id);
+        }
+    }
+}
+
+impl std::fmt::Debug for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Identity")
+            .field("known", &self.last_known())
+            .field("live", &self.live)
+            .finish()
+    }
+}
+
+impl From<SelfIdentity> for Identity {
+    fn from(known: SelfIdentity) -> Self {
+        Self::fixed(known)
     }
 }
 
@@ -109,7 +228,7 @@ pub struct ToolContext {
     /// The size above which a result is refused rather than truncated.
     pub max_result_bytes: usize,
     /// Who we are on the tailnet, when we could find out.
-    pub identity: SelfIdentity,
+    pub identity: Identity,
     /// The version the local CLI reports, when it could be read.
     pub cli_version: Option<Version>,
     /// Where the tools that take a path are allowed to write.
@@ -124,6 +243,47 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
+    /// Whether `target` names the node this server runs on.
+    ///
+    /// Two sources, because the control plane accepts two identifiers for the
+    /// same device and the local node only knows one of them. Status gives the
+    /// node id, the addresses and the name, and is re-read as it ages. The
+    /// numeric id has to be asked of the control plane — and is, only when the
+    /// answer could turn on it: a target that is not all digits is not a
+    /// numeric id, so the overwhelming majority of calls cost nothing extra,
+    /// and the one that does costs one request per process (Q87).
+    pub async fn names_us(&self, target: &str) -> bool {
+        if self.identity.stale() {
+            self.identity
+                .store(crate::cli::probe_identity(self.local.as_ref()).await);
+        }
+        let known = self.identity.last_known();
+        if known.matches(target) {
+            return true;
+        }
+
+        let numeric = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+        if known.numeric_id.is_some() || !numeric(target.trim()) {
+            return false;
+        }
+        let (Some(node_id), Some(client)) = (&known.node_id, self.tailnet.as_ref()) else {
+            return false;
+        };
+        // A device's numeric id does not change while its node id stays the
+        // same, so this is asked once and then remembered.
+        let Ok(path) = crate::tools::tailnet_devices::device_path(node_id, "") else {
+            return false;
+        };
+        let Ok(device) = client.get(path).send_as::<serde_json::Value>().await else {
+            return false;
+        };
+        let Some(numeric_id) = device["id"].as_str() else {
+            return false;
+        };
+        self.identity.store_numeric(numeric_id.to_owned());
+        self.identity.last_known().matches(target)
+    }
+
     /// The control plane, or the reason there is none.
     pub fn tailnet(&self) -> crate::error::ToolResult<&tailscale_rest::Client> {
         self.tailnet.as_ref().ok_or_else(|| {
@@ -155,8 +315,8 @@ mod tests {
 
     fn identity() -> SelfIdentity {
         SelfIdentity {
-            device_id: Some("n1234567CNTRL".to_owned()),
-            node_id: Some("nodekey:aaa".to_owned()),
+            node_id: Some("n1234567CNTRL".to_owned()),
+            numeric_id: Some("92960230385".to_owned()),
             addresses: vec!["100.64.0.1".to_owned(), "fd7a::1".to_owned()],
             dns_name: Some("workstation.example-tailnet.ts.net.".to_owned()),
         }
@@ -167,7 +327,8 @@ mod tests {
         let id = identity();
         for name in [
             "n1234567CNTRL",
-            "nodekey:aaa",
+            // Both identifier forms the control plane accepts for a device.
+            "92960230385",
             "100.64.0.1",
             "fd7a::1",
             "workstation.example-tailnet.ts.net",
@@ -184,6 +345,10 @@ mod tests {
         let id = identity();
         for name in [
             "n7654321CNTRL",
+            "92960230386",
+            // A public key is not an identifier the control plane accepts, so
+            // matching one would be a claim this server cannot cash.
+            "nodekey:1111111111111111111111111111111111111111111111111111111111111111",
             "100.64.0.2",
             "laptop.example-tailnet.ts.net",
             "laptop",

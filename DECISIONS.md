@@ -1052,3 +1052,63 @@ None of the three names a tool above the read tier except `tailnet_policy_set`, 
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/resources.rs`
+
+## Q87 — build/ticket-21 — omission
+
+**Question:** Ticket 21 asks that the identity "come from cached local status, refreshed on a sensible interval" and that "matching accepts either device identifier form". As first built it was read once at startup and never again, and held only one of the two forms — so `tailnet_device_delete` naming this node by its numeric id ran with no confirmation at all.
+
+**Options considered:** leave it, and document the gap / resolve the numeric id at startup for every session / refresh on a timer, and resolve the numeric id lazily when a target could be one
+
+**Chosen:** status is re-read when the last reading is a minute old; the numeric id is asked of the control plane only when the target is all digits and is then remembered.
+
+**Decided-by:** agent
+
+**Justification:** The confirmation exists for exactly one case — a call that would cut the caller off from this node — and an identity that cannot recognise half the identifiers the API accepts fails in that case rather than in a harmless one. That makes it worth a request.
+
+But not worth a request per call. Two things make it cheap. A device's numeric id does not change while its node id stays the same, so one lookup serves the process. And a target that is not all digits cannot be a numeric id, so the lookup is never made for the overwhelming majority of calls, which name a device by its node id. A session with no control-plane credential still cannot resolve it, and is left with the same blind spot as a session with no local surface, handled the same way: the call is treated as ordinary.
+
+A minute for the status reading, because a node can be renamed or moved onto a different address under a running server, and a stale identity fails in the expensive direction. A minute is short enough that the window is small and long enough that a burst of device calls is not a burst of `tailscale status`.
+
+The field that held the node's public key is gone. `nodekey:…` is not an identifier the control plane accepts for a device, so matching one was a claim this server could not cash, and a test now asserts it does not.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/context.rs`, `crates/tailscale-mcp/src/cli.rs`
+
+## Q88 — build/ticket-21 — interpretation
+
+**Question:** Ticket 21 names four operations as needing the confirmation — "deletion, key expiry, de-authorisation and re-tagging". Q83 added address and route changes on the reasoning that they can cut the caller off from this node. Does a rename belong too?
+
+**Options considered:** the ticket's four exactly / the four plus address and route changes / all seven, rename included
+
+**Chosen:** all seven.
+
+**Decided-by:** agent
+
+**Justification:** A rename does not drop the connection the caller is on, which is why it was left out first time round. But its own description says the old MagicDNS names stop resolving, and a caller that reaches this node by name and reconnects has been cut off just the same, one round-trip later. The axis is "can this call cut the caller off from this node", and by that question the answer is yes.
+
+The cost of being wrong in this direction is one `confirm: true` on a call an operator meant to make. The cost of being wrong in the other is an agent renaming the node it is talking to and losing it. The refusal's wording changed from "can disconnect it" to "can cut this session off from it", which is true of all seven rather than of five.
+
+**Supersedes:** Q83, as to which tools carry the axis.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_devices.rs`, `crates/tailscale-mcp/src/tools/common.rs`
+
+## Q89 — build/ticket-22 — deviation
+
+**Question:** `tailscale://prefs` was built on `tailscale debug prefs`, which is on `local_debug::EXCLUDED` because it prints this node's private keys along with its preferences.
+
+**Options considered:** keep it and lean on the redactor / keep it and strip the key fields in the resource / read the preferences from the sanctioned command instead
+
+**Chosen:** `tailscale get --json`, which is what `tailscale_prefs_get` already runs.
+
+**Decided-by:** agent
+
+**Justification:** The exclusion is unconditional: the passthrough refuses the command and no tool runs it. A resource running it anyway would make the exclusion a rule with three doors and one of them open, and the fact that the redactor now removes `privkey:` and `nlpriv:` is a second line of defence, not a reason to walk past the first.
+
+`tailscale get --json` reports the same preferences from the same daemon without the key material, so the resource loses nothing a caller wanted. A test asserts that reading the resource runs no `debug` subcommand at all, so the door cannot be reopened by accident.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/resources.rs`

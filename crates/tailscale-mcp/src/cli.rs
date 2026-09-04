@@ -236,8 +236,11 @@ pub async fn probe_identity(backend: &dyn tailscale_cli::LocalBackend) -> SelfId
     };
     let node = &document["Self"];
     SelfIdentity {
-        device_id: node["ID"].as_str().map(str::to_owned),
-        node_id: node["PublicKey"].as_str().map(str::to_owned),
+        node_id: node["ID"].as_str().map(str::to_owned),
+        // Status cannot supply this: the numeric id is the control plane's own
+        // name for the device and is never sent to the node. Filled in from
+        // the control plane by `ToolContext::current_identity`.
+        numeric_id: None,
         addresses: node["TailscaleIPs"]
             .as_array()
             .map(|ips| {
@@ -255,7 +258,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::context::PathPolicy;
+    use crate::context::{Identity, PathPolicy};
     use crate::error::{ErrorCode, Redactor};
     use crate::meta::{Tier, ToolMeta, Toolset};
     use crate::testing::StubBackend;
@@ -282,7 +285,7 @@ mod tests {
             tailnet: None,
             redactor: Redactor::default(),
             max_result_bytes: 1 << 20,
-            identity: SelfIdentity::default(),
+            identity: Identity::default(),
             cli_version,
             paths: PathPolicy::default(),
             max_tier: crate::meta::Tier::Destructive,

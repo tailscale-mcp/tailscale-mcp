@@ -803,10 +803,12 @@ fn contracts() -> Vec<Contract> {
             err: {"device_id": "n2222222CNTRL", "authorized": true}
         ),
         api_contract!(
+            // A peer, not this node: the fake status names `n1111111CNTRL` as
+            // ourselves, and a rename aimed at ourselves asks to be confirmed.
             "tailnet_device_rename",
-            ok: {"device_id": "n1111111CNTRL", "name": "example-node"}
-                on "POST" "/api/v2/device/n1111111CNTRL/name" => Response::empty(),
-            err: {"device_id": "n1111111CNTRL", "name": "example-node"}
+            ok: {"device_id": "n2222222CNTRL", "name": "example-node"}
+                on "POST" "/api/v2/device/n2222222CNTRL/name" => Response::empty(),
+            err: {"device_id": "n2222222CNTRL", "name": "example-node"}
         ),
         api_contract!(
             "tailnet_device_tags_set",
@@ -1220,7 +1222,6 @@ fn contracts() -> Vec<Contract> {
                 => Response::json(json!({"endpointId": "whk-example", "secret": "tskey-webhook-redacted"})),
             err: {"endpoint_id": "whk-example"}
         ),
-
         // --- Ticket 20: services -------------------------------------------
         api_contract!(
             "tailnet_service_list",
@@ -1273,7 +1274,6 @@ fn contracts() -> Vec<Contract> {
             // assert rather than this table's.
             err: {"service_name": "svc:example", "device_id": "n1111111CNTRL", "approved": true} also "/api/v2/tailnet/-/vip-services/svc:example/device/n1111111CNTRL/approved"
         ),
-
         // --- Ticket 20: OAuth apps -----------------------------------------
         api_contract!(
             "tailnet_oauth_app_list",
@@ -1323,7 +1323,6 @@ fn contracts() -> Vec<Contract> {
                 => Response::empty(),
             err: {"app_id": "a111111CNTRL"}
         ),
-
         // --- Ticket 20: logging --------------------------------------------
         api_contract!(
             "tailnet_audit_log_list",
@@ -1393,7 +1392,6 @@ fn contracts() -> Vec<Contract> {
                 "role_arn": "arn:aws:iam::000000000000:role/tailscale-log-writer"
             }
         ),
-
         // --- Ticket 20: organisation ---------------------------------------
         api_contract!(
             "tailnet_organization_tailnet_list",

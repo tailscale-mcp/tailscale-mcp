@@ -281,7 +281,7 @@ pub struct ToolMeta {
     ///
     /// Where [`Self::self_severing`] is true of every call a tool makes, this
     /// is true of some of them: `tailnet_device_delete` is an ordinary
-    /// destructive call against somebody else's machine and a cut cable
+    /// destructive call against somebody else's device and a cut cable
     /// against this one, and only the argument tells them apart. So it cannot
     /// imply [`Self::requires_confirmation`] — a caller managing another
     /// device would be made to confirm something that cannot happen — and the

@@ -249,7 +249,10 @@ pub struct LogStreamReplaceParams {
     pub configuration: Value,
 }
 
-async fn log_stream_replace(ctx: &ToolContext, params: LogStreamReplaceParams) -> ToolResult<Value> {
+async fn log_stream_replace(
+    ctx: &ToolContext,
+    params: LogStreamReplaceParams,
+) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let path = client.tailnet_path(None, &stream_path(&params.log_type, "")?);
     let configuration = on_the_wire(params.configuration)?;
@@ -292,7 +295,10 @@ pub struct AwsExternalIdParams {
     pub reusable: Option<bool>,
 }
 
-async fn aws_external_id_create(ctx: &ToolContext, params: AwsExternalIdParams) -> ToolResult<Value> {
+async fn aws_external_id_create(
+    ctx: &ToolContext,
+    params: AwsExternalIdParams,
+) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     // The model rather than a map built beside it: the drift test holds this
     // shape to the description, and a hand-written body is a second shape it
@@ -353,7 +359,10 @@ mod tests {
         let error = window("2023-12-19T16:39:57-08:00", "  ").expect_err("blank");
         let reported = serde_json::to_value(&error).expect("reportable");
         let message = reported["message"].as_str().expect("a message");
-        assert!(message.contains("`end`"), "should name the parameter: {message}");
+        assert!(
+            message.contains("`end`"),
+            "should name the parameter: {message}"
+        );
         assert!(
             message.contains("2023-12-19"),
             "and show the shape it wants: {message}"
@@ -378,10 +387,14 @@ mod tests {
 
     #[test]
     fn a_log_type_that_is_not_one_of_the_two_is_explained_on_the_way_back() {
-        let refused = ToolError::new(crate::error::ErrorCode::ApiError, "not found").with_status(404);
+        let refused =
+            ToolError::new(crate::error::ErrorCode::ApiError, "not found").with_status(404);
         let explained = explain_log_type(refused.clone(), "config");
         assert!(
-            explained.hint.as_deref().is_some_and(|h| h.contains("configuration")),
+            explained
+                .hint
+                .as_deref()
+                .is_some_and(|h| h.contains("configuration")),
             "a typo should be told what the two are: {explained:?}"
         );
         // A real log type that 404s is a missing stream, not a typo.

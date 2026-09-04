@@ -861,9 +861,16 @@ async fn a_service_call_asks_the_other_spelling_when_the_documented_one_is_not_t
         .await;
 
     let answer = harness
-        .call_ok("tailnet_service_get", json!({"service_name": "svc:example"}))
+        .call_ok(
+            "tailnet_service_get",
+            json!({"service_name": "svc:example"}),
+        )
         .await;
-    assert_eq!(answer["name"], json!("svc:example"), "the second path's answer");
+    assert_eq!(
+        answer["name"],
+        json!("svc:example"),
+        "the second path's answer"
+    );
 
     let asked = harness.control_plane().recorded();
     assert_eq!(
@@ -1021,7 +1028,10 @@ async fn deleting_this_nodes_own_device_needs_the_call_to_say_so() {
         .await;
 
     let error = harness
-        .call_err("tailnet_device_delete", json!({"device_id": "n1111111CNTRL"}))
+        .call_err(
+            "tailnet_device_delete",
+            json!({"device_id": "n1111111CNTRL"}),
+        )
         .await;
     assert_eq!(error["code"], "confirmation_required");
     assert_eq!(
@@ -1053,10 +1063,69 @@ async fn the_same_call_against_another_device_is_an_ordinary_one() {
         .await;
 
     let answer = harness
-        .call_ok("tailnet_device_delete", json!({"device_id": "n2222222CNTRL"}))
+        .call_ok(
+            "tailnet_device_delete",
+            json!({"device_id": "n2222222CNTRL"}),
+        )
         .await;
     assert_eq!(answer["done"], json!("deleted"));
     assert_eq!(harness.control_plane().request_count(), 1);
+
+    harness.shutdown().await;
+}
+
+/// The numeric id is the other name the control plane accepts, and status
+/// never mentions it.
+///
+/// So a caller naming this node the other way round has to be recognised the
+/// other way round, or the confirmation is a rule with a hole exactly where a
+/// caller would fall through it. The id is asked of the control plane, once,
+/// and only when the target is all digits — which is why the ordinary call
+/// above still costs one request and not two (Q87).
+#[tokio::test]
+async fn this_node_is_recognised_by_its_numeric_id_too() {
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        // What the control plane says when asked who `n1111111CNTRL` is.
+        .api_answers(
+            "GET",
+            "/api/v2/device/n1111111CNTRL",
+            Response::json(json!({"nodeId": "n1111111CNTRL", "id": "92960230385"})),
+        )
+        .await
+        .api_answers("DELETE", "/api/v2/device/92960230385", Response::empty())
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err("tailnet_device_delete", json!({"device_id": "92960230385"}))
+        .await;
+    assert_eq!(
+        error["code"], "confirmation_required",
+        "the numeric id names this node just as the node id does"
+    );
+
+    // Asked once, then remembered: the second refusal costs no further lookup.
+    let before = harness.control_plane().request_count();
+    let error = harness
+        .call_err("tailnet_device_delete", json!({"device_id": "92960230385"}))
+        .await;
+    assert_eq!(error["code"], "confirmation_required");
+    assert_eq!(
+        harness.control_plane().request_count(),
+        before,
+        "the numeric id does not change while the node id stays the same"
+    );
+
+    let answer = harness
+        .call_ok(
+            "tailnet_device_delete",
+            json!({"device_id": "92960230385", "confirm": true}),
+        )
+        .await;
+    assert_eq!(answer["done"], json!("deleted"));
 
     harness.shutdown().await;
 }
@@ -1072,7 +1141,11 @@ async fn this_node_is_recognised_by_any_name_the_api_accepts() {
         .start()
         .await;
 
-    for name in ["n1111111CNTRL", "100.64.0.1", "workstation.example-tailnet.ts.net"] {
+    for name in [
+        "n1111111CNTRL",
+        "100.64.0.1",
+        "workstation.example-tailnet.ts.net",
+    ] {
         let error = harness
             .call_err("tailnet_device_expire", json!({"device_id": name}))
             .await;
@@ -1102,7 +1175,10 @@ async fn with_no_local_surface_there_is_no_identity_and_the_call_is_ordinary() {
         .await;
 
     let answer = harness
-        .call_ok("tailnet_device_delete", json!({"device_id": "n1111111CNTRL"}))
+        .call_ok(
+            "tailnet_device_delete",
+            json!({"device_id": "n1111111CNTRL"}),
+        )
         .await;
     assert_eq!(answer["done"], json!("deleted"));
 

@@ -175,7 +175,10 @@ pub struct WebhookSubscriptionsParams {
     pub subscriptions: Vec<String>,
 }
 
-async fn webhook_subscriptions_replace(ctx: &ToolContext, params: WebhookSubscriptionsParams) -> ToolResult<Value> {
+async fn webhook_subscriptions_replace(
+    ctx: &ToolContext,
+    params: WebhookSubscriptionsParams,
+) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let path = webhook_path(&params.endpoint_id, "")?;
     let body = UpdateWebhookRequest {

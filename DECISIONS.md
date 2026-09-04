@@ -543,3 +543,76 @@ Taking both readings and keeping the stricter needs no flag knowledge and can on
 **Justification:** Q51 closed the two paths a command line was known to take — the failure message and the timeout — and `ExecError::Io` is a third, built inside `exec.rs` from `invocation.display()` before anything redacts. `ToolError::new` redacts by shape, which catches a `tskey-` but not a value the session registered, so the arm was leaking exactly the class of secret the redactor exists for. Rebuilding the message from `display` was rejected as a second spelling of `ExecError`'s own `Display`, which is the thing that has to stay in one place. Redacting the single arm fixes today and leaves the next variant to be judged by whoever adds it. Redacting every arm makes `exec_error` the seam it already is — the one place an `ExecError` becomes caller-visible text — at the cost of a redundant pass over two messages that carry only a binary path.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/cli.rs`
+
+## Q55 — build/ticket-15 — interpretation
+
+**Question:** Ticket 15 says the base URL "is pinned, with an override accepted only for tests and only over a secure or loopback address". A test cannot present a certificate for `api.tailscale.com`, so the override has to exist for the suite to reach a fake. How is a setting whose stated purpose is "only for tests" offered without becoming a way to send a credential somewhere it should not go?
+**Options considered:** a `#[cfg(test)]` seam with no runtime setting at all / a hidden environment variable, undocumented / a documented environment variable with no CLI flag, refusing any address that is neither https nor loopback / a CLI flag alongside it
+**Chosen:** `TAILSCALE_MCP_API_BASE_URL`, documented, environment-only, checked at startup, and a hard failure when it is neither.
+**Decided-by:** agent
+**Justification:** The `#[cfg(test)]` seam was the first choice and does not work: the integration tests build the server the way the binary builds it, through `server::build` and a real `Config`, which is the property that makes them worth having. A compile-time seam would mean the suite testing a different construction than the one that ships.
+
+Undocumented was the intent until `the_documented_variables_are_the_ones_that_are_read` failed, and the test was right. A setting that redirects every credential the server holds is worse hidden than explained: hidden, it is still readable in the source by anyone who might misuse it and invisible to the operator who would want to know it exists. Documented, it comes with the sentence saying what it refuses.
+
+No CLI flag, because a flag is the surface an operator reaches for and this is not a thing an operator should reach for; every other setting has both spellings, and this one deliberately does not. `check_base_url` requires `https` or a loopback host — `localhost`, or an address that `is_loopback()`, brackets trimmed for the IPv6 form — and refuses a URL carrying a path, since the base URL is a host and nothing more.
+
+Failing the startup rather than noting it is the last part. A note would leave the server running with the tailnet surface silently missing, and the only way to reach the failure at all is to have already pointed the server somewhere a credential must not go — which is not a thing to carry on from. `StartupError::ControlPlane` says the address and the reason.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/client.rs`, `crates/tailscale-mcp/src/config.rs`, `crates/tailscale-mcp/src/server.rs`
+
+## Q56 — build/ticket-15 — interpretation
+
+**Question:** The ticket asks for "retries only where retrying is safe … no retry on the unsafe methods". What decides that a call is safe to repeat?
+**Options considered:** a per-endpoint table naming which calls may be retried / an `idempotent` flag each call site passes / the HTTP method the call uses, per HTTP's own definition of idempotence
+**Chosen:** The method: `GET`, `HEAD`, `PUT` and `DELETE` repeatable; `POST` and `PATCH` once; a 429 the one exception, for any method.
+**Decided-by:** agent
+**Justification:** The rule has to hold for the ninety-three tailnet tools that do not exist yet, so the safe default matters more than the precision. A per-endpoint table is more accurate where it is filled in and silent where it is not, and its silence defaults the wrong way — the endpoint nobody classified is the one that gets retried. A flag at each call site is the same problem moved to whoever writes the call. The method is already on every request, is what HTTP itself defines idempotence against, and is what the control plane's own API shape follows: minting an auth key is a `POST`, and a retried mint is a second key that nobody holds and nobody sees.
+
+The 429 exception is not a hole in that reasoning but the same reasoning: the status means the server declined to act, so the request was not performed and repeating it repeats nothing. It is the only status that says so for a method HTTP does not call idempotent.
+
+A refused token is handled separately and before this, because it is not really a retry: a 401 means nothing was done either, whatever the method, so the attempt evicts the token and goes round once to mint another. Once per call, since a second 401 on a fresh token is the credential being wrong rather than the token being stale, and an API key is never re-minted because there is nothing to mint.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/client.rs`, `crates/tailscale-rest/src/error.rs`
+
+## Q57 — build/ticket-15 — deviation
+
+**Question:** A response over the size cap: truncate it and say so, or refuse it? The local surface's tools narrow a large result rather than failing, and `result_too_large` exists as an error code.
+**Options considered:** truncate and mark the result / parse first and narrow the parsed value / refuse the transfer with `TooLarge`, before parsing
+**Chosen:** Refuse, checking `Content-Length` before the transfer and the accumulated length while reading.
+**Decided-by:** agent
+**Justification:** Truncating a JSON document produces something that does not parse, which is a confusing failure rather than a smaller answer. Worse is the case where it does parse: half a device list is a wrong answer that nothing downstream can see is wrong, and a caller asking "which devices are stale" would get a confident, incomplete one. Parsing first and narrowing after was rejected because it buys nothing — the cost this cap exists to bound is the transfer and the parse, both of which have already happened by then.
+
+So the cap is enforced twice, in the two places the size is knowable: `content_length()` before anything is transferred, and the running total as chunks arrive, for a server that frames its response as chunked and states no length. Both fail with `TooLarge` carrying the cap, so the caller is told the ceiling they hit rather than left to guess. The cap is the session's `max_result_bytes`, so it is the same ceiling a tool result is held to and moves with the same switch.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/client.rs`
+
+## Q58 — build/ticket-15 — deviation
+
+**Question:** Q55 settled the base-URL override as "https or loopback, no path, checked at startup". Reviewing the code against that answer raised two things it did not cover: whether an address carrying a username or password is one of the accepted shapes, and whether the check runs when there is no credential for it to protect.
+**Options considered:** leave userinfo to the https requirement, since the transport is encrypted either way / refuse userinfo outright / check the address only when a client is actually built / check it whenever the tailnet surface is enabled
+**Chosen:** Refuse userinfo, and check the address whenever the tailnet surface is enabled, credential or not. `check_base_url` is renamed `checked_base_url` and made public, since the server crate is now the caller.
+**Decided-by:** agent
+**Supersedes:** Q55 — same question, two shapes it did not decide.
+**Justification:** `https://user:pass@host` is encrypted on the wire and still wrong here, for a reason https does not address: a URL is a thing that gets logged, printed in a diagnostic, and pasted into an issue, so userinfo is a secret written in the one place secrets travel in the clear. This server sends its credential as a header and has no use for the form at all, which makes refusing it free. The refusal message deliberately does not echo the URL back, for the same reason.
+
+Checking the address without a credential is the difference between an operator hearing about a misconfiguration now and hearing about it on the day they add a credential — which is the worst day for it, because the surface will have been quietly absent until then and the change that revealed the fault will look like its cause. The cost is that a server with no control-plane credential can now fail to start over a setting it was not going to use, which is the right way round: the setting is only ever set deliberately.
+
+Q55's "hard failure when it is neither" is unchanged, but one route to it has gone. `--max-result-bytes 0` used to reach `StartupError::ControlPlane` by way of the client refusing a zero cap, which reported a typo on the command line as a fault in the control-plane address. The flag is now judged in `Config::resolve_with` alongside the environment variable it duplicates, so the two spellings of one setting give the same answer and neither reaches the client.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/client.rs`, `crates/tailscale-mcp/src/config.rs`, `crates/tailscale-mcp/src/server.rs`
+
+## Q59 — build/ticket-15 — deviation
+
+**Question:** `spec.md` names two test seams and says "the exceptions are the two places behaviour is invisible from above, and both are named below". `tests/control_plane.rs` is a third: it drives the control-plane client through a session's `ToolContext` rather than through a tool call. Does the rule allow it?
+**Options considered:** drop the file and prove the wiring in ticket 16 through the first real tailnet tools / keep it permanently as a third named seam / keep it as a provisional seam that ticket 16 is expected to absorb
+**Chosen:** Keep it, provisionally, at six tests, and re-express what they prove through tool calls when ticket 16 lands the first tailnet tools.
+**Decided-by:** agent
+**Justification:** The rule's own words are the argument for the file: behaviour here is invisible from above because there is nothing above it yet. Ticket 15 builds the transport and no tool that uses it, so the alternative to this seam is a ticket whose acceptance criteria — the credential on the wire, the tailnet a path means, the size cap, an unreachable control plane — are asserted by nothing at all until a later ticket happens to cover them, which is how a foundation ships broken. Each of the six becomes an ordinary tool call the moment a tailnet tool exists.
+
+Keeping it permanently was rejected because the rule is right and this file is the shape it warns about: a test that knows how the server is wired will keep passing after the wiring stops reaching any caller.
+
+Two tests written here have already moved out. The base-URL pair is startup behaviour rather than transport behaviour — neither one makes a request — and `server.rs`'s own unit tests are where a `StartupError` is already asserted, beside `neither_surface_is_a_startup_error` and `a_selection_naming_only_hidden_surfaces_does_not_start`. They needed a server built by hand, which was the whole reason the file had a second helper, and they read better next to the other reasons a server refuses to start.
+
+Recorded rather than done quietly, because a third seam that nobody wrote down is a fourth one's precedent.
+**Outcome:** assumed
+**Ref:** `crates/tailscale-mcp/tests/control_plane.rs`, `.scratch/tailscale-mcp-v1/spec.md`

@@ -49,10 +49,10 @@ mod tests {
 
     #[test]
     fn a_secret_never_prints_itself() {
-        let secret = Secret::new("tskey-api-kXaMpLe1CNTRL-secretpart");
+        let secret = Secret::new("tskey-api-example1CNTRL-secretpart");
         assert!(!format!("{secret:?}").contains("secretpart"));
         assert!(!format!("{secret}").contains("secretpart"));
         assert!(!format!("{:?}", Some(secret.clone())).contains("secretpart"));
-        assert_eq!(secret.expose(), "tskey-api-kXaMpLe1CNTRL-secretpart");
+        assert_eq!(secret.expose(), "tskey-api-example1CNTRL-secretpart");
     }
 }

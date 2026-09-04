@@ -7,10 +7,17 @@
 // prevent elsewhere.
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
+pub mod client;
 pub mod credentials;
+pub mod error;
 #[cfg(any(test, feature = "testing"))]
 pub mod fake;
 pub mod secret;
+mod token;
 
+pub use client::{
+    Client, ClientConfig, DEFAULT_BASE_URL, RequestBuilder, TextBody, checked_base_url,
+};
 pub use credentials::{Credentials, DEFAULT_TAILNET};
+pub use error::ApiError;
 pub use secret::Secret;

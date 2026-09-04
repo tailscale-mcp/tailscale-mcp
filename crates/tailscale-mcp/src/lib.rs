@@ -47,6 +47,9 @@ pub(crate) mod testing {
     pub(crate) fn context(backend: Arc<StubBackend>) -> ToolContext {
         ToolContext {
             local: backend as Arc<dyn tailscale_cli::LocalBackend>,
+            // The tailnet surface has its own fake; a local handler
+            // never reaches for it.
+            tailnet: None,
             redactor: Redactor::default(),
             max_result_bytes: 1 << 20,
             identity: SelfIdentity::default(),

@@ -826,7 +826,10 @@ mod tests {
         let error = refused(
             |ctx, p| async move { lock_add(&ctx, p).await },
             LockKeysParams {
-                keys: vec![TLPUB.to_owned(), "tskey-auth-secret-value".to_owned()],
+                keys: vec![
+                    TLPUB.to_owned(),
+                    "tskey-auth-example-secretvalue".to_owned(),
+                ],
             },
         )
         .await;
@@ -834,7 +837,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::InvalidArgs);
         assert!(error.message.contains("value 2"), "{}", error.message);
         assert!(
-            !error.message.contains("tskey-auth-secret-value"),
+            !error.message.contains("tskey-auth-example-secretvalue"),
             "the rejected value is not repeated: {}",
             error.message
         );
@@ -937,12 +940,12 @@ mod tests {
     /// shape-based redaction would remove exactly the answer.
     #[tokio::test]
     async fn a_signed_auth_key_comes_back_whole_and_only_once() {
-        let signed = "tskey-auth-k000000CNTRL-signedvalue";
+        let signed = "tskey-auth-example0CNTRL-signedvalue";
         let (answer, _) = against(
             Reply::ok(format!("{signed}\n")),
             |ctx, p| async move { lock_sign(&ctx, p).await },
             LockSignParams {
-                key: "tskey-auth-k000000CNTRL".to_owned(),
+                key: "tskey-auth-example0CNTRL".to_owned(),
                 rotation_key: None,
             },
         )

@@ -138,6 +138,7 @@ mod tests {
     fn context() -> ToolContext {
         ToolContext {
             local: Arc::new(Unavailable::default()),
+            tailnet: None,
             redactor: Redactor::default(),
             max_result_bytes: 1 << 20,
             identity: SelfIdentity {

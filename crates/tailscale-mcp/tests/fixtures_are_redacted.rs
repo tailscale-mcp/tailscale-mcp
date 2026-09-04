@@ -80,10 +80,12 @@ fn leaks(text: &str) -> Vec<Leak> {
             });
         }
 
-        // A key of any kind: never recorded, only ever a placeholder.
-        if word.starts_with("tskey-") && !marked_fake(&word) {
+        // A key of any kind: never recorded, only ever a placeholder. A word
+        // that is only the prefix is not one: `tskey-auth` names a kind of key
+        // the way `tskey-` does, and grants access to nothing.
+        if word.starts_with("tskey-") && !is_key_prefix(&word) && !marked_fake(&word) {
             found.push(Leak {
-                what: "auth or API key",
+                what: "auth key or API access token",
                 value: word.clone(),
             });
         }
@@ -184,17 +186,32 @@ fn is_placeholder_hex(hex: &str) -> bool {
     characters.all(|c| c == first)
 }
 
+/// A key's kind with no key after it. These are the strings the redactor
+/// matches on, so they appear in its own source and in the text it produces.
+fn is_key_prefix(word: &str) -> bool {
+    matches!(word, "tskey" | "tskey-auth" | "tskey-api" | "tskey-client")
+}
+
 fn marked_fake(word: &str) -> bool {
     let lower = word.to_ascii_lowercase();
     lower.contains("example") || lower.contains("redacted")
 }
 
-/// Every file the check applies to: the fixtures, and the test sources, where
-/// a pasted response is just as likely to land.
+/// Every file the check applies to: the fixtures, the test sources where a
+/// pasted response is just as likely to land, and the sources of every crate
+/// in the workspace, because a unit test carries the same risk as an
+/// integration one and there is no reason to hold them to different rules.
+///
+/// `target` is skipped: it is build output, it is enormous, and nothing there
+/// is committed.
 fn files_to_check() -> Vec<PathBuf> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the crate is two levels below the workspace root")
+        .to_owned();
     let mut found = Vec::new();
-    let mut queue = vec![root];
+    let mut queue = vec![workspace.join("crates")];
     while let Some(directory) = queue.pop() {
         let Ok(entries) = std::fs::read_dir(&directory) else {
             continue;
@@ -202,7 +219,9 @@ fn files_to_check() -> Vec<PathBuf> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                queue.push(path);
+                if path.file_name() != Some(std::ffi::OsStr::new("target")) {
+                    queue.push(path);
+                }
             } else if path.file_name() != Some(std::ffi::OsStr::new(THIS_FILE)) {
                 // This file holds the counter-examples on purpose; it is the
                 // one place a real-looking identifier is the point.
@@ -259,6 +278,12 @@ fn the_check_catches_what_a_recorded_response_looks_like() {
         ),
         ("an account", "someone@theircompany.io"),
         ("an auth key", "tskey-auth-kZ8Qc1CNTRL-3n2yP8dQx"),
+        // The prefix rule is a prefix rule: a key that merely starts with one
+        // is still a key.
+        (
+            "a key whose kind is all that is redacted",
+            "tskey-auth-kZ8Qc1CNTRL",
+        ),
         (
             "a node key",
             "nodekey:0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9",
@@ -283,6 +308,9 @@ fn the_check_passes_what_a_placeholder_looks_like() {
         "100.100.100.100",
         "someone@example.com",
         "tskey-api-redacted-example",
+        // The redactor's own prefix table, and the text it produces.
+        "tskey-auth-",
+        "tskey-auth-[redacted]",
         "nodekey:1111111111111111111111111111111111111111111111111111111111111111",
         "n1111111CNTRL",
         r#"{"devices": [{"hostname": "workstation", "os": "macOS"}]}"#,

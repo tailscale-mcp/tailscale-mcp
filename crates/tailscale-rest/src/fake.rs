@@ -45,6 +45,11 @@ pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: String,
+    /// How long to take over it. A client's concurrency limit cannot be
+    /// observed against a server that answers instantly.
+    pub delay: std::time::Duration,
+    /// Send it without a `Content-Length`, the way a streamed answer arrives.
+    pub chunked: bool,
 }
 
 impl Response {
@@ -54,6 +59,8 @@ impl Response {
             status: 200,
             headers: vec![("content-type".to_owned(), "application/json".to_owned())],
             body: serde_json::to_string(&body).unwrap_or_else(|_| "null".to_owned()),
+            delay: std::time::Duration::ZERO,
+            chunked: false,
         }
     }
 
@@ -71,6 +78,8 @@ impl Response {
             status: 200,
             headers: Vec::new(),
             body: String::new(),
+            delay: std::time::Duration::ZERO,
+            chunked: false,
         }
     }
 
@@ -79,6 +88,20 @@ impl Response {
     pub fn with_header(mut self, name: &str, value: &str) -> Self {
         self.headers
             .push((name.to_ascii_lowercase(), value.to_owned()));
+        self
+    }
+
+    /// Take this long over it.
+    #[must_use]
+    pub fn slow(mut self, delay: std::time::Duration) -> Self {
+        self.delay = delay;
+        self
+    }
+
+    /// Send it chunked, so the client is not told the length in advance.
+    #[must_use]
+    pub fn chunked(mut self) -> Self {
+        self.chunked = true;
         self
     }
 }
@@ -104,6 +127,11 @@ impl Rule {
 struct State {
     rules: Vec<Rule>,
     recorded: Vec<Recorded>,
+    /// Requests currently being answered, and the most there have ever been
+    /// at once. The high-water mark is the only way to see a client's
+    /// concurrency limit from this side.
+    serving: usize,
+    peak_serving: usize,
 }
 
 /// A running fake control plane. Stops when it is dropped.
@@ -213,6 +241,17 @@ impl FakeControlPlane {
         self.recorded().len()
     }
 
+    /// The most requests that were ever being answered at the same moment.
+    ///
+    /// Only meaningful against responses that take some time; see
+    /// [`Response::slow`].
+    pub fn peak_concurrency(&self) -> usize {
+        self.state
+            .lock()
+            .map(|s| s.peak_serving)
+            .unwrap_or_default()
+    }
+
     /// The single request that arrived, when a test expects exactly one.
     ///
     /// # Panics
@@ -254,6 +293,8 @@ async fn serve(mut stream: TcpStream, state: Arc<Mutex<State>>) -> std::io::Resu
                     rule.response.clone()
                 });
             state.recorded.push(request);
+            state.serving += 1;
+            state.peak_serving = state.peak_serving.max(state.serving);
             found.unwrap_or_else(|| {
                 Response::status(
                     501,
@@ -262,7 +303,16 @@ async fn serve(mut stream: TcpStream, state: Arc<Mutex<State>>) -> std::io::Resu
             })
         };
 
-        stream.write_all(&render(&response)).await?;
+        // Outside the lock: the point of the delay is that other connections
+        // keep being served while this one waits.
+        if !response.delay.is_zero() {
+            tokio::time::sleep(response.delay).await;
+        }
+        let written = stream.write_all(&render(&response)).await;
+        if let Ok(mut state) = state.lock() {
+            state.serving -= 1;
+        }
+        written?;
         stream.flush().await?;
     }
 }
@@ -331,18 +381,37 @@ async fn read_request(
 }
 
 fn render(response: &Response) -> Vec<u8> {
+    let framing = if response.chunked {
+        "transfer-encoding: chunked\r\n".to_owned()
+    } else {
+        format!("content-length: {}\r\n", response.body.len())
+    };
     let mut head = format!(
-        "HTTP/1.1 {} {}\r\ncontent-length: {}\r\n",
+        "HTTP/1.1 {} {}\r\n{framing}",
         response.status,
         reason(response.status),
-        response.body.len()
     );
     for (name, value) in &response.headers {
         head.push_str(&format!("{name}: {value}\r\n"));
     }
     head.push_str("\r\n");
     let mut bytes = head.into_bytes();
-    bytes.extend_from_slice(response.body.as_bytes());
+    if response.chunked {
+        // Two chunks and a terminator, so that a client reading incrementally
+        // has to read more than once to reach the end.
+        let body = response.body.as_bytes();
+        let (first, second) = body.split_at(body.len() / 2);
+        for chunk in [first, second] {
+            if !chunk.is_empty() {
+                bytes.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
+                bytes.extend_from_slice(chunk);
+                bytes.extend_from_slice(b"\r\n");
+            }
+        }
+        bytes.extend_from_slice(b"0\r\n\r\n");
+    } else {
+        bytes.extend_from_slice(response.body.as_bytes());
+    }
     bytes
 }
 

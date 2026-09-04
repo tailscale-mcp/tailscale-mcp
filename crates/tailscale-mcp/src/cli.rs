@@ -278,6 +278,7 @@ mod tests {
     fn context(backend: StubBackend, cli_version: Option<Version>) -> ToolContext {
         ToolContext {
             local: Arc::new(backend),
+            tailnet: None,
             redactor: Redactor::default(),
             max_result_bytes: 1 << 20,
             identity: SelfIdentity::default(),
@@ -402,7 +403,7 @@ mod tests {
     #[tokio::test]
     async fn a_secret_in_the_error_stream_does_not_reach_the_caller() {
         let ctx = context(
-            StubBackend::failure(1, "bad key tskey-auth-kAbCdEfGhIjK-secretpart\n"),
+            StubBackend::failure(1, "bad key tskey-auth-example1CNTRL-secretpart\n"),
             None,
         );
         let err = run(&ctx, &meta(None), Invocation::read(["up"]))

@@ -97,6 +97,13 @@ pub struct ToolContext {
     /// The local node. Present even when the local surface is disabled, in
     /// which case it is a backend that reports the binary as missing.
     pub local: Arc<dyn LocalBackend>,
+    /// The control plane, when there is a credential to reach it with.
+    ///
+    /// Deliberately not `pub`: a handler asks [`ToolContext::tailnet`] for it
+    /// and gets either the client or the sentence explaining its absence, so
+    /// that the ninety-three tailnet tools do not each find their own words
+    /// for the same missing credential.
+    pub(crate) tailnet: Option<tailscale_rest::Client>,
     /// Removes secrets from anything on its way out.
     pub redactor: Redactor,
     /// The size above which a result is refused rather than truncated.
@@ -116,10 +123,24 @@ pub struct ToolContext {
     pub max_tier: Tier,
 }
 
+impl ToolContext {
+    /// The control plane, or the reason there is none.
+    pub fn tailnet(&self) -> crate::error::ToolResult<&tailscale_rest::Client> {
+        self.tailnet.as_ref().ok_or_else(|| {
+            crate::error::ToolError::backend_unavailable(
+                "the tailnet surface",
+                "no control-plane credential was found; set TAILSCALE_API_KEY, or \
+                 TAILSCALE_OAUTH_CLIENT_ID and TAILSCALE_OAUTH_CLIENT_SECRET",
+            )
+        })
+    }
+}
+
 impl std::fmt::Debug for ToolContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // No credential-bearing field is printed, and none should be added.
         f.debug_struct("ToolContext")
+            .field("tailnet", &self.tailnet.is_some())
             .field("max_result_bytes", &self.max_result_bytes)
             .field("identity", &self.identity)
             .field("cli_version", &self.cli_version)
@@ -135,7 +156,7 @@ mod tests {
     fn identity() -> SelfIdentity {
         SelfIdentity {
             device_id: Some("n1234567CNTRL".to_owned()),
-            node_id: Some("nodekey:abc".to_owned()),
+            node_id: Some("nodekey:aaa".to_owned()),
             addresses: vec!["100.64.0.1".to_owned(), "fd7a::1".to_owned()],
             dns_name: Some("workstation.example-tailnet.ts.net.".to_owned()),
         }
@@ -146,7 +167,7 @@ mod tests {
         let id = identity();
         for name in [
             "n1234567CNTRL",
-            "nodekey:abc",
+            "nodekey:aaa",
             "100.64.0.1",
             "fd7a::1",
             "workstation.example-tailnet.ts.net",

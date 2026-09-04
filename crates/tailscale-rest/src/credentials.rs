@@ -1,9 +1,14 @@
 //! Finding a control-plane credential in the environment.
 //!
-//! Three shapes are accepted, in a fixed order of precedence: an API key, an
-//! OAuth client, and a federated identity backed by a JWT on disk. The order is
-//! fixed rather than "whichever is set" so that an operator who leaves an old
-//! key in a shell profile gets a predictable answer instead of a lottery.
+//! Three shapes are accepted, in a fixed order of precedence: an API access
+//! token, an OAuth client, and a federated identity backed by a JWT on disk. The
+//! order is fixed rather than "whichever is set" so that an operator who leaves
+//! an old token in a shell profile gets a predictable answer instead of a
+//! lottery.
+//!
+//! `ApiKey` and `API_KEY_ENV` keep the ecosystem's spelling because the variable
+//! they read is `TAILSCALE_API_KEY` and an operator setting it should be able to
+//! find it here. `CONTEXT.md` governs the prose, which says "API access token".
 
 use std::path::PathBuf;
 
@@ -33,7 +38,10 @@ pub const ENV_VARS: &[&str] = &[
 /// How this server proves who it is to the control plane.
 #[derive(Debug, Clone)]
 pub enum Credentials {
-    /// A long-lived API key, sent as a bearer token.
+    /// A user's own API access token, sent as a bearer token. It expires on the
+    /// day the admin console gave it and is never renewed from this side.
+    ///
+    /// Named for `TAILSCALE_API_KEY`, the variable it comes from.
     ApiKey(Secret),
     /// An OAuth client, exchanged for a short-lived access token.
     OauthClient {
@@ -102,7 +110,7 @@ impl Credentials {
     /// How this credential is described in diagnostics. Never the value.
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::ApiKey(_) => "API key",
+            Self::ApiKey(_) => "API access token",
             Self::OauthClient { .. } => "OAuth client",
             Self::Federated { .. } => "federated identity",
         }
@@ -143,30 +151,30 @@ mod tests {
 
     #[test]
     fn an_api_key_is_read() {
-        let creds = Credentials::from_source(env(&[(API_KEY_ENV, "tskey-api-abc-def")]))
+        let creds = Credentials::from_source(env(&[(API_KEY_ENV, "tskey-api-example-def")]))
             .expect("a key is a credential");
         match creds {
-            Credentials::ApiKey(key) => assert_eq!(key.expose(), "tskey-api-abc-def"),
-            other => panic!("expected an API key, got {other:?}"),
+            Credentials::ApiKey(key) => assert_eq!(key.expose(), "tskey-api-example-def"),
+            other => panic!("expected an API access token, got {other:?}"),
         }
     }
 
     #[test]
     fn an_api_key_wins_over_an_oauth_client() {
         let creds = Credentials::from_source(env(&[
-            (API_KEY_ENV, "tskey-api-abc-def"),
+            (API_KEY_ENV, "tskey-api-example-def"),
             (OAUTH_CLIENT_ID_ENV, "kExAmPlE"),
-            (OAUTH_CLIENT_SECRET_ENV, "tskey-client-abc-def"),
+            (OAUTH_CLIENT_SECRET_ENV, "tskey-client-example-def"),
         ]))
         .expect("a credential");
-        assert_eq!(creds.kind(), "API key");
+        assert_eq!(creds.kind(), "API access token");
     }
 
     #[test]
     fn an_oauth_client_wins_over_a_federated_identity() {
         let creds = Credentials::from_source(env(&[
             (OAUTH_CLIENT_ID_ENV, "kExAmPlE"),
-            (OAUTH_CLIENT_SECRET_ENV, "tskey-client-abc-def"),
+            (OAUTH_CLIENT_SECRET_ENV, "tskey-client-example-def"),
             (OAUTH_JWT_FILE_ENV, "/run/secrets/token"),
         ]))
         .expect("a credential");
@@ -194,7 +202,7 @@ mod tests {
     fn half_an_oauth_client_is_not_a_credential() {
         assert!(Credentials::from_source(env(&[(OAUTH_CLIENT_ID_ENV, "kExAmPlE")])).is_none());
         assert!(
-            Credentials::from_source(env(&[(OAUTH_CLIENT_SECRET_ENV, "tskey-client-abc")]))
+            Credentials::from_source(env(&[(OAUTH_CLIENT_SECRET_ENV, "tskey-client-example")]))
                 .is_none()
         );
     }
@@ -214,7 +222,7 @@ mod tests {
         ] {
             let creds = Credentials::from_source(env(&[
                 (OAUTH_CLIENT_ID_ENV, "kExAmPlE"),
-                (OAUTH_CLIENT_SECRET_ENV, "tskey-client-abc"),
+                (OAUTH_CLIENT_SECRET_ENV, "tskey-client-example"),
                 (OAUTH_SCOPES_ENV, raw),
             ]))
             .expect("a credential");
@@ -242,7 +250,7 @@ mod tests {
 
     #[test]
     fn a_credential_never_prints_its_value() {
-        let creds = Credentials::from_source(env(&[(API_KEY_ENV, "tskey-api-abc-secretpart")]))
+        let creds = Credentials::from_source(env(&[(API_KEY_ENV, "tskey-api-example-secretpart")]))
             .expect("a credential");
         assert!(!format!("{creds:?}").contains("secretpart"), "{creds:?}");
     }

@@ -35,6 +35,12 @@ pub enum StartupError {
     Config(#[from] ConfigError),
     #[error(transparent)]
     Registry(#[from] RegistryError),
+    /// A control-plane client that cannot be built is a startup failure rather
+    /// than a note. In practice this is the base URL having been set to
+    /// somewhere a credential must not be sent, and carrying on would mean
+    /// running with the tailnet surface silently missing.
+    #[error(transparent)]
+    ControlPlane(#[from] tailscale_rest::ApiError),
 }
 
 /// What the two surfaces turned out to be.
@@ -151,6 +157,29 @@ pub async fn build(
         (None, SelfIdentity::default())
     };
 
+    // Only when the surface is on offer: a credential in the environment is
+    // not a reason to build a client for tools nobody can call. The address is
+    // judged either way, so that an operator who has redirected the control
+    // plane hears about it now rather than on the day they add a credential.
+    let tailnet = if unavailable.contains(&Surface::Tailnet) {
+        None
+    } else {
+        tailscale_rest::checked_base_url(&config.api_base_url)?;
+        match &backends.credentials {
+            Some(credentials) => {
+                let mut client = tailscale_rest::ClientConfig::new(credentials.clone());
+                client.base_url = config.api_base_url.clone();
+                client.tailnet = config.tailnet.clone();
+                client.max_response_bytes = config.max_result_bytes;
+                // One number for both surfaces: a control-plane call is a tool
+                // call, and a tool call has one timeout.
+                client.budget = tailscale_cli::DEFAULT_TIMEOUT;
+                Some(tailscale_rest::Client::new(client)?)
+            }
+            None => None,
+        }
+    };
+
     let gate = Gate::new(
         config.toolsets.clone(),
         config.max_tier,
@@ -160,6 +189,7 @@ pub async fn build(
 
     let ctx = ToolContext {
         local: Arc::clone(&backends.local),
+        tailnet,
         redactor: crate::error::Redactor::default(),
         max_result_bytes: config.max_result_bytes,
         identity,
@@ -418,7 +448,7 @@ mod tests {
                     json!({
                         "Self": {
                             "ID": "n1234567CNTRL",
-                            "PublicKey": "nodekey:abc",
+                            "PublicKey": "nodekey:aaa",
                             "TailscaleIPs": ["100.64.0.1", "fd7a::1"],
                             "DNSName": "workstation.example-tailnet.ts.net."
                         }
@@ -588,6 +618,54 @@ mod tests {
             err,
             StartupError::Config(ConfigError::NoToolsEnabled)
         ));
+    }
+
+    /// A server pointed somewhere in particular, so that the base URL is the
+    /// only thing the pair below varies. Everything else is a healthy node
+    /// with a credential, which is the state in which the address matters.
+    async fn build_pointed_at(base_url: &str) -> Result<Startup, StartupError> {
+        let config = Config::resolve_with(Cli::default(), |key| {
+            (key == crate::config::API_BASE_URL_ENV).then(|| base_url.to_owned())
+        })
+        .expect("the configuration itself resolves");
+
+        build(
+            &config,
+            fixture::entries(),
+            backends(Some(healthy_node()), true),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_base_url_that_is_not_the_control_plane_stops_the_server_starting() {
+        // Not a note and not a hidden failure: the only way to reach this is
+        // to have redirected every credential this server holds, and starting
+        // anyway would mean running with the tailnet surface quietly missing.
+        let error = build_pointed_at("http://control.example.com")
+            .await
+            .expect_err("plaintext to another host is refused");
+
+        let reported = error.to_string();
+        assert!(
+            reported.contains("loopback") && reported.contains("control.example.com"),
+            "the failure should say what was wrong and with what: {reported}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_loopback_address_is_the_one_thing_that_may_stand_in_for_it() {
+        // The other half of the pair, and what the whole suite rides on: the
+        // fake control plane is reachable because it is on this machine, and
+        // for no other reason. Same scheme, same everything, different host.
+        let fake = tailscale_rest::fake::FakeControlPlane::start()
+            .await
+            .expect("a loopback socket");
+
+        let startup = build_pointed_at(fake.base_url())
+            .await
+            .expect("a fake on this machine is a place a credential may go");
+        assert!(startup.server.context().tailnet().is_ok());
     }
 
     #[tokio::test]

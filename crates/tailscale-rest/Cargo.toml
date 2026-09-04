@@ -31,3 +31,5 @@ workspace = true
 # The fake control plane needs a socket and a runtime, which the crate itself
 # does not; enabling them here keeps them out of a release build.
 tokio = { workspace = true, features = ["net", "rt", "rt-multi-thread", "io-util", "macros"] }
+# The federated credential is a file on disk, so testing it needs one.
+tempfile.workspace = true

@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn the_secret_reaches_the_cli_by_reference_not_by_value() {
-        let secret = "tskey-auth-notreal-notreal";
+        let secret = "tskey-auth-example-notreal";
         let file = SecretFile::new(secret).expect("a temporary file");
         let arg = file.arg();
         assert!(arg.starts_with("file:"));
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn the_file_is_readable_only_by_this_user() {
         use std::os::unix::fs::PermissionsExt as _;
-        let file = SecretFile::new("tskey-auth-notreal-notreal").expect("a temporary file");
+        let file = SecretFile::new("tskey-auth-example-notreal").expect("a temporary file");
         let mode = std::fs::metadata(file.path())
             .expect("metadata")
             .permissions()
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn the_file_goes_away_with_the_call() {
         let path = {
-            let file = SecretFile::new("tskey-auth-notreal-notreal").expect("a temporary file");
+            let file = SecretFile::new("tskey-auth-example-notreal").expect("a temporary file");
             file.path().to_path_buf()
         };
         assert!(!path.exists(), "{} outlived its guard", path.display());

@@ -60,6 +60,9 @@ pub struct Setup {
     cli_rules: Vec<(Vec<String>, Reply)>,
     control_plane: Option<FakeControlPlane>,
     credentialled: bool,
+    /// Variables the server should see. The suite answers nothing else, so no
+    /// test can pass or fail because of what is set on the machine.
+    env: Vec<(String, String)>,
 }
 
 impl Default for Setup {
@@ -79,6 +82,7 @@ impl Setup {
             cli_rules: Vec::new(),
             control_plane: None,
             credentialled: true,
+            env: Vec::new(),
         }
     }
 
@@ -146,10 +150,24 @@ impl Setup {
         self
     }
 
+    /// Set an environment variable for this server.
+    #[must_use]
+    pub fn env(mut self, key: &str, value: &str) -> Self {
+        self.env.push((key.to_owned(), value.to_owned()));
+        self
+    }
+
     /// Build with no `tailscale` binary on the machine.
     #[must_use]
     pub fn without_cli(mut self) -> Self {
         self.cli.no_local = true;
+        self
+    }
+
+    /// Build with the tailnet surface switched off, credential or not.
+    #[must_use]
+    pub fn without_tailnet(mut self) -> Self {
+        self.cli.no_tailnet = true;
         self
     }
 
@@ -166,7 +184,22 @@ impl Setup {
     /// If the configuration or the server does not build, which is the test
     /// itself being wrong rather than a behaviour worth reporting.
     pub async fn start(self) -> Harness {
-        let config = Config::resolve_with(self.cli, |_| None).expect("the configuration resolves");
+        // Whatever the test asked for, and then the fake's address. The
+        // test's own entry comes first so a test that sets the base URL
+        // itself is not overruled by a fake it also arranged.
+        let mut env = self.env;
+        if let Some(fake) = self.control_plane.as_ref() {
+            env.push((
+                tailscale_mcp::config::API_BASE_URL_ENV.to_owned(),
+                fake.base_url().to_owned(),
+            ));
+        }
+        let config = Config::resolve_with(self.cli, |key| {
+            env.iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value.clone())
+        })
+        .expect("the configuration resolves");
         let backend = Arc::new(self.backend.unwrap_or_else(|| {
             let mut backend = StubBackend::failure(1, "the test did not say what this should do");
             for (argv, reply) in self.cli_rules {
@@ -187,6 +220,7 @@ impl Setup {
             .await
             .expect("the server builds");
         let notes = startup.notes.clone();
+        let context = Arc::clone(startup.server.context());
 
         let (client_side, server_side) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = tokio::io::split(server_side);
@@ -206,6 +240,7 @@ impl Setup {
             client,
             backend,
             control_plane: self.control_plane,
+            context,
             notes,
             serving,
         }
@@ -216,13 +251,26 @@ impl Setup {
 pub struct Harness {
     client: RunningService<rmcp::RoleClient, ()>,
     pub backend: Arc<StubBackend>,
-    pub control_plane: Option<FakeControlPlane>,
+    control_plane: Option<FakeControlPlane>,
+    /// What the handlers were given, for the parts of a session that are not
+    /// reachable through a tool call.
+    pub context: Arc<tailscale_mcp::context::ToolContext>,
     /// What the operator would have seen on standard error.
     pub notes: Vec<String>,
     serving: tokio::task::JoinHandle<()>,
 }
 
 impl Harness {
+    /// The fake control plane, for asserting on what reached it.
+    ///
+    /// # Panics
+    /// If the test did not arrange one with [`Setup::api_answers`].
+    pub fn control_plane(&self) -> &FakeControlPlane {
+        self.control_plane
+            .as_ref()
+            .expect("this test arranged no control-plane answers")
+    }
+
     /// What the server said about itself during the handshake.
     ///
     /// # Panics

@@ -291,8 +291,8 @@ enum Guard<'a> {
 
 /// The environment the child gets: an allow-list, not the parent's.
 ///
-/// Two reasons. Our own credentials — API keys, OAuth secrets — are in this
-/// process's environment and have no business in a child that does not need
+/// Two reasons. Our own credentials — API access tokens, OAuth secrets — are in
+/// this process's environment and have no business in a child that does not need
 /// them. And `TS_DEBUG_*` and friends change the CLI's behaviour, so inheriting
 /// whatever the launching shell happened to have makes the server's behaviour
 /// depend on how it was started.

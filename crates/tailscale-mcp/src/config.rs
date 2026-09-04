@@ -31,6 +31,12 @@ pub const NO_TAILNET_ENV: &str = "TAILSCALE_MCP_NO_TAILNET";
 pub const CLI_PATH_ENV: &str = "TAILSCALE_MCP_CLI_PATH";
 pub const MAX_RESULT_BYTES_ENV: &str = "TAILSCALE_MCP_MAX_RESULT_BYTES";
 pub const LOG_ENV: &str = "TAILSCALE_MCP_LOG";
+/// Where the control-plane calls go. Deliberately without a command-line form:
+/// it exists so the tests can point at a fake and so a staging control plane
+/// can be reached, and neither belongs among the flags. It is documented all
+/// the same — a setting that redirects every credential this server holds is
+/// worse hidden than explained.
+pub const API_BASE_URL_ENV: &str = "TAILSCALE_MCP_API_BASE_URL";
 
 /// Every variable this module reads, for the diagnosis subcommand and the
 /// documentation to stay in step with the code.
@@ -44,6 +50,7 @@ pub const ENV_VARS: &[&str] = &[
     CLI_PATH_ENV,
     MAX_RESULT_BYTES_ENV,
     LOG_ENV,
+    API_BASE_URL_ENV,
 ];
 
 const LONG_ABOUT: &str = "\
@@ -65,6 +72,13 @@ wins over the matching variable.
   TAILSCALE_MCP_CLI_PATH           --cli-path
   TAILSCALE_MCP_MAX_RESULT_BYTES   --max-result-bytes
   TAILSCALE_MCP_LOG                --log
+
+TAILSCALE_TAILNET names the tailnet the control-plane tools act on; without it
+they act on the one the credential belongs to. TAILSCALE_MCP_API_BASE_URL sends
+the control-plane calls somewhere other than https://api.tailscale.com. It is
+there so the test suite can reach a fake on this machine, and has no
+command-line form. An address is accepted only over https or to this machine,
+and never with a username or password in it.
 
 Credentials for the tailnet surface are read from TAILSCALE_API_KEY, or from
 TAILSCALE_OAUTH_CLIENT_ID and TAILSCALE_OAUTH_CLIENT_SECRET, or from
@@ -127,6 +141,13 @@ pub struct Config {
     pub disabled: BTreeSet<Surface>,
     pub cli_path: Option<PathBuf>,
     pub max_result_bytes: usize,
+    /// Where the control-plane calls go. The real control plane unless a test
+    /// or a staging environment says otherwise; validated when the client is
+    /// built, because that is where the rule about what is safe lives.
+    pub api_base_url: String,
+    /// The tailnet a control-plane path means when the caller does not name
+    /// one.
+    pub tailnet: String,
     pub log_filter: String,
 }
 
@@ -188,6 +209,17 @@ impl Config {
         }
 
         let max_result_bytes = match cli.max_result_bytes {
+            // Judged the same as the variable below it: a cap of zero rejects
+            // every answer, and does it from inside the control-plane client,
+            // where it reads as the server being misconfigured rather than as
+            // the number the operator typed.
+            Some(0) => {
+                return Err(ConfigError::InvalidValue {
+                    setting: "--max-result-bytes".to_owned(),
+                    value: "0".to_owned(),
+                    expected: "a positive number of bytes",
+                });
+            }
             Some(n) => n,
             None => match get(MAX_RESULT_BYTES_ENV) {
                 Some(raw) => raw
@@ -212,6 +244,9 @@ impl Config {
                 .cli_path
                 .or_else(|| get(CLI_PATH_ENV).map(PathBuf::from)),
             max_result_bytes,
+            api_base_url: get(API_BASE_URL_ENV)
+                .unwrap_or_else(|| tailscale_rest::DEFAULT_BASE_URL.to_owned()),
+            tailnet: tailscale_rest::credentials::tailnet_from_source(&source),
             log_filter: cli
                 .log
                 .or_else(|| get(LOG_ENV))
@@ -405,7 +440,7 @@ mod tests {
                 "{var} is read but not documented in the help"
             );
         }
-        assert_eq!(ENV_VARS.len(), 9);
+        assert_eq!(ENV_VARS.len(), 10);
     }
 
     #[test]

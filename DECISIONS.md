@@ -1310,3 +1310,25 @@ Claude Code gets both: the file form, and a second line showing the `add-json` c
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/subcommands/setup.rs`, `crates/tailscale-mcp/tests/subcommands.rs`
+
+## Q99 — build/ticket-26 — interpretation
+
+**Question:** Ticket 26 asks for tests "gated behind environment variables so they are skipped by default", and Rust's test harness has no skipped state: a test either runs or is `#[ignore]`d, and an ignored test cannot be turned on by a variable.
+
+**Options considered:** `#[ignore]` and a documented `--ignored` invocation / a cargo feature / an early return that prints why / an early return plus a test that always reports the gates
+
+**Chosen:** the last.
+
+**Decided-by:** agent
+
+**Justification:** `#[ignore]` cannot express "on when this variable is set", which is what the ticket asks for; a feature would put the decision in a build rather than in a shell, and a build inherits features while a shell does not.
+
+An early return alone has one problem: a skipped test and a passing test look identical in `cargo test`'s output, so a suite where every gated test did nothing still says everything passed. So there is one test that always runs and reports which gates are open — and when none are, says in as many words that every test below did nothing. That is the criterion "the suite skips these tests and reports why", answered where somebody will actually see it.
+
+Three gates and not one, because reading a real tailnet and writing to one are different decisions: somebody switching on the tailnet tests to check a credential should not thereby be writing to their own tailnet. The write gate additionally asserts the tailnet gate is open, so it cannot be a way round it.
+
+The one write is a custom posture attribute, which is the smallest thing that can be written and removed without affecting anything — it belongs to nothing until a policy rule names one, and this names one nothing will — and it is read back both after writing and after deleting.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/tests/end_to_end.rs`

@@ -2223,6 +2223,9 @@ async fn the_covered_table_follows_the_tools_it_claims_to_follow() {
     // What the tools say, path by path: the highest tier any of them runs the
     // command at, and whether any of them requires a confirmation.
     let mut derived: BTreeMap<String, (Tier, bool)> = BTreeMap::new();
+    // The paths whose only tool belongs to another platform, so nothing here
+    // can say what terms they run on.
+    let mut elsewhere: std::collections::BTreeSet<String> = Default::default();
 
     for meta in table() {
         if meta.name == "tailscale_run" {
@@ -2234,6 +2237,28 @@ async fn the_covered_table_follows_the_tools_it_claims_to_follow() {
             // surface runs none: it reaches the control plane over HTTP. A
             // tool with no command to read cannot contribute a row, and asking
             // it for one is what this loop would otherwise do.
+            continue;
+        }
+        if !meta.runs_here() {
+            // The command exists on another operating system, so a tool for it
+            // refuses before spawning and there is no argument list to read
+            // back — `every_tool_answers_its_success_case` checks the refusal.
+            // Its contract row names the command, which is enough to know the
+            // path exists; what it runs on has to be judged where it runs.
+            let contract = contract_for(meta.name);
+            let argv: Vec<String> = contract.success.1.cli[0]
+                .0
+                .iter()
+                .map(|word| (*word).to_owned())
+                .collect();
+            let (path, _) = classify(&argv).unwrap_or_else(|e| {
+                panic!(
+                    "`{}` is contracted to run `{}`, which the passthrough refuses to read: {e:?}",
+                    meta.name,
+                    argv.join(" ")
+                )
+            });
+            elsewhere.insert(path);
             continue;
         }
         let tool = harness
@@ -2305,12 +2330,16 @@ async fn the_covered_table_follows_the_tools_it_claims_to_follow() {
     }
 
     for row in COVERED {
-        let (tier, confirm) = *derived.get(row.path).unwrap_or_else(|| {
-            panic!(
+        let Some(&(tier, confirm)) = derived.get(row.path) else {
+            assert!(
+                elsewhere.contains(row.path),
                 "no tool runs `tailscale {}`, so its row states nobody's terms",
                 row.path
-            )
-        });
+            );
+            // The row is real and its tool is real; both are judged on the
+            // platform that has the command (Q105).
+            continue;
+        };
         assert_eq!(
             (row.tier, row.confirm),
             (tier, confirm),

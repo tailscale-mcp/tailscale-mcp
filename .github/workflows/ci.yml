@@ -1,0 +1,179 @@
+# Continuous integration.
+#
+# Linux and macOS are the first-class platforms and run the whole suite;
+# Windows is best-effort, so it builds and is not tested (spec, "out of
+# scope"). The minimum supported toolchain, linting, formatting and the
+# dependency licence policy each get their own job, so a failure names itself.
+#
+# Nothing here reads a secret and nothing here has write access. That is what
+# makes a pull request from a fork — which GitHub gives no secrets and a
+# read-only token — the same run as anybody else's, and
+# `crates/tailscale-mcp/tests/ci_needs_no_credential.rs` holds every workflow a
+# fork can reach to it mechanically. The end-to-end tests are gated on
+# environment variables that are set nowhere below, so they report themselves
+# skipped rather than run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A superseded pull request run is wasted work; a push to main is history.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # A failing assertion is worth the few lines a trace costs.
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # One platform failing is a fact about that platform; finding out about
+      # the other one in the same run is the point of testing both.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update --default
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # `--locked` so this is the lockfile's dependency tree and not a fresher
+      # one that nobody has reviewed. The suite is offline: no `tailscale`
+      # binary, no control-plane credential, no network.
+      - name: Test
+        run: cargo test --workspace --all-targets --locked
+      # `--all-targets` skips doctests, so they are run separately.
+      - name: Test the documentation
+        run: cargo test --workspace --doc --locked
+
+  build:
+    name: Build (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update --default
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # Best-effort means the binary has to compile and link, not that the
+      # behaviour is promised. Unix-only code is behind `cfg(unix)` and the
+      # `nix` dependency behind `cfg(unix)` in the manifest.
+      - name: Build
+        run: cargo build --workspace --locked
+
+  msrv:
+    name: Minimum toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # Read from the workspace manifest rather than written out here, so the
+      # job cannot drift from the `rust-version` the crates publish.
+      - name: Read the minimum supported version
+        run: echo "MSRV=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_ENV"
+      - name: Install the minimum supported toolchain
+        run: rustup toolchain install "$MSRV" --profile minimal --no-self-update
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # With `--locked` this compiles the tree the lockfile names, so a
+      # dependency that needs a newer compiler fails here instead of in
+      # somebody's build.
+      - name: Check
+        run: cargo "+$MSRV" check --workspace --all-targets --locked
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy --no-self-update --default
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # Documentation warnings are lints on the same code: a broken intra-doc
+      # link is a dead cross-reference in what ships.
+      - name: Documentation
+        run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt --no-self-update --default
+      - name: Format
+        run: cargo fmt --all --check
+
+  licences:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Pinned, so the answer depends on this repository rather than on the
+      # day the job ran.
+      CARGO_DENY_VERSION: "0.20.2"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update --default
+      - uses: actions/cache@v4
+        id: deny
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-${{ runner.os }}-${{ env.CARGO_DENY_VERSION }}
+      - name: Install cargo-deny
+        if: steps.deny.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --locked --version "$CARGO_DENY_VERSION"
+      # Everything `deny.toml` declares, and not a subset: `licenses` is the
+      # copyleft boundary of ADR-0002, and `bans`, `sources` and `advisories`
+      # are rules the file states just as plainly. A declared rule that
+      # nothing enforces is the failure the file exists to prevent, which is
+      # also why `advisories` is here even though its database is published
+      # elsewhere and can turn the tree red for something nobody changed.
+      # `--all-features` so a feature-gated dependency is judged too.
+      - name: Check the dependency policy
+        run: cargo deny --all-features check

@@ -1332,3 +1332,135 @@ The one write is a custom posture attribute, which is the smallest thing that ca
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/tests/end_to_end.rs`
+
+## Q100 — build/ticket-27 — tradeoff
+
+**Question:** Rust CI is conventionally written on top of third-party actions — `dtolnay/rust-toolchain` for the compiler, `Swatinem/rust-cache` for the build cache, `EmbarkStudios/cargo-deny-action` for the licence check. Each is a step that runs with the workflow's token and is named by a mutable tag.
+
+**Options considered:** the conventional actions at their tags / the conventional actions pinned to commit hashes / only GitHub's own actions, with rustup and `cargo install` doing the rest
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** This is a server that holds a control-plane credential, and its dependency policy already refuses a whole licence class mechanically. Trusting three more publishers to run code in its CI is out of keeping with that, and pinning them to hashes buys the trust back at the cost of a file nobody can read or update by hand.
+
+What they replace is small: `rustup toolchain install` is one line, and the cache they manage is only worth having for the crates registry, which `actions/cache` does in five. So the workflow uses `actions/checkout` and `actions/cache` — GitHub's own — and nothing else.
+
+The one thing that genuinely has to be fetched is `cargo-deny`, and it is built from source at a pinned version with `--locked`, cached on that version, so the licence answer depends on this repository and not on the day the job ran.
+
+The cost is that the build cache covers downloads and not compilation, so every job compiles the tree. That is minutes on a workspace this size, and it buys a run whose result depends on nothing outside the repository.
+
+The other cost is repetition: the toolchain line and the cache block appear in most jobs, because GitHub Actions has no way to share steps short of a composite action. A local composite action would be first-party and so would not cross this decision, but it would be a piece of CI machinery that cannot be run or tested from here, and a mistake in it would break all six jobs at once rather than one. The repetition is left. The five Ubuntu jobs deliberately share one cache key: they want the same crates, and separate keys would store five copies of them.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/ci.yml`
+
+## Q101 — build/ticket-27 — tradeoff
+
+**Question:** The ticket names four checking jobs: the minimum toolchain, linting, formatting, and "the dependency licence check". `deny.toml` declares four checks, not one — `licenses`, `bans`, `sources` and `advisories` — and the repository also holds rustdoc at no warnings, which no job would enforce.
+
+**Options considered:** run only `licenses` / run the three whose answer depends on nothing outside the repository / run everything `deny.toml` declares
+
+**Chosen:** the third, plus rustdoc folded into the lint job.
+
+**Decided-by:** agent
+
+**Justification:** `deny.toml` exists so that the dependency rules are mechanical rather than a review habit. A rule it declares that no job runs is exactly the failure it was written to prevent, and that argument does not stop at `bans` and `sources`: `advisories`, with its `yanked = "deny"`, is stated just as plainly.
+
+Excluding `advisories` was the first answer here, on the grounds that it reads a database published elsewhere and so can turn a pull request red for something that is not in the pull request. That cost is real, and it is the right cost. This server holds a control-plane credential and reaches the network; a newly published advisory against something in its tree is precisely the notification worth interrupting for, and the alternative was a rule the repository declares and nobody checks. It passes on the tree as it stands.
+
+So the job is `cargo deny --all-features check`, whole. `--all-features` so a feature-gated dependency is judged too.
+
+Rustdoc goes in the lint job rather than a seventh one because a broken intra-doc link is a lint on the same code clippy is already reading. It matters beyond this repository because the three crates publish to crates.io, and docs.rs builds exactly this output — a warning here is a defect in what readers of the published crates will see.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/ci.yml`, `deny.toml`
+
+## Q102 — build/ticket-27 — interpretation
+
+**Question:** The minimum-toolchain job has to name a version. The manifest already names one, as `rust-version = "1.88"`, inherited by all three crates.
+
+**Options considered:** write `1.88` in the workflow / write it in the workflow and add a test that the two agree / read it out of the manifest when the job runs
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** The criterion is that the job "fails if a dependency raises the requirement". A version written twice is a version that can disagree with itself, and the failure that follows is the worst kind: the job passes, on a compiler nobody promised.
+
+Reading `rust-version` out of `Cargo.toml` in the job makes disagreement impossible rather than detectable, and it is one line of shell. It also means raising the MSRV is one edit in the place that publishes it, which is what ADR-0005's version discipline expects.
+
+The check itself is `cargo check --workspace --all-targets --locked` on that toolchain: `--locked` so it compiles the tree the lockfile names, which is what makes a dependency's raised requirement fail here instead of in somebody's build.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/ci.yml`, `Cargo.toml`
+
+## Q103 — build/ticket-27 — interpretation
+
+**Question:** "A pull request from a fork runs the full suite without secrets" is a criterion about a run that cannot be performed here — there is no fork, and no pull request. It is satisfied by absence: no job reads a secret, and none needs one.
+
+**Options considered:** write the property in a comment and rely on review / assert it in the workflow itself / a test that reads the workflow files
+
+**Chosen:** the third, scoped to what a fork's pull request can actually reach.
+
+**Decided-by:** agent
+
+**Justification:** Absence is exactly what review forgets. The moment a job wants a credential, every outside contribution starts failing for a reason the contributor cannot see and cannot fix, and it fails quietly — the maintainer's own runs keep passing, because the maintainer has the secret.
+
+So `tests/ci_needs_no_credential.rs` reads the files under `.github` and refuses three things: `secrets.`, which is GitHub's only spelling for reading one; any name beginning `TAILSCALE_`, which covers the settings, the control-plane credentials and the end-to-end gates in one rule and covers a variable added later without anybody remembering to add it here; and any setting granting write access, since the token is a credential too. It also requires a pull-request workflow to declare its permissions, and requires that one of them actually runs the suite, without which the criterion is a claim about nothing.
+
+Two things the first version of this got wrong, both found in review.
+
+It bound every workflow rather than the ones a fork can reach. Ticket 28 needs a release workflow with `contents: write` and a registry token, and ticket 29 an npm one; neither could have existed. But a release runs from a tag, which a fork's pull request cannot cause, so it was never in the criterion. The rule is now: a workflow that runs on `pull_request` is bound, one that does not is not, and a file that is not a workflow — a composite action, which has no triggers of its own to be judged by — is bound, because a pull-request workflow could pull it in. The one rule with no exception is `pull_request_target`, refused outright: it is the trigger that runs a fork's pull request with this repository's secrets, and nothing here has a use for it.
+
+It also read the write-access rule off the end of a raw line, which `contents: write # for the assets`, `contents: 'write'` and `permissions: { contents: write }` all walk past. The check now takes the comment, quotes, braces and commas off a line before asking. The credential rules still read the raw line, comment and all, because naming one of these is as much a fault as setting it — which is why the workflow says "the end-to-end gates" instead of writing them down.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/tests/ci_needs_no_credential.rs`
+
+## Q104 — build/ticket-27 — tradeoff
+
+**Question:** Windows is out of scope as a first-class platform, and the ticket asks only that it build. A best-effort platform could reasonably be allowed to fail without failing the run.
+
+**Options considered:** no Windows job / a Windows job marked `continue-on-error` / a Windows job that fails the run like any other
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** Best-effort is a promise about behaviour, not about compilation. Nothing in the tree is Windows-specific: the `nix` dependency is behind `cfg(unix)` in the manifest, and the code that needs a signal or a file mode is behind `#[cfg(unix)]`. So a Windows build breaking means somebody added an unguarded Unix assumption, which is a defect worth a red run and usually a one-line fix. A job allowed to fail is a job nobody reads.
+
+It builds rather than checks, so linking is covered, and it does not build the test targets: those may assume Unix freely, which is what "not a first-class platform" means.
+
+Recorded because it could not be verified from here. `tailscale-cli` — the crate that holds every Unix-specific line — cross-compiles clean to `x86_64-pc-windows-msvc` on this machine. The other two pull in `ring` through rustls, whose C will not cross-compile without a Windows sysroot, so the first real evidence for them will be the first run of this job.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/ci.yml`, `crates/tailscale-cli/Cargo.toml`
+
+## Q105 — build/ticket-27 — tradeoff
+
+**Question:** Running the suite on Linux — which ticket 27 is what makes happen — found a test that only passes on macOS. `the_covered_table_follows_the_tools_it_claims_to_follow` drives every local tool and reads back the one command each ran; `tailscale_configure_sysext_status` is `platforms: ["macos"]`, so off macOS it refuses before spawning and runs none. The second half of the same test then insists that every row of `COVERED` is run by some tool, which no tool on Linux does.
+
+**Options considered:** drop the platform restriction / make the platform injectable so the test can pretend / skip the restricted tool and let its row stand unjudged where the command does not exist
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** The restriction is right: the command exists on macOS and nowhere else, and `std::env::consts::OS` is the honest way to know where we are. Making it injectable would let the test assert something about a machine it is not running on, which is a worse answer than not asserting it.
+
+So the tool is skipped, and its path is taken from its own contract row — which names the command without needing to run it — and recorded as belonging to another platform. A `COVERED` row with no tool here is then a failure only if it is not one of those. Both directions of the check still hold everywhere; what a restricted tool's row runs on is judged on the platform that has the command, which the matrix runs.
+
+This is the pattern the rest of the file already uses: `every_tool_answers_its_success_case` and `every_tool_answers_its_failure_case_with_the_code_it_promised` both branch on `runs_here()`. This test was the one that had not been told.
+
+Recorded because it means one row of `COVERED` — `configure sysext status` — is verified on macOS only, and a reader counting on the table being checked everywhere should know it is not.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/tests/contract.rs`, `crates/tailscale-mcp/src/tools/local_status.rs`

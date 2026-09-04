@@ -9,8 +9,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 mod harness;
+mod repo;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The only tailnet name a fixture may mention.
 const TAILNET: &str = "example-tailnet";
@@ -205,13 +206,8 @@ fn marked_fake(word: &str) -> bool {
 /// `target` is skipped: it is build output, it is enormous, and nothing there
 /// is committed.
 fn files_to_check() -> Vec<PathBuf> {
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("the crate is two levels below the workspace root")
-        .to_owned();
     let mut found = Vec::new();
-    let mut queue = vec![workspace.join("crates")];
+    let mut queue = vec![repo::root().join("crates")];
     while let Some(directory) = queue.pop() {
         let Ok(entries) = std::fs::read_dir(&directory) else {
             continue;

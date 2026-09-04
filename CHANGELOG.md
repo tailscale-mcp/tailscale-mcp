@@ -5,6 +5,18 @@ history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
 ## 1.0.0 — 2026-09-04
 
+### Added
+
+- Five ways to install the server (ticket 29)
+
+### Documentation
+
+- The README and the reference pages (ticket 30)
+
+### Build and CI
+
+- Build, checksum and publish a tagged release (ticket 28)
+
 ### Changes
 
 - Initial commit

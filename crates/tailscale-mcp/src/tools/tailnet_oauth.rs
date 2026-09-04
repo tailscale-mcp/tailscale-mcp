@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::context::ToolContext;
-use crate::error::ToolResult;
+use crate::error::{ToolError, ToolResult};
 use crate::tools::common::{Done, each_present, path_segment, report};
 
 crate::tools! {
@@ -125,13 +125,13 @@ impl OauthAppBody {
     fn build(app: OauthAppWriteParams) -> ToolResult<Self> {
         let redirect_uris = each_present("redirect_uris", app.redirect_uris)?;
         if redirect_uris.is_empty() {
-            return Err(crate::error::ToolError::invalid_args(
+            return Err(ToolError::invalid_args(
                 "`redirect_uris` is empty; an OAuth app needs somewhere to return to",
             ));
         }
         let scopes = each_present("scopes", app.scopes)?;
         if scopes.is_empty() {
-            return Err(crate::error::ToolError::invalid_args(
+            return Err(ToolError::invalid_args(
                 "`scopes` is empty; an OAuth app with no scope can do nothing",
             ));
         }

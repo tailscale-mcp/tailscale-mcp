@@ -27,13 +27,13 @@ use crate::error::{ToolError, ToolResult};
 use crate::tools::common::{Done, path_segment, report};
 
 /// The largest page the description accepts, and its default.
-const MAX_PAGE: u32 = 100;
+const LARGEST_PAGE: u32 = 100;
 
 /// How many pages a following listing will walk before handing the cursor
 /// back. Ten pages is a thousand tailnets, which no organisation has; the
 /// bound exists so a control plane that keeps answering with a cursor cannot
 /// hold a tool call open indefinitely (Q82).
-const MAX_PAGES: usize = 10;
+const PAGES_FOLLOWED: usize = 10;
 
 crate::tools! {
     /// List every tailnet in an organisation, including the original one and
@@ -68,7 +68,8 @@ crate::tools! {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct OrganizationTailnetListParams {
-    /// The organisation's id or name, as it appears in the admin console.
+    /// The organisation's id or name, as it appears in the admin console, or
+    /// `-` for the organisation the credential belongs to.
     pub organization: String,
     /// Tailnets per page, 1 to 100. Defaults to 100, the maximum.
     #[serde(default)]
@@ -97,10 +98,10 @@ fn organization_path(organization: &str) -> ToolResult<String> {
 /// 100 would read the short page as the whole answer.
 fn checked_limit(limit: Option<u32>) -> ToolResult<u32> {
     match limit {
-        None => Ok(MAX_PAGE),
-        Some(limit) if (1..=MAX_PAGE).contains(&limit) => Ok(limit),
+        None => Ok(LARGEST_PAGE),
+        Some(limit) if (1..=LARGEST_PAGE).contains(&limit) => Ok(limit),
         Some(limit) => Err(ToolError::invalid_args(format!(
-            "`limit` is between 1 and {MAX_PAGE}; `{limit}` is outside that"
+            "`limit` is between 1 and {LARGEST_PAGE}; `{limit}` is outside that"
         ))),
     }
 }
@@ -149,7 +150,7 @@ async fn organization_tailnet_list(
     let mut gathered: Vec<Value> = Vec::new();
     let mut total: Option<Value> = None;
     let mut cursor: Option<String> = None;
-    for _ in 0..MAX_PAGES {
+    for _ in 0..PAGES_FOLLOWED {
         let answer = client
             .get(path.clone())
             .query("limit", limit)
@@ -177,7 +178,7 @@ async fn organization_tailnet_list(
         answer.insert(
             "more".to_owned(),
             Value::String(format!(
-                "stopped after {MAX_PAGES} pages; call again with this `cursor` for the rest"
+                "stopped after {PAGES_FOLLOWED} pages; call again with this `cursor` for the rest"
             )),
         );
     }
@@ -186,7 +187,7 @@ async fn organization_tailnet_list(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct OrganizationTailnetCreateParams {
-    /// The organisation's id or name.
+    /// The organisation's id or name, or `-` for the credential's own.
     pub organization: String,
     /// A name for the tailnet: letters, digits, spaces, apostrophes and
     /// hyphens, unique within the organisation.
@@ -234,7 +235,7 @@ mod tests {
 
     #[test]
     fn a_page_size_the_api_would_reject_is_refused_here_rather_than_shortened() {
-        assert_eq!(checked_limit(None).expect("default"), MAX_PAGE);
+        assert_eq!(checked_limit(None).expect("default"), LARGEST_PAGE);
         assert_eq!(checked_limit(Some(25)).expect("in range"), 25);
         assert!(checked_limit(Some(0)).is_err());
 

@@ -1006,3 +1006,105 @@ async fn deleting_a_tailnet_needs_a_confirmation_the_call_itself_carries() {
 
     harness.shutdown().await;
 }
+
+#[tokio::test]
+async fn deleting_this_nodes_own_device_needs_the_call_to_say_so() {
+    // The fake `tailscale status` names `n1111111CNTRL` as this node, so the
+    // identity read at startup matches it (Q83).
+    let ours = "/api/v2/device/n1111111CNTRL";
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers("DELETE", ours, Response::empty())
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err("tailnet_device_delete", json!({"device_id": "n1111111CNTRL"}))
+        .await;
+    assert_eq!(error["code"], "confirmation_required");
+    assert_eq!(
+        harness.control_plane().request_count(),
+        0,
+        "the refusal happens here; nothing should reach the control plane"
+    );
+
+    let answer = harness
+        .call_ok(
+            "tailnet_device_delete",
+            json!({"device_id": "n1111111CNTRL", "confirm": true}),
+        )
+        .await;
+    assert_eq!(answer["done"], json!("deleted"));
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_same_call_against_another_device_is_an_ordinary_one() {
+    let theirs = "/api/v2/device/n2222222CNTRL";
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers("DELETE", theirs, Response::empty())
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok("tailnet_device_delete", json!({"device_id": "n2222222CNTRL"}))
+        .await;
+    assert_eq!(answer["done"], json!("deleted"));
+    assert_eq!(harness.control_plane().request_count(), 1);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn this_node_is_recognised_by_any_name_the_api_accepts() {
+    // `matches` is generous on purpose: a caller may name the node by its
+    // address or its MagicDNS name, and a missed match is the expensive
+    // direction. The fake status carries all three.
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .start()
+        .await;
+
+    for name in ["n1111111CNTRL", "100.64.0.1", "workstation.example-tailnet.ts.net"] {
+        let error = harness
+            .call_err("tailnet_device_expire", json!({"device_id": name}))
+            .await;
+        assert_eq!(
+            error["code"], "confirmation_required",
+            "`{name}` should be recognised as this node: {error:#?}"
+        );
+    }
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn with_no_local_surface_there_is_no_identity_and_the_call_is_ordinary() {
+    // Documented behaviour, not an accident: a session with no local surface
+    // has nothing to match against, and refusing every device operation on a
+    // suspicion it cannot check would make the tailnet surface unusable on its
+    // own (Q83).
+    let ours = "/api/v2/device/n1111111CNTRL";
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .without_cli()
+        .api_answers("DELETE", ours, Response::empty())
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok("tailnet_device_delete", json!({"device_id": "n1111111CNTRL"}))
+        .await;
+    assert_eq!(answer["done"], json!("deleted"));
+
+    harness.shutdown().await;
+}

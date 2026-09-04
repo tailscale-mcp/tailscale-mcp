@@ -125,8 +125,21 @@ impl Registry {
             if entry.meta.self_severing && !entry.meta.requires_confirmation {
                 return Err(RegistryError::SelfSeveringWithoutConfirmation(name));
             }
-            if let Err(reason) = (entry.schema)() {
-                return Err(RegistryError::BadSchema { name, reason });
+            match (entry.schema)() {
+                Err(reason) => return Err(RegistryError::BadSchema { name, reason }),
+                // A tool that severs when it is aimed at us has to give the
+                // caller somewhere to say so. The flag alone would be a claim
+                // the schema does not keep (Q83).
+                Ok(schema) if entry.meta.severs_local_node => {
+                    let asks = schema
+                        .get("properties")
+                        .and_then(Value::as_object)
+                        .is_some_and(|properties| properties.contains_key(CONFIRM_PARAM));
+                    if !asks {
+                        return Err(RegistryError::SeversLocalWithoutConfirmParameter(name));
+                    }
+                }
+                Ok(_) => {}
             }
         }
         Ok(Self { entries, by_name })
@@ -233,6 +246,9 @@ pub enum RegistryError {
     #[error("`{0}` is self-severing but does not require confirmation")]
     SelfSeveringWithoutConfirmation(&'static str),
 
+    #[error("`{0}` severs the local node but its parameters carry no `confirm`")]
+    SeversLocalWithoutConfirmParameter(&'static str),
+
     #[error("the parameters of `{name}` do not make a valid input schema: {reason}")]
     BadSchema { name: &'static str, reason: String },
 }
@@ -274,7 +290,8 @@ fn validate_name(name: &'static str) -> Result<(), RegistryError> {
 ///
 /// Optional trailing settings, each defaulting to the safe answer:
 /// `idempotent` (false), `confirm` (false), `severing` (false, and implies
-/// `confirm`), `varying` (false), `since` (no minimum version).
+/// `confirm`), `severs_local` (false, and requires a `confirm` parameter),
+/// `varying` (false), `since` (no minimum version).
 #[macro_export]
 macro_rules! tools {
     (
@@ -286,6 +303,7 @@ macro_rules! tools {
                 $(, idempotent: $idempotent:literal)?
                 $(, confirm: $confirm:literal)?
                 $(, severing: $severing:literal)?
+                $(, severs_local: $severs_local:literal)?
                 $(, varying: $varying:literal)?
                 $(, since: $since:literal)?
                 $(, platforms: [$($platform:literal),+ $(,)?])?
@@ -310,6 +328,9 @@ macro_rules! tools {
                     let mut confirm = severing;
                     $( confirm = $confirm || severing; )?
                     #[allow(unused_mut, unused_assignments)]
+                    let mut severs_local_node = false;
+                    $( severs_local_node = $severs_local; )?
+                    #[allow(unused_mut, unused_assignments)]
                     let mut idempotent = false;
                     $( idempotent = $idempotent; )?
                     #[allow(unused_mut, unused_assignments)]
@@ -330,6 +351,7 @@ macro_rules! tools {
                         tier: $crate::meta::Tier::$tier,
                         summary: ::std::concat!($($summary),*).trim_ascii(),
                         self_severing: severing,
+                        severs_local_node,
                         requires_confirmation: confirm,
                         idempotent,
                         varying_tier,
@@ -460,6 +482,25 @@ mod tests {
         assert!(status.meta.idempotent);
         assert!(!status.meta.requires_confirmation);
         assert_eq!(status.meta.min_version, None);
+    }
+
+    #[test]
+    fn a_tool_that_severs_the_local_node_must_offer_somewhere_to_say_so() {
+        mod without {
+            use crate::registry::tests::Empty;
+
+            crate::tools! {
+                /// Delete a device, claiming to sever without asking.
+                tailnet_device_delete => Empty, super::ok_handler,
+                    toolset: TailnetDevices, tier: Destructive, severs_local: true;
+            }
+        }
+        // The flag alone would be a claim the schema does not keep: `Empty`
+        // has no `confirm`, so nothing a caller sends could confirm anything.
+        assert_eq!(
+            Registry::new(without::entries()).expect_err("no `confirm` to give"),
+            RegistryError::SeversLocalWithoutConfirmParameter("tailnet_device_delete")
+        );
     }
 
     #[test]

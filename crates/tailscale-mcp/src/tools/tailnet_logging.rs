@@ -25,13 +25,11 @@
 use rmcp::schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use tailscale_rest::models::logging::{
-    AUDIT_EVENTS, COMPRESSION_FORMATS, DESTINATION_TYPES, LOG_TYPES, S3_AUTHENTICATION_TYPES,
-};
+use tailscale_rest::models::logging::{AwsExternalIdRequest, AwsTrustPolicyRequest, LOG_TYPES};
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{Done, each_present, one_of, path_segment, report};
+use crate::tools::common::{Done, each_present, path_segment, report};
 
 crate::tools! {
     /// Read the configuration audit log over a window: who changed what, when
@@ -67,13 +65,13 @@ crate::tools! {
     tailnet_log_stream_status_get => LogStreamParams, log_stream_status_get,
         toolset: TailnetLogging, tier: Read, idempotent: true;
 
-    /// Configure where a log type is streamed to.
+    /// Replace where a log type is streamed to.
     ///
-    /// A replacement, not a merge: what this sends is the whole endpoint. Send
+    /// The whole endpoint, not a merge: a field this does not carry is gone. Send
     /// the credential — `token`, or `s3_secret_access_key`, or
     /// `gcs_credentials` — every time, because a read never returns it and a
     /// write without it removes it.
-    tailnet_log_stream_set => LogStreamSetParams, log_stream_set,
+    tailnet_log_stream_replace => LogStreamReplaceParams, log_stream_replace,
         toolset: TailnetLogging, tier: Write, idempotent: true;
 
     /// Stop streaming a log type. The logs are still recorded and still
@@ -111,12 +109,28 @@ fn window(start: &str, end: &str) -> ToolResult<()> {
 }
 
 /// The tailnet-relative path for a log type's stream, or its status.
-///
-/// The type is checked against the description's two before it becomes a path
-/// segment, so an unknown one is a refusal naming both rather than a 404.
 fn stream_path(log_type: &str, rest: &str) -> ToolResult<String> {
-    let log_type = one_of("log_type", log_type, LOG_TYPES)?;
+    let log_type = path_segment("log_type", log_type)?;
     Ok(format!("/logging/{log_type}/stream{rest}"))
+}
+
+/// Name the two log types the description knows, on a refusal that looks like
+/// a typo for one of them.
+///
+/// The list is not checked before the call (Q84): it is one of the enums Q60
+/// found open, and a log type Tailscale adds should work here on the day it
+/// exists rather than be refused by a copy of last year's list. What a caller
+/// who wrote `config` needs is for the 404 to say so, which is what this does
+/// — the same shape as the credential hint in `tailnet_invites`.
+fn explain_log_type(error: ToolError, log_type: &str) -> ToolError {
+    if error.status == Some(404) && !LOG_TYPES.contains(&log_type) {
+        return error.with_hint(format!(
+            "`{log_type}` is not one of the log types this description knows \
+             ({}); check the spelling.",
+            LOG_TYPES.join(", ")
+        ));
+    }
+    error
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -132,8 +146,9 @@ pub struct AuditLogParams {
     #[serde(default)]
     pub target: Option<Vec<String>>,
     /// Only these events, spelled as the log spells them:
-    /// `NODE.UPDATE.ACL_TAGS`, `TAILNET.CREATE.TKA` and so on. An unknown one
-    /// is refused with the list.
+    /// `NODE.UPDATE.ACL_TAGS`, `TAILNET.CREATE.TKA` and so on. The vocabulary
+    /// is `<TARGET>.<ACTION>` or `<TARGET>.<ACTION>.<PROPERTY>`, and the
+    /// control plane refuses one it does not know.
     #[serde(default)]
     pub event: Option<Vec<String>>,
 }
@@ -154,8 +169,11 @@ async fn audit_log_list(ctx: &ToolContext, params: AuditLogParams) -> ToolResult
     for target in each_present("target", params.target.unwrap_or_default())? {
         request = request.query("target", target);
     }
-    for event in params.event.unwrap_or_default() {
-        request = request.query("event", one_of("event", &event, AUDIT_EVENTS)?);
+    // Not checked against `AUDIT_EVENTS`: the catalogue grows whenever a
+    // feature does (Q65), so a copy of it here would refuse an event that
+    // exists (Q84). The values are in the parameter's description instead.
+    for event in each_present("event", params.event.unwrap_or_default())? {
+        request = request.query("event", event);
     }
     Ok(request.send_as::<Value>().await?)
 }
@@ -187,18 +205,20 @@ pub struct LogStreamParams {
 
 async fn log_stream_get(ctx: &ToolContext, params: LogStreamParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    Ok(client
+    client
         .get(client.tailnet_path(None, &stream_path(&params.log_type, "")?))
         .send_as::<Value>()
-        .await?)
+        .await
+        .map_err(|error| explain_log_type(ToolError::from(error), &params.log_type))
 }
 
 async fn log_stream_status_get(ctx: &ToolContext, params: LogStreamParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    Ok(client
+    client
         .get(client.tailnet_path(None, &stream_path(&params.log_type, "/status")?))
         .send_as::<Value>()
-        .await?)
+        .await
+        .map_err(|error| explain_log_type(ToolError::from(error), &params.log_type))
 }
 
 async fn log_stream_delete(ctx: &ToolContext, params: LogStreamParams) -> ToolResult<Value> {
@@ -217,7 +237,7 @@ async fn log_stream_delete(ctx: &ToolContext, params: LogStreamParams) -> ToolRe
 /// `rolearn` versus S3 with `accesskey` versus Splunk, and would be wrong the
 /// day a destination is added.
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct LogStreamSetParams {
+pub struct LogStreamReplaceParams {
     /// `configuration` or `network`.
     pub log_type: String,
     /// The whole endpoint, in Tailscale's own field names:
@@ -229,10 +249,10 @@ pub struct LogStreamSetParams {
     pub configuration: Value,
 }
 
-async fn log_stream_set(ctx: &ToolContext, params: LogStreamSetParams) -> ToolResult<Value> {
+async fn log_stream_replace(ctx: &ToolContext, params: LogStreamReplaceParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let path = client.tailnet_path(None, &stream_path(&params.log_type, "")?);
-    let configuration = checked_configuration(params.configuration)?;
+    let configuration = on_the_wire(params.configuration)?;
     Ok(client
         .put(path)
         .json(&configuration)
@@ -240,33 +260,27 @@ async fn log_stream_set(ctx: &ToolContext, params: LogStreamSetParams) -> ToolRe
         .await?)
 }
 
-/// What is checked before a stream configuration is sent.
+/// The stream configuration as it goes on the wire.
 ///
-/// Only the three closed lists, and only when they are present. Everything
-/// else — which fields a destination requires, whether a URL is reachable — is
-/// the control plane's, and it says so better than a guess would. `logType` is
-/// read-only in the description and is in the path already, so sending it in
-/// the body says the same thing twice and can say it differently; it is
-/// dropped rather than checked against the path.
-fn checked_configuration(configuration: Value) -> ToolResult<Value> {
+/// Almost nothing happens here, deliberately. Which fields a destination
+/// requires, whether a URL is reachable, whether `destinationType` is a
+/// system Tailscale streams to — all of it is the control plane's, and it
+/// says so better than a guess would. The description's own `destinationType`
+/// enum is proof of why: it lists eight systems and no `gcs`, while
+/// `gcsBucket` in the same document says it is "Required if the destinationType
+/// is `gcs`". A list copied from it would refuse a configuration the API
+/// accepts (Q84).
+///
+/// The one thing removed is `logType`: it is read-only in the description and
+/// is in the path already, so a body carrying it says the same thing twice and
+/// can say it differently.
+fn on_the_wire(configuration: Value) -> ToolResult<Value> {
     let Value::Object(mut configuration) = configuration else {
         return Err(ToolError::invalid_args(
             "`configuration` is an object describing the endpoint, not a list or a string",
         ));
     };
     configuration.remove("logType");
-    for (field, allowed) in [
-        ("destinationType", DESTINATION_TYPES),
-        ("compressionFormat", COMPRESSION_FORMATS),
-        ("s3AuthenticationType", S3_AUTHENTICATION_TYPES),
-    ] {
-        if let Some(value) = configuration.get(field) {
-            let value = value.as_str().ok_or_else(|| {
-                ToolError::invalid_args(format!("`{field}` is a string, not {value}"))
-            })?;
-            one_of(field, value, allowed)?;
-        }
-    }
     Ok(Value::Object(configuration))
 }
 
@@ -280,13 +294,16 @@ pub struct AwsExternalIdParams {
 
 async fn aws_external_id_create(ctx: &ToolContext, params: AwsExternalIdParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let mut body = serde_json::Map::new();
-    if let Some(reusable) = params.reusable {
-        body.insert("reusable".to_owned(), Value::Bool(reusable));
-    }
+    // The model rather than a map built beside it: the drift test holds this
+    // shape to the description, and a hand-written body is a second shape it
+    // does not guard.
+    let body = AwsExternalIdRequest {
+        reusable: params.reusable,
+        unknown: Default::default(),
+    };
     Ok(client
         .post(client.tailnet_path(None, "/aws-external-id"))
-        .json(&Value::Object(body))
+        .json(&body)
         .send_as::<Value>()
         .await?)
 }
@@ -313,11 +330,11 @@ async fn aws_trust_policy_validate(
             path_segment("external_id", &params.external_id)?
         ),
     );
-    let answer = client
-        .post(path)
-        .json(&serde_json::json!({"roleArn": params.role_arn}))
-        .send_as::<Value>()
-        .await?;
+    let body = AwsTrustPolicyRequest {
+        role_arn: Some(params.role_arn.clone()),
+        unknown: Default::default(),
+    };
+    let answer = client.post(path).json(&body).send_as::<Value>().await?;
     // A pass is an empty body, and `null` reads as a tool that lost its
     // answer rather than as a policy that checks out (Q67).
     crate::tools::common::answered_or(
@@ -344,34 +361,54 @@ mod tests {
     }
 
     #[test]
-    fn the_log_type_decides_the_path_and_an_unknown_one_never_gets_there() {
+    fn the_log_type_decides_the_path_and_only_a_path_break_is_refused() {
         assert_eq!(
             stream_path("network", "/status").expect("known"),
             "/logging/network/stream/status"
         );
-        assert!(stream_path("audit", "").is_err(), "not a log type");
+        // A log type the description does not list still reaches the control
+        // plane, which is the point (Q84); only a segment that would rewrite
+        // the path is refused.
+        assert_eq!(
+            stream_path("posture", "").expect("sent anyway"),
+            "/logging/posture/stream"
+        );
+        assert!(stream_path("../acl", "").is_err());
     }
 
     #[test]
-    fn the_closed_lists_are_checked_and_everything_else_is_the_control_planes() {
-        // Known values are held to their list...
-        assert!(checked_configuration(json!({"destinationType": "nowhere"})).is_err());
-        assert!(checked_configuration(json!({"compressionFormat": "bz2"})).is_err());
-        // ...and a field the description does not close is passed on.
-        let sent = checked_configuration(json!({
-            "destinationType": "s3",
-            "s3Bucket": "mycompany-mybucket",
+    fn a_log_type_that_is_not_one_of_the_two_is_explained_on_the_way_back() {
+        let refused = ToolError::new(crate::error::ErrorCode::ApiError, "not found").with_status(404);
+        let explained = explain_log_type(refused.clone(), "config");
+        assert!(
+            explained.hint.as_deref().is_some_and(|h| h.contains("configuration")),
+            "a typo should be told what the two are: {explained:?}"
+        );
+        // A real log type that 404s is a missing stream, not a typo.
+        assert_eq!(explain_log_type(refused, "network").hint, None);
+    }
+
+    #[test]
+    fn a_destination_the_description_forgot_still_reaches_the_control_plane() {
+        // `gcs` is required by `gcsBucket`'s own description and missing from
+        // the `destinationType` enum, so a list copied from it would refuse a
+        // configuration the API accepts (Q84).
+        let sent = on_the_wire(json!({
+            "destinationType": "gcs",
+            "gcsBucket": "mycompany-mybucket",
             "somethingNew": true,
         }))
         .expect("passed through");
+        assert_eq!(sent["destinationType"], json!("gcs"));
         assert_eq!(sent["somethingNew"], json!(true));
+        assert!(on_the_wire(json!(["not", "a", "document"])).is_err());
     }
 
     #[test]
     fn the_log_type_is_not_repeated_into_the_body() {
         // It is read-only upstream and already in the path; sent in both
         // places it could disagree with itself.
-        let sent = checked_configuration(json!({"logType": "network", "url": "https://example.com"}))
+        let sent = on_the_wire(json!({"logType": "network", "url": "https://example.com"}))
             .expect("valid");
         assert_eq!(sent.get("logType"), None);
         assert_eq!(sent["url"], json!("https://example.com"));

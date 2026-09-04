@@ -18,13 +18,14 @@
 //! so it changes nothing here and does something out there.
 
 use rmcp::schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
-use tailscale_rest::models::webhook::{PROVIDER_TYPES, SUBSCRIPTIONS};
+
+use tailscale_rest::models::webhook::{CreateWebhookRequest, UpdateWebhookRequest};
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{Done, answered_or, one_of, path_segment, report};
+use crate::tools::common::{Done, answered_or, each_present, path_segment, report};
 
 crate::tools! {
     /// List the tailnet's webhook endpoints. No secret is included — a
@@ -53,7 +54,7 @@ crate::tools! {
     /// The whole list, not an addition: an event not in `subscriptions` stops
     /// being delivered. The endpoint's URL and provider cannot be changed —
     /// delete it and create another.
-    tailnet_webhook_update => WebhookUpdateParams, webhook_update,
+    tailnet_webhook_subscriptions_replace => WebhookSubscriptionsParams, webhook_subscriptions_replace,
         toolset: TailnetWebhooks, tier: Write, idempotent: true;
 
     /// Delete a webhook endpoint. Deliveries stop at once.
@@ -93,10 +94,13 @@ fn checked_subscriptions(subscriptions: &[String]) -> ToolResult<Vec<String>> {
             "`subscriptions` is empty; an endpoint with no events is one nothing is ever sent to",
         ));
     }
-    subscriptions
-        .iter()
-        .map(|event| one_of("subscriptions", event, SUBSCRIPTIONS))
-        .collect()
+    // Each event is present but not held to `SUBSCRIPTIONS`: the catalogue
+    // grows whenever a feature does, and the live API already carries category
+    // subscriptions the vendored description has not caught up with, so a copy
+    // of the list here would refuse an event that exists (Q84). The values are
+    // in the parameter's description, and the control plane refuses one it
+    // does not know.
+    each_present("subscriptions", subscriptions.to_vec())
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -136,15 +140,6 @@ pub struct WebhookCreateParams {
     pub subscriptions: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
-struct CreateWebhook {
-    #[serde(rename = "endpointUrl")]
-    endpoint_url: String,
-    #[serde(rename = "providerType", skip_serializing_if = "Option::is_none")]
-    provider_type: Option<String>,
-    subscriptions: Vec<String>,
-}
-
 async fn webhook_create(ctx: &ToolContext, params: WebhookCreateParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let endpoint_url = params.endpoint_url.trim();
@@ -153,14 +148,16 @@ async fn webhook_create(ctx: &ToolContext, params: WebhookCreateParams) -> ToolR
             "`endpoint_url` is empty; a webhook needs somewhere to post to",
         ));
     }
-    let body = CreateWebhook {
-        endpoint_url: endpoint_url.to_owned(),
-        provider_type: params
-            .provider_type
-            .as_deref()
-            .map(|value| one_of("provider_type", value, PROVIDER_TYPES))
-            .transpose()?,
-        subscriptions: checked_subscriptions(&params.subscriptions)?,
+    // The model, not a struct beside it: the drift test holds this shape to
+    // the description, and a second hand-written one is a shape it does not
+    // guard.
+    let body = CreateWebhookRequest {
+        endpoint_url: Some(endpoint_url.to_owned()),
+        // Not held to `PROVIDER_TYPES` either: it names four chat products,
+        // which is a market rather than a specification (Q60, Q84).
+        provider_type: params.provider_type.clone(),
+        subscriptions: Some(checked_subscriptions(&params.subscriptions)?),
+        unknown: Default::default(),
     };
     Ok(client
         .post(client.tailnet_path(None, "/webhooks"))
@@ -170,7 +167,7 @@ async fn webhook_create(ctx: &ToolContext, params: WebhookCreateParams) -> ToolR
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct WebhookUpdateParams {
+pub struct WebhookSubscriptionsParams {
     /// The endpoint's id, as a listing reports it.
     pub endpoint_id: String,
     /// The complete list of events to send. An event not named here stops
@@ -178,16 +175,12 @@ pub struct WebhookUpdateParams {
     pub subscriptions: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
-struct UpdateWebhook {
-    subscriptions: Vec<String>,
-}
-
-async fn webhook_update(ctx: &ToolContext, params: WebhookUpdateParams) -> ToolResult<Value> {
+async fn webhook_subscriptions_replace(ctx: &ToolContext, params: WebhookSubscriptionsParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let path = webhook_path(&params.endpoint_id, "")?;
-    let body = UpdateWebhook {
-        subscriptions: checked_subscriptions(&params.subscriptions)?,
+    let body = UpdateWebhookRequest {
+        subscriptions: Some(checked_subscriptions(&params.subscriptions)?),
+        unknown: Default::default(),
     };
     Ok(client.patch(path).json(&body).send_as::<Value>().await?)
 }
@@ -230,19 +223,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_event_the_description_does_not_have_is_refused_before_any_is_subscribed() {
+    fn an_event_the_description_does_not_have_is_still_subscribed_to() {
         let good = ["nodeCreated".to_owned(), "userDeleted".to_owned()];
         assert_eq!(checked_subscriptions(&good).expect("known events"), good);
 
-        let error = checked_subscriptions(&["nodeCreated".to_owned(), "nodeExploded".to_owned()])
-            .expect_err("one is not an event");
+        // The live API already carries category subscriptions the vendored
+        // description has not caught up with, so a list copied from it would
+        // refuse an event that exists (Q84).
+        let newer = ["categoryTailnetManagement".to_owned()];
+        assert_eq!(checked_subscriptions(&newer).expect("sent anyway"), newer);
+
+        // A blank entry is still a caller that meant to send nothing there.
+        let error = checked_subscriptions(&["nodeCreated".to_owned(), "  ".to_owned()])
+            .expect_err("one is blank");
         let reported = serde_json::to_value(&error).expect("reportable");
-        assert!(
-            reported["message"]
-                .as_str()
-                .is_some_and(|m| m.contains("nodeExploded")),
-            "the refusal names the one that is wrong: {reported:#?}"
-        );
+        assert_eq!(reported["code"], serde_json::json!("invalid_args"));
     }
 
     #[test]

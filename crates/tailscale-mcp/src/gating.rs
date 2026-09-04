@@ -283,6 +283,7 @@ mod tests {
             tier,
             summary: "",
             self_severing: false,
+            severs_local_node: false,
             requires_confirmation: false,
             idempotent: true,
             varying_tier: false,

@@ -22,11 +22,10 @@ use rmcp::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tailscale_rest::Secret;
-use tailscale_rest::models::device::POSTURE_PROVIDERS;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{Done, one_of, path_segment, report};
+use crate::tools::common::{Done, path_segment, report};
 
 crate::tools! {
     /// List the posture integrations configured for the tailnet, with the
@@ -66,16 +65,23 @@ fn integration_path(id: &str) -> ToolResult<String> {
 
 /// The provider names the description knows, quoted into the refusal.
 ///
-/// The refusal carries a hint the shared check does not: the passthrough is
-/// not a way round a provider Tailscale has added since this build, because
-/// there is no local command for it.
+/// The provider, present and sendable.
+///
+/// Not held to `POSTURE_PROVIDERS`. That list names six endpoint-security
+/// products, which is a market rather than a specification (Q60), and the hint
+/// this check used to carry — "if Tailscale has added a provider since this
+/// server was built, the integration has to be created in the admin console" —
+/// was an admission that the gate refused work the API would have done (Q84).
+/// The values are in the parameter's description, and the control plane
+/// refuses one it does not know.
 fn checked_provider(provider: &str) -> ToolResult<String> {
-    one_of("provider", provider, POSTURE_PROVIDERS).map_err(|error| {
-        error.with_hint(
-            "If Tailscale has added a provider since this server was built, the integration has \
-             to be created in the admin console.",
-        )
-    })
+    let provider = provider.trim();
+    if provider.is_empty() {
+        return Err(ToolError::invalid_args(
+            "`provider` is blank; name the posture provider this integration is for",
+        ));
+    }
+    Ok(provider.to_owned())
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -285,15 +291,21 @@ mod tests {
     }
 
     #[test]
-    fn a_provider_the_description_does_not_know_is_refused_with_the_list() {
-        let error = checked_provider("wizardry").expect_err("not a provider");
+    fn a_provider_the_description_does_not_know_still_reaches_the_control_plane() {
+        // The list documents the parameter; it does not gate it. A provider
+        // Tailscale adds after this build should work on the day it exists
+        // rather than be refused by a copy of last year's list (Q84).
+        assert_eq!(checked_provider("falcon").expect("a provider"), "falcon");
+        assert_eq!(
+            checked_provider("  something-new  ").expect("sent anyway"),
+            "something-new",
+            "and it is trimmed on the way, so a stray space is not a provider"
+        );
+
+        // Blank is still a caller that meant to send nothing.
+        let error = checked_provider("   ").expect_err("no provider");
         let reported = serde_json::to_value(&error).expect("reportable");
         assert_eq!(reported["code"], json!("invalid_args"));
-        let message = reported["message"].as_str().expect("a message");
-        for provider in POSTURE_PROVIDERS {
-            assert!(message.contains(provider), "{message}");
-        }
-        assert_eq!(checked_provider("falcon").expect("a provider"), "falcon");
     }
 
     #[test]

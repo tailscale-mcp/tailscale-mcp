@@ -277,6 +277,17 @@ pub struct ToolMeta {
     /// two are separate fields because the tailnet surface has irreversible
     /// operations that are not self-severing but still require it.
     pub self_severing: bool,
+    /// Whether this tool severs the connection when its *target* is this node.
+    ///
+    /// Where [`Self::self_severing`] is true of every call a tool makes, this
+    /// is true of some of them: `tailnet_device_delete` is an ordinary
+    /// destructive call against somebody else's machine and a cut cable
+    /// against this one, and only the argument tells them apart. So it cannot
+    /// imply [`Self::requires_confirmation`] — a caller managing another
+    /// device would be made to confirm something that cannot happen — and the
+    /// confirmation lives in the tool's own parameters, where the handler can
+    /// ask for it only when the target turns out to be us (Q83).
+    pub severs_local_node: bool,
     /// Whether the caller must state intent in the call itself. No flag can
     /// pre-authorise this.
     pub requires_confirmation: bool,
@@ -378,6 +389,7 @@ mod tests {
             tier: Tier::Read,
             summary: "",
             self_severing: false,
+            severs_local_node: false,
             requires_confirmation: false,
             idempotent: true,
             varying_tier: false,
@@ -407,6 +419,7 @@ mod tests {
             tier: Tier::Read,
             summary: "",
             self_severing: false,
+            severs_local_node: false,
             requires_confirmation: false,
             idempotent: false,
             varying_tier: true,

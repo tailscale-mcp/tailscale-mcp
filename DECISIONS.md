@@ -980,3 +980,51 @@ The client-side window of Q69 is the opposite case and stays as it is: `tailnet_
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/tools/tailnet_org.rs`
+
+## Q83 — build/ticket-21 — interpretation
+
+**Question:** Six device tools sever this node's own connection when the device they name is ours, and are ordinary calls against anybody else's. `self_severing` is a property of the row and implies `requires_confirmation`, which would make every device deletion in the tailnet ask for one. Ticket 21 asks that "an operation targeting the local node's device refuses without a confirmation" while "the same operation against any other device is unaffected". Where does the check live?
+
+**Options considered:** mark the six `self_severing` and accept that every device deletion confirms / check in the handler with no row-level record / a new axis on the row, the confirmation in the tool's own parameters, and the handler deciding
+
+**Chosen:** A new `severs_local_node` axis; the confirmation is a flattened `SelfConfirmation` in the six parameter structs; the handler asks `SelfIdentity::matches` and refuses `confirmation_required` when the target is us and the call did not say so.
+
+**Decided-by:** agent
+
+**Justification:** This is the shape Q70 already established for `tailnet_device_authorize` and the passthrough: the row carries what is true of the tool, and the call decides what is true of this call. `self_severing` stays what it has always meant — true of every call the tool makes — and the new axis says the narrower thing, so neither flag has to be read two ways.
+
+Putting the confirmation in the parameters rather than having the registry add it keeps the demand where the decision is: `resolve` strips a registry-added `confirm` before the handler sees it, and a handler that has to make the judgement needs the answer. It also lets the field's description say the thing that matters — that it is needed only for this node — which a generic one could not.
+
+The flag would otherwise be a claim nothing keeps, so the registry refuses to build a table where a `severs_local_node` tool's schema has no `confirm` property, and a test asserts that refusal. One `SelfConfirmation` type is flattened into all six rather than six copies of the field, because six copies is six chances for one to drift.
+
+**With no local surface there is no identity, and the call is ordinary.** `SelfIdentity::default()` matches nothing, which is what a session with no `tailscale` binary gets. The ticket asks for this to be decided and documented rather than left to fall out, and the alternative — refusing every device operation on a suspicion the server cannot check — would make the tailnet surface unusable on its own for the sake of a guess. A test covers it.
+
+Matching stays generous: node id, numeric id, MagicDNS name qualified or not, and any Tailscale address. A missed match is the expensive direction, and every one of those is a name the API accepts.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/meta.rs`, `crates/tailscale-mcp/src/registry.rs`, `crates/tailscale-mcp/src/tools/common.rs`, `crates/tailscale-mcp/src/tools/tailnet_devices.rs`
+
+## Q84 — build/ticket-20 — deviation
+
+**Question:** Q60 found all twenty-two of the description's enums open and made each a `String` beside a `&[&str]` of the values the description knows. Tickets 17 to 20 then began using those constants to *refuse* request values, through `common::one_of`. Ticket 20's review found the consequence: `destinationType`'s enum lists eight systems and no `gcs`, while `gcsBucket` in the same document says it is "Required if the destinationType is `gcs`" — so the gate refused a configuration the API accepts. Which constants may refuse a value?
+
+**Options considered:** gate on all of them, and refresh the description when something is refused / gate on none of them / gate only where this server must know the set, or where a wrong value would be accepted and change the answer
+
+**Chosen:** The third. A constant that catalogues a market, an event list, or a set that grows with the product documents its parameter and does not gate it.
+
+**Decided-by:** agent
+
+**Justification:** spec.md:162 says enums are strict only for genuinely closed sets, and Q60 already found none of these closed; using them as gates quietly reversed that. The cost is one-sided: a gate on an open list can only ever refuse work the control plane would have done, and it fails on the day Tailscale ships something — exactly when a caller most needs the tool to work. The control plane refuses what it does not know, in a message about its own current vocabulary rather than about a list vendored months ago.
+
+Gates removed: `DESTINATION_TYPES`, `COMPRESSION_FORMATS` and `S3_AUTHENTICATION_TYPES` (log stream destinations, a market), `AUDIT_EVENTS` (a hundred and thirty-eight, growing with the product per Q65), `SUBSCRIPTIONS` (the live API already carries category subscriptions the vendored description lacks), `PROVIDER_TYPES` (four chat products), `POSTURE_PROVIDERS` (six security products — whose refusal carried a hint admitting the gate refused work the API would have done), and `LOG_TYPES`.
+
+Gates kept, each for a stated reason: `FORMATS`, because this server builds an `Accept` header from the value and parses the answer differently for each; `DEVICE_FIELDS`, `USER_TYPE_FILTERS` and `USER_ROLE_FILTERS`, which are the API's own request vocabulary for selecting a response rather than a list of things in the world; `CONTACT_TYPES`, `USER_ROLES`, `INVITE_ROLES` and the two key-type lists, which are access-control vocabularies rather than catalogues.
+
+`LOG_TYPES` gets the treatment the removed gates should all have where a typo is likely: the value is sent, and a 404 whose log type is not one of the two comes back with a hint naming both. That is Q76's shape — the requirement added to the refusal rather than checked before the call — and it costs a caller nothing on the day a third log type exists.
+
+**Supersedes:** Q60, as to what the constants are for, not as to which enums are open.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_logging.rs`, `crates/tailscale-mcp/src/tools/tailnet_webhooks.rs`, `crates/tailscale-mcp/src/tools/tailnet_posture.rs`

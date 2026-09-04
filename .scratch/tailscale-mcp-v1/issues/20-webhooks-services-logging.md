@@ -117,3 +117,46 @@ that retries at a second path. Arranging only one would have tested the fake's
 own fallback rather than the tool: the services failure case needs both
 spellings refused, so that what the caller sees is the tool's second 404 and
 not the fake's 501.
+
+### From the review
+
+**A gate that refused work the API would have done.** `checked_configuration`
+held `destinationType` to `DESTINATION_TYPES`, which lists eight systems and no
+`gcs` — while `gcsBucket` in the same document says it is "Required if the
+destinationType is `gcs`". The tool's own parameter documentation told callers
+to send `gcsBucket`, and the tool then refused the destination it needs. That
+turned out to be one instance of a pattern: tickets 17 to 20 had been using
+Q60's known-value constants as request gates, which quietly reversed Q60's
+finding that none of the twenty-two is closed. Eight gates are gone, five kept
+for stated reasons, and `log_type` now names the two on the way back rather
+than refusing on the way out (Q84).
+
+**Two names against Q72.** `tailnet_log_stream_set` sends the whole
+nineteen-field endpoint document — its own description says "the whole
+endpoint, not a merge" — which is `_replace`. `tailnet_webhook_update` replaces
+the entire subscription list, which is the shape `tailnet_dns_nameservers_replace`
+is named for; it is `tailnet_webhook_subscriptions_replace` now, naming the
+thing that is actually replaced. Both were worth fixing before release rather
+than after: ADR-0005 makes a rename a major version.
+
+**One name against `CONTEXT.md`.** The glossary says to avoid "host"; a node
+seen through the REST API is a Device. The path is `/devices`, the parameter is
+`device_id`, and only the tool name said hosts — `tailnet_service_devices_list`
+now. The response envelope stays `hosts`, because that is what the control
+plane sends and ADR-0004 forwards it verbatim.
+
+**Bodies that bypassed their own models.** `CreateWebhook` and `UpdateWebhook`
+duplicated `CreateWebhookRequest` and `UpdateWebhookRequest`, added in the same
+commit and referenced nowhere, so the drift tripwire guarded a shape nothing
+sent. The same for the two AWS requests. All four now send the model. The
+siblings that do hand-roll a body (`KeyBody`, `IntegrationBody`) each say why
+in a doc comment; these had no reason to give.
+
+**Smaller things.** `service_approval_set` and `device_authorize` had the same
+tier guard written twice — one `common::require_destructive` now.
+`MAX_PAGE` (a size) and `MAX_PAGES` (a count) were one letter apart and are
+`LARGEST_PAGE` and `PAGES_FOLLOWED`. `checked_name` was pure delegation to
+`path_segment`, and the reasoning it carried belongs on `either_spelling`,
+which is what constrains it. `organization` documents `-`. The service listing's
+description now notes the VIP-services divergence, which had been recorded only
+in a module comment and a decision.

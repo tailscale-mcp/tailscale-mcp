@@ -28,7 +28,7 @@ use tailscale_rest::models::device::DEVICE_FIELDS;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{Done, answered_or, one_of, path_segment, report};
+use crate::tools::common::{SelfConfirmation, not_at_ourselves, require_destructive, Done, answered_or, one_of, path_segment, report};
 
 crate::tools! {
     /// List the devices in the tailnet. Answers with the control plane's own
@@ -54,13 +54,13 @@ crate::tools! {
     ///
     /// Only devices belonging to this tailnet can be deleted; a device shared
     /// in from another tailnet is refused by the control plane.
-    tailnet_device_delete => DeviceParams, device_delete,
-        toolset: TailnetDevices, tier: Destructive, idempotent: true;
+    tailnet_device_delete => SeveringDeviceParams, device_delete,
+        toolset: TailnetDevices, tier: Destructive, idempotent: true, severs_local: true;
 
     /// Expire a device's node key, which disconnects it until someone
     /// re-authenticates the machine. The device itself is kept.
-    tailnet_device_expire => DeviceParams, device_expire,
-        toolset: TailnetDevices, tier: Destructive;
+    tailnet_device_expire => SeveringDeviceParams, device_expire,
+        toolset: TailnetDevices, tier: Destructive, severs_local: true;
 
     /// Authorise a device, or revoke its authorisation.
     ///
@@ -68,7 +68,8 @@ crate::tools! {
     /// is a write; revoking disconnects the device until it is authorised
     /// again, and needs the destructive tier.
     tailnet_device_authorize => DeviceAuthorizeParams, device_authorize,
-        toolset: TailnetDevices, tier: Write, idempotent: true, varying: true;
+        toolset: TailnetDevices, tier: Write, idempotent: true, severs_local: true,
+        varying: true;
 
     /// Rename a device. Its old MagicDNS names stop resolving, so anything
     /// addressing it by name has to be updated.
@@ -81,7 +82,7 @@ crate::tools! {
     /// This replaces the whole set: tags not listed are removed, and removing
     /// a tag can remove the access a policy rule granted through it.
     tailnet_device_tags_set => DeviceTagsParams, device_tags_set,
-        toolset: TailnetDevices, tier: Write, idempotent: true;
+        toolset: TailnetDevices, tier: Write, idempotent: true, severs_local: true;
 
     /// Turn a device's key expiry off, so it stays connected without
     /// re-authenticating, or back on.
@@ -93,7 +94,7 @@ crate::tools! {
     /// Existing connections to the old address break. The address has to come
     /// from the tailnet's own range.
     tailnet_device_ip_set => DeviceIpParams, device_ip_set,
-        toolset: TailnetDevices, tier: Write, idempotent: true;
+        toolset: TailnetDevices, tier: Write, idempotent: true, severs_local: true;
 
     /// Read the routes a device advertises and the subset that is enabled.
     tailnet_device_routes_get => DeviceParams, device_routes_get,
@@ -105,7 +106,7 @@ crate::tools! {
     /// device's own configuration. Enabling a route the device does not
     /// advertise has no effect until it does.
     tailnet_device_routes_set => DeviceRoutesParams, device_routes_set,
-        toolset: TailnetDevices, tier: Write, idempotent: true;
+        toolset: TailnetDevices, tier: Write, idempotent: true, severs_local: true;
 
     /// Read the custom posture attributes set on a device, and when each
     /// expires.
@@ -334,6 +335,16 @@ pub struct DeviceParams {
     pub device_id: String,
 }
 
+/// A device, for an operation that cuts this node off when the device is ours.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SeveringDeviceParams {
+    /// The device's node id (`n1234567CNTRL`, the `nodeId` in a listing) or
+    /// its numeric `id`. Either works.
+    pub device_id: String,
+    #[serde(flatten)]
+    pub confirmation: SelfConfirmation,
+}
+
 /// A device, and which of its fields to read.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceGetParams {
@@ -356,7 +367,13 @@ async fn device_get(ctx: &ToolContext, params: DeviceGetParams) -> ToolResult<Va
         .await?)
 }
 
-async fn device_delete(ctx: &ToolContext, params: DeviceParams) -> ToolResult<Value> {
+async fn device_delete(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolResult<Value> {
+    not_at_ourselves(
+        ctx,
+        "removing it from the tailnet",
+        &params.device_id,
+        &params.confirmation,
+    )?;
     let client = ctx.tailnet()?;
     client
         .delete(device_path(&params.device_id, "")?)
@@ -365,7 +382,13 @@ async fn device_delete(ctx: &ToolContext, params: DeviceParams) -> ToolResult<Va
     report(Done::new("deleted").about("device_id", params.device_id))
 }
 
-async fn device_expire(ctx: &ToolContext, params: DeviceParams) -> ToolResult<Value> {
+async fn device_expire(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolResult<Value> {
+    not_at_ourselves(
+        ctx,
+        "expiring its node key",
+        &params.device_id,
+        &params.confirmation,
+    )?;
     let client = ctx.tailnet()?;
     client
         .post(device_path(&params.device_id, "/expire")?)
@@ -384,6 +407,8 @@ pub struct DeviceAuthorizeParams {
     pub device_id: String,
     /// `true` to authorise, `false` to revoke an existing authorisation.
     pub authorized: bool,
+    #[serde(flatten)]
+    pub confirmation: SelfConfirmation,
 }
 
 async fn device_authorize(ctx: &ToolContext, params: DeviceAuthorizeParams) -> ToolResult<Value> {
@@ -391,11 +416,18 @@ async fn device_authorize(ctx: &ToolContext, params: DeviceAuthorizeParams) -> T
     // "de-authorisation are destructive". Both are right about different
     // calls, so the row carries the floor and the call decides (Q70) — the
     // same arrangement the passthrough uses, and what `varying: true` means.
-    if !params.authorized && ctx.max_tier < crate::meta::Tier::Destructive {
-        return Err(ToolError::not_permitted(
-            "revoking a device's authorisation",
-            "--allow-destructive",
-        ));
+    if !params.authorized {
+        // Only revoking can sever: authorising this node changes nothing about
+        // the connection the caller is already using.
+        not_at_ourselves(
+            ctx,
+            "revoking its authorisation",
+            &params.device_id,
+            &params.confirmation,
+        )?;
+    }
+    if !params.authorized {
+        require_destructive(ctx, "revoking a device's authorisation")?;
     }
     let client = ctx.tailnet()?;
     client
@@ -438,9 +470,19 @@ pub struct DeviceTagsParams {
     /// The complete set of tags, each `tag:` prefixed. An empty list removes
     /// every tag, which returns the device to its owner's identity.
     pub tags: Vec<String>,
+    #[serde(flatten)]
+    pub confirmation: SelfConfirmation,
 }
 
 async fn device_tags_set(ctx: &ToolContext, params: DeviceTagsParams) -> ToolResult<Value> {
+    // Retagging replaces the whole set, and a policy rule that granted
+    // this caller its route in through one of the old tags stops applying.
+    not_at_ourselves(
+        ctx,
+        "replacing its tags",
+        &params.device_id,
+        &params.confirmation,
+    )?;
     let client = ctx.tailnet()?;
     client
         .post(device_path(&params.device_id, "/tags")?)
@@ -485,9 +527,17 @@ pub struct DeviceIpParams {
     pub device_id: String,
     /// The new IPv4 address, from the tailnet's own range.
     pub ipv4: String,
+    #[serde(flatten)]
+    pub confirmation: SelfConfirmation,
 }
 
 async fn device_ip_set(ctx: &ToolContext, params: DeviceIpParams) -> ToolResult<Value> {
+    not_at_ourselves(
+        ctx,
+        "moving it to another address",
+        &params.device_id,
+        &params.confirmation,
+    )?;
     let client = ctx.tailnet()?;
     client
         .post(device_path(&params.device_id, "/ip")?)
@@ -516,9 +566,19 @@ pub struct DeviceRoutesParams {
     /// The complete set of enabled routes, as CIDR blocks. An empty list
     /// disables every route the device advertises.
     pub routes: Vec<String>,
+    #[serde(flatten)]
+    pub confirmation: SelfConfirmation,
 }
 
 async fn device_routes_set(ctx: &ToolContext, params: DeviceRoutesParams) -> ToolResult<Value> {
+    // A caller reached over a subnet this node advertises loses its route
+    // in when the route stops being enabled.
+    not_at_ourselves(
+        ctx,
+        "changing which of its routes are enabled",
+        &params.device_id,
+        &params.confirmation,
+    )?;
     let client = ctx.tailnet()?;
     // This one answers with the routes it settled on, which is worth more to a
     // caller than a report that it worked.

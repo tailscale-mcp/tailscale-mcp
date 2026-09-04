@@ -403,6 +403,64 @@ pub struct Excluded {
     pub reason: &'static str,
 }
 
+/// Refuse an argument that raises a call above the session's tier.
+///
+/// For the tools whose row is a floor rather than the whole truth (`varying:
+/// true`): the gate has already let the call through on the row's tier, and
+/// this asks the same question the gate asked, about the argument it could not
+/// see (Q70).
+pub fn require_destructive(ctx: &ToolContext, what: &str) -> ToolResult<()> {
+    if ctx.max_tier < crate::meta::Tier::Destructive {
+        return Err(ToolError::not_permitted(what, "--allow-destructive"));
+    }
+    Ok(())
+}
+
+/// The confirmation a call aimed at this node has to carry.
+///
+/// Flattened into the parameters of every tool whose row says
+/// `severs_local: true`, so that the field, its documentation and its meaning
+/// are written once rather than six times. The registry refuses to build a
+/// table where a tool claims to sever the local node without offering this,
+/// which is what keeps the flag and the schema in step.
+#[derive(Debug, Default, serde::Deserialize, rmcp::schemars::JsonSchema)]
+pub struct SelfConfirmation {
+    /// Set to `true` to confirm an operation on the device this server runs
+    /// on, which would cut the connection this call is being made over.
+    /// Needed only then: any other device is an ordinary call and ignores it.
+    #[serde(default)]
+    pub confirm: Option<bool>,
+}
+
+/// Refuse a call aimed at this node that did not say it meant to be.
+///
+/// `what` names the operation as the refusal should read it — "deleting this
+/// node's own device", not the tool name — because the caller is being told
+/// what would happen, not which function it reached.
+///
+/// Identity is read from local status at startup, and a session with no local
+/// surface has none: `SelfIdentity::default()` matches nothing, so the call is
+/// treated as ordinary. That is deliberate. The alternative is refusing every
+/// device operation on a suspicion the server cannot check, which would make
+/// the tailnet surface unusable on its own for the sake of a guess (Q83).
+pub fn not_at_ourselves(
+    ctx: &ToolContext,
+    what: &str,
+    target: &str,
+    confirmation: &SelfConfirmation,
+) -> ToolResult<()> {
+    if !ctx.identity.matches(target) || confirmation.confirm == Some(true) {
+        return Ok(());
+    }
+    Err(ToolError::new(
+        ErrorCode::ConfirmationRequired,
+        format!(
+            "`{target}` is the device this server runs on, so {what} can disconnect it,              and this call did not say it meant to"
+        ),
+    )
+    .with_hint("Pass `confirm: true` to do it anyway."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

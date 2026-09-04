@@ -24,10 +24,14 @@ use tailscale_rest::ApiError;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{Done, answered_or, path_segment};
+use crate::tools::common::{Done, answered_or, path_segment, require_destructive};
 
 crate::tools! {
     /// List the tailnet's services. Answers with `{"vipServices": [...]}`.
+    ///
+    /// Tailscale calls these VIP services in its own client and its answers,
+    /// and services in its published description; these tools use the
+    /// published name and send whichever path the control plane serves.
     tailnet_service_list => NoParams, service_list,
         toolset: TailnetServices, tier: Read, idempotent: true;
 
@@ -52,8 +56,8 @@ crate::tools! {
         toolset: TailnetServices, tier: Destructive, idempotent: true;
 
     /// List the devices standing behind a service, and whether each is
-    /// approved to host it.
-    tailnet_service_hosts_list => ServiceParams, service_hosts_list,
+    /// approved to serve it.
+    tailnet_service_devices_list => ServiceParams, service_devices_list,
         toolset: TailnetServices, tier: Read, idempotent: true;
 
     /// Read whether one device may host a service, and whether an
@@ -94,17 +98,12 @@ where
     }
 }
 
-/// The service name, checked once before either spelling is tried.
-///
-/// It carries a colon — `svc:example` — which `path_segment` allows because it
-/// is part of the identifier rather than a separator. Checked out here rather
-/// than inside the retry so the closure cannot fail: a name that is not a path
-/// segment is a refusal, not something to ask the control plane about twice.
-fn checked_name(service: &str) -> ToolResult<String> {
-    path_segment("service_name", service)
-}
-
 /// `/api/v2/tailnet/<tailnet><base>/<service><rest>`, from a checked name.
+///
+/// The name arrives already through `path_segment`, which each caller does
+/// before building the closure: a name that is not a path segment is a refusal
+/// rather than something to ask the control plane about at two spellings, and
+/// a fallible closure is one `either_spelling` cannot take.
 fn service_path(client: &tailscale_rest::Client, base: &str, name: &str, rest: &str) -> String {
     client.tailnet_path(None, &format!("{base}/{name}{rest}"))
 }
@@ -125,7 +124,7 @@ pub struct ServiceParams {
 
 async fn service_get(ctx: &ToolContext, params: ServiceParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let name = &checked_name(&params.service_name)?;
+    let name = &path_segment("service_name", &params.service_name)?;
     either_spelling(|base| client.get(service_path(client, base, name, "")).send_as::<Value>()).await
 }
 
@@ -149,7 +148,7 @@ async fn service_replace(ctx: &ToolContext, params: ServiceReplaceParams) -> Too
         )
         .with_hint("Call `tailnet_service_get` and send back what it answered."));
     }
-    let name = &checked_name(&params.service_name)?;
+    let name = &path_segment("service_name", &params.service_name)?;
     let body = &params.service;
     either_spelling(|base| {
         client
@@ -162,7 +161,7 @@ async fn service_replace(ctx: &ToolContext, params: ServiceReplaceParams) -> Too
 
 async fn service_delete(ctx: &ToolContext, params: ServiceParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let name = &checked_name(&params.service_name)?;
+    let name = &path_segment("service_name", &params.service_name)?;
     let answer = either_spelling(|base| {
         client
             .delete(service_path(client, base, name, ""))
@@ -175,9 +174,9 @@ async fn service_delete(ctx: &ToolContext, params: ServiceParams) -> ToolResult<
     )
 }
 
-async fn service_hosts_list(ctx: &ToolContext, params: ServiceParams) -> ToolResult<Value> {
+async fn service_devices_list(ctx: &ToolContext, params: ServiceParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let name = &checked_name(&params.service_name)?;
+    let name = &path_segment("service_name", &params.service_name)?;
     either_spelling(|base| {
         client
             .get(service_path(client, base, name, "/devices"))
@@ -213,7 +212,7 @@ fn approval_suffix(device: &str) -> ToolResult<String> {
 
 async fn service_approval_get(ctx: &ToolContext, params: ServiceDeviceParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let name = &checked_name(&params.service_name)?;
+    let name = &path_segment("service_name", &params.service_name)?;
     let suffix = approval_suffix(&params.device_id)?;
     either_spelling(|base| {
         client
@@ -228,13 +227,10 @@ async fn service_approval_set(ctx: &ToolContext, params: ServiceApprovalParams) 
     // The danger is in the argument, not the tool: approving adds a host,
     // withdrawing removes a working one. The row carries the floor and the
     // call decides, as `tailnet_device_authorize` does (Q70).
-    if !params.approved && ctx.max_tier < crate::meta::Tier::Destructive {
-        return Err(ToolError::not_permitted(
-            "withdrawing a device's approval to host a service",
-            "--allow-destructive",
-        ));
+    if !params.approved {
+        require_destructive(ctx, "withdrawing a device's approval to serve a service")?;
     }
-    let name = &checked_name(&params.service_name)?;
+    let name = &path_segment("service_name", &params.service_name)?;
     let suffix = approval_suffix(&params.device_id)?;
     let body = tailscale_rest::models::service::ServiceApprovalRequest {
         approved: Some(params.approved),
@@ -267,7 +263,7 @@ mod tests {
         // `svc:` is part of the identifier, so it goes into the path as
         // written. `..` is not an identifier at all.
         let client = client();
-        let name = &checked_name("svc:example").expect("a name");
+        let name = &path_segment("service_name", "svc:example").expect("a name");
         assert_eq!(
             service_path(&client, DOCUMENTED, name, "/devices"),
             "/api/v2/tailnet/-/services/svc:example/devices"
@@ -276,7 +272,7 @@ mod tests {
             service_path(&client, GO_CLIENT, name, ""),
             "/api/v2/tailnet/-/vip-services/svc:example"
         );
-        assert!(checked_name("..").is_err());
+        assert!(path_segment("service_name", "..").is_err());
         assert!(approval_suffix("../..").is_err());
     }
 }

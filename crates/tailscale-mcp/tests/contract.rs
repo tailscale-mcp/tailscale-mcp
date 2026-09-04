@@ -779,23 +779,28 @@ fn contracts() -> Vec<Contract> {
                 Response::json(json!({"nodeId": "n1111111CNTRL", "name": "example-node"})),
             err: {"device_id": "n1111111CNTRL"}
         ),
+        // `n2222222CNTRL` from here on for the six tools that sever when they
+        // are aimed at us: the fake `tailscale status` names `n1111111CNTRL`
+        // as this node, so a row using that would be exercising the
+        // confirmation rather than the call. The confirmation is
+        // `tailnet_surface.rs`'s to assert (Q83).
         api_contract!(
             "tailnet_device_delete",
-            ok: {"device_id": "n1111111CNTRL"} on "DELETE" "/api/v2/device/n1111111CNTRL" =>
+            ok: {"device_id": "n2222222CNTRL"} on "DELETE" "/api/v2/device/n2222222CNTRL" =>
                 Response::empty(),
-            err: {"device_id": "n1111111CNTRL"}
+            err: {"device_id": "n2222222CNTRL"}
         ),
         api_contract!(
             "tailnet_device_expire",
-            ok: {"device_id": "n1111111CNTRL"} on "POST" "/api/v2/device/n1111111CNTRL/expire" =>
+            ok: {"device_id": "n2222222CNTRL"} on "POST" "/api/v2/device/n2222222CNTRL/expire" =>
                 Response::empty(),
-            err: {"device_id": "n1111111CNTRL"}
+            err: {"device_id": "n2222222CNTRL"}
         ),
         api_contract!(
             "tailnet_device_authorize",
-            ok: {"device_id": "n1111111CNTRL", "authorized": true}
-                on "POST" "/api/v2/device/n1111111CNTRL/authorized" => Response::empty(),
-            err: {"device_id": "n1111111CNTRL", "authorized": true}
+            ok: {"device_id": "n2222222CNTRL", "authorized": true}
+                on "POST" "/api/v2/device/n2222222CNTRL/authorized" => Response::empty(),
+            err: {"device_id": "n2222222CNTRL", "authorized": true}
         ),
         api_contract!(
             "tailnet_device_rename",
@@ -805,9 +810,9 @@ fn contracts() -> Vec<Contract> {
         ),
         api_contract!(
             "tailnet_device_tags_set",
-            ok: {"device_id": "n1111111CNTRL", "tags": ["tag:example"]}
-                on "POST" "/api/v2/device/n1111111CNTRL/tags" => Response::empty(),
-            err: {"device_id": "n1111111CNTRL", "tags": ["tag:example"]}
+            ok: {"device_id": "n2222222CNTRL", "tags": ["tag:example"]}
+                on "POST" "/api/v2/device/n2222222CNTRL/tags" => Response::empty(),
+            err: {"device_id": "n2222222CNTRL", "tags": ["tag:example"]}
         ),
         api_contract!(
             "tailnet_device_key_expiry_set",
@@ -817,9 +822,9 @@ fn contracts() -> Vec<Contract> {
         ),
         api_contract!(
             "tailnet_device_ip_set",
-            ok: {"device_id": "n1111111CNTRL", "ipv4": "100.64.0.9"}
-                on "POST" "/api/v2/device/n1111111CNTRL/ip" => Response::empty(),
-            err: {"device_id": "n1111111CNTRL", "ipv4": "100.64.0.9"}
+            ok: {"device_id": "n2222222CNTRL", "ipv4": "100.64.0.9"}
+                on "POST" "/api/v2/device/n2222222CNTRL/ip" => Response::empty(),
+            err: {"device_id": "n2222222CNTRL", "ipv4": "100.64.0.9"}
         ),
         api_contract!(
             "tailnet_device_routes_get",
@@ -829,11 +834,11 @@ fn contracts() -> Vec<Contract> {
         ),
         api_contract!(
             "tailnet_device_routes_set",
-            ok: {"device_id": "n1111111CNTRL", "routes": ["10.0.0.0/24"]}
-                on "POST" "/api/v2/device/n1111111CNTRL/routes" =>
+            ok: {"device_id": "n2222222CNTRL", "routes": ["10.0.0.0/24"]}
+                on "POST" "/api/v2/device/n2222222CNTRL/routes" =>
                 Response::json(json!({"advertisedRoutes": ["10.0.0.0/24"],
                                       "enabledRoutes": ["10.0.0.0/24"]})),
-            err: {"device_id": "n1111111CNTRL", "routes": ["10.0.0.0/24"]}
+            err: {"device_id": "n2222222CNTRL", "routes": ["10.0.0.0/24"]}
         ),
         api_contract!(
             "tailnet_device_attributes_get",
@@ -1191,7 +1196,7 @@ fn contracts() -> Vec<Contract> {
             err: {"endpoint_id": "whk-example"}
         ),
         api_contract!(
-            "tailnet_webhook_update",
+            "tailnet_webhook_subscriptions_replace",
             ok: {"endpoint_id": "whk-example", "subscriptions": ["nodeCreated", "nodeDeleted"]}
                 on "PATCH" "/api/v2/webhooks/whk-example"
                 => Response::json(json!({"endpointId": "whk-example"})),
@@ -1243,10 +1248,12 @@ fn contracts() -> Vec<Contract> {
             err: {"service_name": "svc:example"} also "/api/v2/tailnet/-/vip-services/svc:example"
         ),
         api_contract!(
-            "tailnet_service_hosts_list",
+            "tailnet_service_devices_list",
             ok: {"service_name": "svc:example"}
                 on "GET" "/api/v2/tailnet/-/services/svc:example/devices"
-                => Response::json(json!({"devices": []})),
+                // `hosts` is the envelope the description gives this one, even
+                // though the path is `/devices`; forwarded as it arrives.
+                => Response::json(json!({"hosts": []})),
             err: {"service_name": "svc:example"} also "/api/v2/tailnet/-/vip-services/svc:example/devices"
         ),
         api_contract!(
@@ -1347,7 +1354,7 @@ fn contracts() -> Vec<Contract> {
             err: {"log_type": "network"}
         ),
         api_contract!(
-            "tailnet_log_stream_set",
+            "tailnet_log_stream_replace",
             ok: {
                 "log_type": "configuration",
                 "configuration": {"destinationType": "elastic", "url": "https://example.com/logs"}

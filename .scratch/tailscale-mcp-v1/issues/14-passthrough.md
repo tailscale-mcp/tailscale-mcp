@@ -12,4 +12,8 @@ It has no fixed tier: it inherits the tier of the typed tool covering the same s
 - With the read tier only, a status subcommand runs and a down subcommand is refused.
 - An unknown subcommand is treated as destructive and refused unless that tier is enabled.
 - Every excluded command is refused, verified by a test enumerating the exclusion list.
+  The debug half of that list is `tools::local_debug::EXCLUDED` — 14 entries, each with a
+  caller-facing reason — which ticket 13 built public for this tool to consume rather than
+  repeat. `debug reload-config` is deliberately absent from it and stays runnable
+  (DECISIONS Q44).
 - No shell is involved: a string containing shell metacharacters is passed through as a literal argument.

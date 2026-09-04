@@ -502,6 +502,201 @@ fn contracts() -> Vec<Contract> {
                 "generation of recovery AUM failed: sending generate-recovery-aum: 500 Internal Server Error: tailnet-lock is not active"
             ), "cli_failed"
         ),
+        // The debug toolset. Every payload here is a documentation value: the
+        // real commands print this node's keys, addresses and peers, and none
+        // of that belongs in a repo.
+        contract!(
+            "tailscale_debug_derp_map",
+            ok: {} on ["debug", "derp-map"] => Reply::ok(r#"{"Regions":{}}"#),
+            err: {} on ["debug", "derp-map"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_netmap",
+            ok: {} on ["debug", "netmap"] => Reply::ok(r#"{"Peers":[]}"#),
+            err: {} on ["debug", "netmap"] =>
+                Reply::failed(1, "netmap is not available: not logged in"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_debug_hostinfo",
+            ok: {} on ["debug", "hostinfo"] => Reply::ok(r#"{"OS":"macOS","Hostname":"example"}"#),
+            err: {} on ["debug", "hostinfo"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_control_knobs",
+            ok: {} on ["debug", "control-knobs"] => Reply::ok(r#"{"DisableUPnP":false}"#),
+            err: {} on ["debug", "control-knobs"] =>
+                Reply::failed(1, "tailscale: unknown subcommand \"control-knobs\""), "unsupported_version"
+        ),
+        contract!(
+            "tailscale_debug_daemon_goroutines",
+            ok: {} on ["debug", "daemon-goroutines"] =>
+                Reply::ok("goroutine 1 [running]:\nmain.main()\n"),
+            err: {} on ["debug", "daemon-goroutines"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_daemon_bus_graph",
+            ok: {} on ["debug", "daemon-bus-graph", "--format=json"] =>
+                Reply::ok(r#"{"nodes":[],"edges":[]}"#),
+            err: {"format": "dot"} on ["debug", "daemon-bus-graph", "--format=dot"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_daemon_bus_queues",
+            ok: {} on ["debug", "daemon-bus-queues"] => Reply::ok(r#"{"queues":[]}"#),
+            err: {} on ["debug", "daemon-bus-queues"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_metrics",
+            ok: {} on ["debug", "metrics"] =>
+                Reply::ok("# TYPE tailscaled_inbound_packets_total counter\ntailscaled_inbound_packets_total 0\n"),
+            err: {} on ["debug", "metrics"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_statedir",
+            ok: {} on ["debug", "statedir"] => Reply::ok("/var/lib/tailscale\n"),
+            err: {} on ["debug", "statedir"] =>
+                Reply::failed(1, "no state directory is configured"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_debug_go_buildinfo",
+            ok: {} on ["debug", "go-buildinfo"] => Reply::ok(r#"{"GoVersion":"go1.24.0"}"#),
+            err: {} on ["debug", "go-buildinfo"] =>
+                Reply::failed(1, "tailscale: unknown subcommand \"go-buildinfo\""), "unsupported_version"
+        ),
+        contract!(
+            "tailscale_debug_peer_relay_servers",
+            ok: {} on ["debug", "peer-relay-servers"] => Reply::ok("[]\n"),
+            err: {} on ["debug", "peer-relay-servers"] =>
+                Reply::failed(1, "tailscale: unknown subcommand \"peer-relay-servers\""), "unsupported_version"
+        ),
+        contract!(
+            "tailscale_debug_peer_relay_sessions",
+            ok: {} on ["debug", "peer-relay-sessions"] =>
+                Reply::ok("Server port: not configured\nSessions count: 0\n"),
+            err: {} on ["debug", "peer-relay-sessions"] =>
+                Reply::failed(1, "tailscale: unknown subcommand \"peer-relay-sessions\""), "unsupported_version"
+        ),
+        contract!(
+            "tailscale_debug_file_list",
+            ok: {} on ["debug", "--file=get"] => Reply::ok("null\n"),
+            err: {} on ["debug", "--file=get"] =>
+                Reply::failed(1, "Taildrop is not enabled on this node"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_debug_stat",
+            ok: {"paths": ["/etc/hosts"]} on ["debug", "stat", "/etc/hosts"] =>
+                Reply::ok("/etc/hosts: -rw-r--r--, 213\n"),
+            err: {"paths": ["/etc/nope"]} on ["debug", "stat", "/etc/nope"] =>
+                Reply::failed(1, "stat /etc/nope: no such file or directory"), "not_found"
+        ),
+        contract!(
+            "tailscale_debug_via",
+            ok: {"site_id": 7, "prefix": "10.1.0.0/16"} on ["debug", "via", "7", "10.1.0.0/16"] =>
+                Reply::ok("fd7a:115c:a1e0:b1a:0:7:a01:0/112\n"),
+            err: {"site_id": 7, "prefix": "10.1.0.0/16", "route": "fd7a::/112"}
+                on ["debug", "via"] => Reply::ok(""), "invalid_args"
+        ),
+        contract!(
+            "tailscale_debug_watch_ipn",
+            ok: {"count": 1} on ["debug", "watch-ipn", "--count=1"] =>
+                Reply::ok("{\"Version\":\"1.102.2\"}\n"),
+            err: {"count": 0} on ["debug", "watch-ipn"] => Reply::ok(""), "invalid_args"
+        ),
+        contract!(
+            "tailscale_debug_peer_endpoint_changes",
+            ok: {"peer": "laptop"} on ["debug", "peer-endpoint-changes", "laptop"] =>
+                Reply::ok(r#"{"changes":[]}"#),
+            err: {"peer": "missing"} on ["debug", "peer-endpoint-changes", "missing"] =>
+                Reply::failed(1, "error looking up IP of \"missing\": no such host"), "not_found"
+        ),
+        contract!(
+            "tailscale_debug_resolve",
+            ok: {"host": "example.com"} on ["debug", "resolve", "example.com"] =>
+                Reply::ok("203.0.113.10\n"),
+            err: {"host": "missing.invalid"} on ["debug", "resolve", "missing.invalid"] =>
+                Reply::failed(1, "lookup missing.invalid: no such host"), "not_found"
+        ),
+        contract!(
+            "tailscale_debug_dial_types",
+            ok: {"host": "example.com", "port": 443} on ["debug", "dial-types", "example.com", "443"] =>
+                Reply::ok("tcp dial to example.com:443 succeeded\n"),
+            err: {"host": "example.com", "port": 443} on ["debug", "dial-types"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_derp",
+            ok: {} on ["debug", "derp"] => Reply::ok("derp region 1: ok\n"),
+            err: {} on ["debug", "derp"] =>
+                Reply::failed(1, "no DERP map is available"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_debug_ts2021",
+            ok: {} on ["debug", "ts2021"] => Reply::ok("did noise handshake\n"),
+            err: {} on ["debug", "ts2021"] =>
+                Reply::failed(1, "fetching keys: dial tcp: connection refused"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_debug_portmap",
+            ok: {} on ["debug", "portmap", "--duration=5s"] =>
+                Reply::ok("portmapper: no port mapping services were found\n"),
+            err: {"gateway_addr": "192.0.2.1"} on ["debug", "portmap"] =>
+                Reply::ok(""), "invalid_args"
+        ),
+        // The knobs. Each needs the write tier as well as the toolset.
+        contract!(
+            "tailscale_debug_component_logs",
+            ok: {"component": "magicsock"}
+                on ["debug", "component-logs", "--for=3600s", "magicsock"] => Reply::ok(""),
+            err: {"component": "nonsense"} on ["debug", "component-logs"] =>
+                Reply::failed(1, "unknown component \"nonsense\""), "cli_failed"
+        ),
+        contract!(
+            "tailscale_debug_restun",
+            ok: {} on ["debug", "restun"] => Reply::ok(""),
+            err: {} on ["debug", "restun"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_rebind",
+            ok: {} on ["debug", "rebind"] => Reply::ok(""),
+            err: {} on ["debug", "rebind"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_rotate_disco_key",
+            ok: {} on ["debug", "rotate-disco-key"] => Reply::ok(""),
+            err: {} on ["debug", "rotate-disco-key"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_derp_unset_on_demand",
+            ok: {} on ["debug", "derp-unset-on-demand"] => Reply::ok(""),
+            err: {} on ["debug", "derp-unset-on-demand"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_pick_new_derp",
+            ok: {} on ["debug", "pick-new-derp"] => Reply::ok("now using derp region 2\n"),
+            err: {} on ["debug", "pick-new-derp"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
+        contract!(
+            "tailscale_debug_force_prefer_derp",
+            ok: {"region_id": 0} on ["debug", "force-prefer-derp", "0"] => Reply::ok(""),
+            err: {"region_id": 99} on ["debug", "force-prefer-derp", "99"] =>
+                Reply::failed(1, "region 99 is not in the DERP map"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_debug_force_netmap_update",
+            ok: {} on ["debug", "force-netmap-update"] => Reply::ok(""),
+            err: {} on ["debug", "force-netmap-update"] =>
+                Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
+        ),
     ]
 }
 
@@ -775,4 +970,242 @@ async fn no_tool_is_reachable_from_a_session_that_did_not_ask_for_its_toolset() 
 
         harness.shutdown().await;
     }
+}
+
+/// The debug toolset is opt-in, and "every toolset" does not include it.
+///
+/// A caller reaching it has said `local-debug` out loud, which is the statement
+/// that it accepts output the client itself calls unstable. A preset is the
+/// opposite kind of choice — a name for a sensible default — so no preset, not
+/// even the largest, may carry one of these.
+#[tokio::test]
+async fn no_preset_offers_a_debug_tool_at_any_tier() {
+    let debug: BTreeSet<&str> = table()
+        .iter()
+        .filter(|m| m.toolset == tailscale_mcp::meta::Toolset::LocalDebug)
+        .map(|m| m.name)
+        .collect();
+    assert_eq!(debug.len(), 30, "the debug toolset is thirty tools");
+
+    for preset in [Preset::Minimal, Preset::Core, Preset::Full] {
+        for tier in [Tier::Read, Tier::Write, Tier::Destructive] {
+            let harness = Setup::new()
+                .preset(preset.as_str())
+                .tier(tier)
+                .start()
+                .await;
+            let offered: BTreeSet<String> = harness.tool_names().await.into_iter().collect();
+            let leaked: Vec<&&str> = debug
+                .iter()
+                .filter(|name| offered.contains(**name))
+                .collect();
+            assert!(
+                leaked.is_empty(),
+                "the {} preset at the {tier} tier offers {leaked:?}",
+                preset.as_str()
+            );
+            harness.shutdown().await;
+        }
+    }
+}
+
+/// The toolset and the tier are separate keys to the same door.
+///
+/// Adding `local-debug` at the read tier buys the twenty-two readers and none
+/// of the eight knobs: a reader asks the daemon what it believes, and a knob
+/// makes it do something over again.
+#[tokio::test]
+async fn the_knobs_need_the_write_tier_as_well_as_the_toolset() {
+    let readers: BTreeSet<&str> = table()
+        .iter()
+        .filter(|m| m.toolset == tailscale_mcp::meta::Toolset::LocalDebug && m.tier == Tier::Read)
+        .map(|m| m.name)
+        .collect();
+    let knobs: BTreeSet<&str> = table()
+        .iter()
+        .filter(|m| m.toolset == tailscale_mcp::meta::Toolset::LocalDebug && m.tier == Tier::Write)
+        .map(|m| m.name)
+        .collect();
+    assert_eq!((readers.len(), knobs.len()), (22, 8));
+
+    let harness = Setup::new()
+        .toolsets("local-debug")
+        .tier(Tier::Read)
+        .start()
+        .await;
+    let offered: BTreeSet<String> = harness.tool_names().await.into_iter().collect();
+    for reader in &readers {
+        assert!(offered.contains(*reader), "`{reader}` is a read-tier tool");
+    }
+    for knob in &knobs {
+        assert!(!offered.contains(*knob), "`{knob}` needs the write tier");
+        let error = harness.call_err(knob, json!({})).await;
+        assert_eq!(error["code"], "not_permitted", "{knob}");
+    }
+    harness.shutdown().await;
+
+    let harness = Setup::new()
+        .toolsets("local-debug")
+        .tier(Tier::Write)
+        .start()
+        .await;
+    let offered: BTreeSet<String> = harness.tool_names().await.into_iter().collect();
+    for knob in &knobs {
+        assert!(
+            offered.contains(*knob),
+            "`{knob}` is on offer at the write tier"
+        );
+    }
+    harness.shutdown().await;
+}
+
+/// The arguments a tool needs to get as far as spawning, read off its own
+/// schema.
+///
+/// Every required property gets the emptiest value its type allows. The point
+/// is never to make a meaningful call — the fake refuses most of these — but to
+/// get past argument validation so that the client is actually reached and the
+/// argument list is recorded.
+fn minimal_arguments(tool: &rmcp::model::Tool) -> Value {
+    let schema = &tool.input_schema;
+    let properties = schema.get("properties").and_then(Value::as_object);
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut args = serde_json::Map::new();
+    for name in required.iter().filter_map(Value::as_str) {
+        let property = properties.and_then(|p| p.get(name));
+        args.insert(name.to_owned(), emptiest_value(property));
+    }
+    Value::Object(args)
+}
+
+/// The emptiest value a schema will accept, by type.
+fn emptiest_value(property: Option<&Value>) -> Value {
+    // A nullable property is written `["string", "null"]`, so the first named
+    // type is the one to satisfy.
+    let kind = property
+        .and_then(|p| p.get("type"))
+        .map(|t| match t {
+            Value::Array(types) => types
+                .iter()
+                .filter_map(Value::as_str)
+                .find(|t| *t != "null")
+                .unwrap_or("string")
+                .to_owned(),
+            other => other.as_str().unwrap_or("string").to_owned(),
+        })
+        .unwrap_or_else(|| "string".to_owned());
+
+    match kind.as_str() {
+        "integer" | "number" => json!(1),
+        "boolean" => json!(false),
+        "array" => json!([emptiest_value(
+            property
+                .and_then(|p| p.get("items"))
+                .filter(|i| i.is_object())
+        )]),
+        _ => json!("x"),
+    }
+}
+
+/// Every debug tool is called, and none of them runs an excluded command.
+///
+/// This is what the ticket's third criterion actually asks of the registry.
+/// Its sibling below proves that no tool is *named* for an excluded path,
+/// which is a weaker claim than it looks: `debug prefs` is excluded precisely
+/// because a command's name does not tell you what it does, so a check on
+/// names alone would not catch a tool that quietly ran one. This one drives
+/// every debug tool through a real session and reads back the argument lists
+/// the fake `tailscale` was given.
+///
+/// The other half of the criterion — the passthrough refusing the same list —
+/// belongs to the passthrough, and is ticket 14.
+#[tokio::test]
+async fn no_debug_tool_runs_an_excluded_subcommand() {
+    let harness = Setup::new()
+        .toolsets("local-debug")
+        .tier(Tier::Destructive)
+        .start()
+        .await;
+
+    // `debug via` takes either a route or a site and a prefix, and refuses
+    // before spawning when given a lone one, so the generator cannot reach it.
+    let route = json!({"route": "fd7a:115c:a1e0:b1a:0:7:a01:0/112"});
+
+    let mut called = 0;
+    for tool in harness.tools().await {
+        let name = tool.name.to_string();
+        assert!(
+            name.starts_with("tailscale_debug_"),
+            "only debug tools should be on offer here, and `{name}` is not one"
+        );
+        let arguments = if name == "tailscale_debug_via" {
+            route.clone()
+        } else {
+            minimal_arguments(&tool)
+        };
+
+        let before = harness.cli_calls().len();
+        // Whether the call succeeded is beside the point; what it ran is not.
+        let _ = harness.call(&name, arguments.clone()).await;
+        let calls = harness.cli_calls();
+        assert!(
+            calls.len() > before,
+            "`{name}` answered without reaching the client, so nothing was \
+             proved about what it runs; it was called with {arguments}"
+        );
+
+        for argv in &calls[before..] {
+            for excluded in tailscale_mcp::tools::local_debug::EXCLUDED {
+                // Word by word, so that a future `debug prefsomething` is not
+                // mistaken for `debug prefs`.
+                let words: Vec<String> = excluded.path.split(' ').map(str::to_owned).collect();
+                assert!(
+                    !argv.starts_with(&words),
+                    "`{name}` ran `{}`, which is the excluded `{}`",
+                    argv.join(" "),
+                    excluded.path
+                );
+            }
+        }
+        called += 1;
+    }
+
+    assert_eq!(called, 30, "every debug tool has to be exercised, not most");
+    harness.shutdown().await;
+}
+
+/// No excluded `debug` subcommand is a tool name.
+///
+/// A weaker claim than its sibling above, and kept because it is the one a
+/// caller can check: the name they would guess is not there, and calling it
+/// says so plainly.
+#[tokio::test]
+async fn no_excluded_debug_subcommand_is_reachable_as_a_tool() {
+    let harness = Setup::new()
+        .toolsets("local-debug")
+        .tier(Tier::Destructive)
+        .start()
+        .await;
+    let offered: BTreeSet<String> = harness.tool_names().await.into_iter().collect();
+
+    for excluded in tailscale_mcp::tools::local_debug::EXCLUDED {
+        // `debug foo-bar` would have been `tailscale_debug_foo_bar`.
+        let name = format!("tailscale_{}", excluded.path.replace([' ', '-'], "_"));
+        assert!(
+            !offered.contains(&name),
+            "`{}` is excluded but `{name}` is on offer",
+            excluded.path
+        );
+        // `not_found`, not `not_permitted`: a gated tool exists and a switch
+        // would reach it, while these do not exist at all. Telling a caller to
+        // enable something that would never appear would be the wrong answer.
+        let error = harness.call_err(&name, json!({})).await;
+        assert_eq!(error["code"], "not_found", "{name}");
+    }
+    harness.shutdown().await;
 }

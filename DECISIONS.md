@@ -429,3 +429,43 @@
 **Justification:** "Returned once" is a rule about the calls that follow, not about how many fields of one answer carry the value: nothing here stores a secret, nothing logs one, and no later call can produce one again, which is the whole of the exposure the story is about. Within a single answer the question is a different one — what happens if the parse is wrong — and it has different answers for the two tools because the loss is not the same size. A missed auth key costs a second `tailscale_lock_sign`, so the tidier answer is free and worth having. A missed disablement secret cannot be recovered by any call at all: `lock init` mints them once, and a tailnet whose disablement secrets are lost can never turn its lock off again. Trading that against a parse written against one release's output is not a trade worth making, so `tailscale_lock_init` keeps the client's own text and says in the field's own documentation why. The asymmetry is the point rather than an oversight, so it is stated in the module header too.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/local_lock.rs`
+
+## Q44 — build/ticket-13 — interpretation
+
+**Question:** Ticket 13 asks for "8 runtime knobs", and nine `tailscale debug` subcommands are write-class and otherwise eligible. Which is the ninth, and what happens to it?
+**Options considered:** offer all nine and treat the ticket's count as approximate / drop one of the eight the research table classes as a knob / exclude `debug reload-config` and offer the other eight
+**Chosen:** Exclude `debug reload-config` from the toolset, and from the excluded list as well — it is deliberately in neither.
+**Decided-by:** agent
+**Justification:** `CONTEXT.md` defines a knob as something that "changes the local node's transient runtime state … without changing any preference". The other eight fit exactly: a fresh STUN round, a new socket, a different home relay, all undone by the next restart. `reload-config` makes tailscaled re-read a configuration file that this server did not write, cannot see and cannot describe, so its effect is whatever that file now says — it may change every preference at once. `spec.md` line 144 requires each tool's annotations to state the truth about it, and no honest tier or summary could be written for a command whose scope is a file we have never read. It is still a legitimate operation for whoever does own that file, so it is not in `EXCLUDED` either: the passthrough may run it, with the operator's own judgement standing behind it. Being absent from both lists is the statement, and the module says so where a reader will look for it. The consequence is worth naming: ticket 14 treats a subcommand it does not recognise as destructive, so this is a write-class command that a caller reaches only with the destructive tier enabled. That is the right way round — a command whose scope we cannot describe should cost the caller the widest permission — but it is a consequence of this decision rather than an accident.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_debug.rs`
+
+## Q45 — build/ticket-13 — deviation
+
+**Question:** `docs/research/tailscale-cli.md` §6 lists `debug prefs` among the debug members to keep, on the strength of its help text. Run against the real client it prints `PrivateNodeKey`, `OldPrivateNodeKey` and the tailnet-lock private key. Does it still become a tool?
+**Options considered:** offer it as the research table says / offer it and teach the redactor the `privkey:` and `nlpriv:` shapes / exclude it and offer the 22nd reader elsewhere
+**Chosen:** Exclude it, as a command that prints a secret.
+**Decided-by:** agent
+**Justification:** `spec.md` line 152 already excludes "commands that print a secret", and `CONTEXT.md` gives the same rule for an excluded command; this is that rule applied to a case the research table got wrong because it read the help rather than the output. Teaching the redactor two more prefixes was drafted and dropped: the redactor is a safety net for secrets we never had, and leaning on it to make a private-key dump safe is the wrong direction of reliance — a shape it does not yet know would go straight through. The exclusion costs a caller nothing, because every non-secret field in that dump is already reported by a tool that does not carry the keys. The same dump is reachable through `debug watch-ipn --initial`, so that flag is not offered either. Its six `--initial-*` siblings are a different matter and are offered as ordinary parameters: each asks for one narrow current value — the client version, the Taildrive shares, health, outgoing files, status, the suggested exit node — and none of them carries a key. An earlier draft withheld all seven on the ground that the narrow six duplicate dedicated readers, which is not one of the grounds `CONTEXT.md` gives for leaving a flag out; `spec.md` line 140 says every CLI flag becomes a parameter of the same name, and duplication is the caller's business, not ours. The scan that found this was run over every other kept reader; none of them prints anything key-shaped.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_debug.rs`
+
+## Q46 — build/ticket-13 — interpretation
+
+**Question:** Excluding `debug prefs` leaves 21 readers where the ticket asks for 22. What fills the place?
+**Options considered:** report 21 and amend the ticket / promote one of the excluded members / offer `debug --file=get` in the files toolset, where the inbox it lists belongs / offer `debug --file=get` here, as a reader on the parent command rather than a subcommand
+**Chosen:** `tailscale_debug_file_list`, running `debug --file=get`.
+**Decided-by:** agent
+**Justification:** It lists what is waiting in the node's Taildrop inbox without downloading any of it, which no other tool does: `tailscale_file_get` fetches, and fetching is the decision a caller wants to make *after* seeing the list. It is a `debug` reader on the same terms as the rest, it changes nothing, and it keeps the ticket's 22 and `spec.md`'s 186 both true. Putting it in the files toolset instead was the closer call, and was rejected on two grounds: the toolset boundary follows the client's own command tree everywhere else, and moving it would change `spec.md`'s 62/30 split without changing what the server can do. The cost is real and worth stating — asking "what is waiting for me" now means enabling a toolset whose premise is that its output may change shape between releases. The parent's other flags stay out on their own grounds: `--file=<name>` and `--file=delete:<name>` act on the inbox that the files toolset owns, and `--cpu-profile` and `--mem-profile` write a binary profile to a path or to standard output.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_debug.rs`
+
+## Q47 — build/ticket-13 — interpretation
+
+**Question:** Ticket 13 requires that the event watcher "always returns". `debug watch-ipn` has `--count` but no timeout flag of its own, so on a quiet node the count may never be reached. What does the tool answer with when its wall-clock bound expires first?
+**Options considered:** report the bound as a timeout carrying what had arrived / add a mode to the backend that turns an expired bound into an ordinary end, so a partial result comes back as success
+**Chosen:** A timeout, carrying whatever the watcher had printed.
+**Decided-by:** agent
+**Justification:** This is the road the server already takes for a foreground command it bounds itself: a foreground `tailscale_funnel` "comes back as a timeout carrying the URL that enables it", and `ToolError::timeout`'s own hint reads "The command was waiting on something. Act on what it printed, then call again." Following it costs no new machinery and gives the watcher the same shape as its neighbours. The alternative was drafted: `ExecError::Timeout` already holds what the child printed, so a partial success was reachable — but only by widening `Invocation` and `Output` for one tool, and the text it holds merges both streams and is capped for use in a message, so the notifications would come back worse than the error already reports them. "Always returns" is satisfied either way: the call ends at a bound this server set, rather than running until something interrupts it. What makes the common case return promptly is the count, which the client itself honours, so the bound is the safety net rather than the mechanism.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_debug.rs`

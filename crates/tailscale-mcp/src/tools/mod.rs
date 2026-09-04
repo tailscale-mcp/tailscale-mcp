@@ -6,6 +6,7 @@
 //! what the server is built from.
 
 pub mod common;
+pub mod local_debug;
 pub mod local_files;
 pub mod local_lock;
 pub mod local_prefs;
@@ -20,6 +21,7 @@ pub fn entries() -> Vec<crate::registry::ToolEntry> {
     all.extend(local_serve::entries());
     all.extend(local_files::entries());
     all.extend(local_lock::entries());
+    all.extend(local_debug::entries());
     all
 }
 

@@ -58,7 +58,10 @@ fn leaks(text: &str) -> Vec<Leak> {
                 value: word.clone(),
             });
         }
-        if address.starts_with("fd7a:115c:a1e0") && !is_placeholder_v6(address) {
+        if address.starts_with("fd7a:115c:a1e0")
+            && !is_placeholder_v6(address)
+            && !is_via_route(address)
+        {
             found.push(Leak {
                 what: "Tailscale IPv6 address",
                 value: word.clone(),
@@ -156,6 +159,23 @@ fn is_placeholder_v6(word: &str) -> bool {
     })
 }
 
+/// A 4via6 route, which is not an address the control plane ever assigned.
+///
+/// `fd7a:115c:a1e0:b1a::/64` is the block Tailscale reserves for 4via6, and
+/// `tailscale debug via` fills it in locally by arithmetic on a site number and
+/// an IPv4 prefix the caller typed. Nothing in it was handed out by a tailnet,
+/// so the rule this exempts it from — "a Tailscale address identifies a node" —
+/// has nothing to say about it.
+///
+/// The exemption is exactly that narrow. It says nothing about the IPv4 prefix
+/// encoded in the low half, which is a LAN range rather than a tailnet
+/// identity, and which this check does not judge in its plain form either: a
+/// bare `10.1.0.0/16` in a fixture passes for the same reason. A node address
+/// lives elsewhere in `fd7a:115c:a1e0::/48` and is still caught.
+fn is_via_route(word: &str) -> bool {
+    word.starts_with("fd7a:115c:a1e0:b1a:")
+}
+
 fn is_placeholder_hex(hex: &str) -> bool {
     let mut characters = hex.chars();
     let Some(first) = characters.next() else {
@@ -231,6 +251,12 @@ fn the_check_catches_what_a_recorded_response_looks_like() {
         ),
         ("the same, written as a route", "100.101.102.103/32"),
         ("an IPv6 address", "fd7a:115c:a1e0:ab12:4843:cd96:6265:1234"),
+        (
+            // The via exemption is a prefix match on one reserved group, so a
+            // node address that merely begins the same way must still fail.
+            "an IPv6 address whose group only starts like the via block",
+            "fd7a:115c:a1e0:b1ab:4843:cd96:6265:1234",
+        ),
         ("an account", "someone@theircompany.io"),
         ("an auth key", "tskey-auth-kZ8Qc1CNTRL-3n2yP8dQx"),
         (
@@ -251,6 +277,9 @@ fn the_check_passes_what_a_placeholder_looks_like() {
         "100.64.0.1/32",
         "fd7a:115c:a1e0::1",
         "fd7a:115c:a1e0::1/128",
+        // A 4via6 route, which `tailscale debug via` computes rather than
+        // receives: site 7 over 10.1.0.0/16.
+        "fd7a:115c:a1e0:b1a:0:7:a01:0/112",
         "100.100.100.100",
         "someone@example.com",
         "tskey-api-redacted-example",

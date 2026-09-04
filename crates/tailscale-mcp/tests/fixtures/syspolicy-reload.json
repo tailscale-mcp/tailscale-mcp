@@ -1,0 +1,25 @@
+{
+	"Summary": {
+		"Scope": "Device",
+		"Origin": {
+			"Name": "Platform",
+			"Scope": "Device"
+		}
+	},
+	"Settings": {
+		"EncryptState": {
+			"Value": true,
+			"Origin": {
+				"Name": "Platform",
+				"Scope": "Device"
+			}
+		},
+		"ExitNode.AllowOverride": {
+			"Value": false,
+			"Origin": {
+				"Name": "Platform",
+				"Scope": "Device"
+			}
+		}
+	}
+}

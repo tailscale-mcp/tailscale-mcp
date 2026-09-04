@@ -30,6 +30,10 @@ _Avoid_: self, this machine, localhost
 Any node other than the local node, as the local node sees it.
 _Avoid_: remote node, other machine
 
+**Local filesystem**:
+The files and directories of the machine the server runs on, as opposed to that machine's membership of the tailnet, which is the local node. The only thing a caller-supplied path can ever refer to.
+_Avoid_: host filesystem, disk, local disk, this machine's files
+
 **Device**:
 A node as represented by the control-plane REST API. Used only when naming or talking to that API.
 _Avoid_: device for anything seen from the local node

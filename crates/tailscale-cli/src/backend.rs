@@ -65,6 +65,22 @@ impl Invocation {
         }
     }
 
+    /// A mutation that cannot race the node's configuration: it changes the
+    /// filesystem, or a peer, but never what `tailscale set` and `tailscale up`
+    /// contend over.
+    ///
+    /// It runs in the shared lane because the lock exists to keep two
+    /// configuration writes apart, and these are not that. Queueing them would
+    /// buy no safety and cost a great deal: a ten-minute file transfer holding
+    /// the exclusive lock stalls every concurrent read for its whole duration.
+    pub fn mutate_shared<I, S>(args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self::read(args)
+    }
+
     #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;

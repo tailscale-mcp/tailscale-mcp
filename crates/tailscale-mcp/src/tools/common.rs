@@ -5,11 +5,16 @@
 //! interesting on its own; it lives here so that three modules cannot drift
 //! into three spellings of it.
 
-use serde::Serialize;
-use serde_json::Value;
+use std::time::Duration;
 
+use serde::Serialize;
+use serde_json::{Value, json};
+use tailscale_cli::{Invocation, Output};
+
+use crate::cli;
 use crate::context::ToolContext;
 use crate::error::{ErrorCode, ToolError, ToolResult};
+use crate::meta::ToolMeta;
 
 /// Render a boolean flag the way Go's flag package needs it: joined to its
 /// value, so that it cannot be mistaken for a positional argument.
@@ -58,6 +63,36 @@ pub fn note(ctx: &ToolContext, stderr: &str) -> Option<String> {
 }
 
 /// The text a command printed, with blank lines and comment lines dropped.
+/// Everything the client printed, redacted, standard output first.
+///
+/// Which stream a command reports on is not a property a caller should have to
+/// know: `serve` names the new address on standard output and warns on
+/// standard error, `file cp` reports progress on either depending on the
+/// version, and a caller wants whichever it was.
+pub fn printed(ctx: &ToolContext, output: &Output) -> Option<String> {
+    let stdout = output.stdout_str();
+    let joined = [stdout.as_ref(), output.stderr.as_str()]
+        .iter()
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    note(ctx, &joined)
+}
+
+/// How much longer the client is given than the caller asked to wait, so that
+/// a timeout is this server's own and not a command killed mid-sentence.
+const GRACE: u64 = 5;
+
+/// Bound a caller's wait, and give the client a little longer than we wait.
+///
+/// Returns the bound the caller is told about and the one the child is given,
+/// which differ by the grace above: the caller is answered in its own terms.
+pub fn bounded_wait(requested: Option<u64>, default: u64, longest: u64) -> (u64, Duration) {
+    let seconds = requested.unwrap_or(default).clamp(1, longest);
+    (seconds, Duration::from_secs(seconds + GRACE))
+}
+
 pub fn lines(text: &str) -> impl DoubleEndedIterator<Item = &str> {
     text.lines()
         .map(str::trim)
@@ -102,5 +137,49 @@ pub fn report(value: impl Serialize) -> ToolResult<Value> {
             ErrorCode::CliFailed,
             format!("the report did not build: {e}"),
         )
+    })
+}
+
+/// Run a command that prints a JSON document, and return the document.
+///
+/// Tolerant of a non-zero exit *when a document still came back*: `status`
+/// prints a complete report while telling the shell that the node is not
+/// running. A refusal with nothing to parse is read as an ordinary failure.
+///
+/// Only standard output is parsed. `netcheck` and several `debug` commands
+/// write log lines to standard error while writing clean JSON to stdout.
+pub async fn document(
+    ctx: &ToolContext,
+    meta: &ToolMeta,
+    invocation: Invocation,
+) -> ToolResult<Value> {
+    let display = invocation.display();
+    let output = cli::run_tolerant(ctx, meta, invocation).await?;
+    let stdout = output.stdout_str();
+    match serde_json::from_str::<Value>(stdout.trim()) {
+        Ok(value) => Ok(value),
+        Err(_) if !output.success() => Err(cli::command_failure(ctx, meta, &display, &output)),
+        Err(e) => Err(ToolError::new(
+            ErrorCode::CliFailed,
+            format!("`{display}` did not print JSON: {e}"),
+        )),
+    }
+}
+
+/// A document that is an object, forwarded as it stands.
+///
+/// A document that is not an object is wrapped rather than rejected: a client
+/// destructures the answer, and a bare array or string would leave it nothing
+/// to destructure.
+pub async fn object(
+    ctx: &ToolContext,
+    meta: &ToolMeta,
+    invocation: Invocation,
+) -> ToolResult<Value> {
+    let value = document(ctx, meta, invocation).await?;
+    Ok(if value.is_object() {
+        value
+    } else {
+        json!({ "document": value })
     })
 }

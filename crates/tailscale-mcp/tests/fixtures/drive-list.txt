@@ -1,0 +1,4 @@
+name      path                as
+----      ----                --
+docs      /srv/shared docs    alice
+photos    /srv/photos         alice

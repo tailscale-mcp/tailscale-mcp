@@ -22,9 +22,9 @@ use tailscale_cli::Invocation;
 
 use crate::cli;
 use crate::context::ToolContext;
-use crate::error::{ErrorCode, ToolError, ToolResult};
+use crate::error::ToolResult;
 use crate::meta::ToolMeta;
-use crate::tools::common::{flag, lines, note, report};
+use crate::tools::common::{bounded_wait, document, flag, lines, note, object, report};
 use crate::version::{SUPPORTED_FLOOR, Version};
 
 crate::tools! {
@@ -165,42 +165,6 @@ pub struct NoParams {}
 /// The serde default for a flag that is on unless the caller says otherwise.
 const fn yes() -> bool {
     true
-}
-
-/// Run a command that prints a JSON document, and return the document.
-///
-/// Tolerant of a non-zero exit *when a document still came back*: `status`
-/// prints a complete report while telling the shell that the node is not
-/// running. A refusal with nothing to parse is read as an ordinary failure.
-///
-/// Only standard output is parsed. `netcheck` and several `debug` commands
-/// write log lines to standard error while writing clean JSON to stdout.
-async fn document(ctx: &ToolContext, meta: &ToolMeta, invocation: Invocation) -> ToolResult<Value> {
-    let display = invocation.display();
-    let output = cli::run_tolerant(ctx, meta, invocation).await?;
-    let stdout = output.stdout_str();
-    match serde_json::from_str::<Value>(stdout.trim()) {
-        Ok(value) => Ok(value),
-        Err(_) if !output.success() => Err(cli::command_failure(ctx, meta, &display, &output)),
-        Err(e) => Err(ToolError::new(
-            ErrorCode::CliFailed,
-            format!("`{display}` did not print JSON: {e}"),
-        )),
-    }
-}
-
-/// A document that is an object, forwarded as it stands.
-///
-/// A document that is not an object is wrapped rather than rejected: a client
-/// destructures the answer, and a bare array or string would leave it nothing
-/// to destructure.
-async fn object(ctx: &ToolContext, meta: &ToolMeta, invocation: Invocation) -> ToolResult<Value> {
-    let value = document(ctx, meta, invocation).await?;
-    Ok(if value.is_object() {
-        value
-    } else {
-        json!({ "document": value })
-    })
 }
 
 /// A document that is a list, under a field naming what the list holds.
@@ -737,12 +701,12 @@ pub struct WaitReport {
 }
 
 async fn wait(ctx: &ToolContext, params: WaitParams) -> ToolResult<Value> {
-    let seconds = params.timeout_seconds.clamp(1, MAX_WAIT);
+    let (seconds, timeout) = bounded_wait(Some(params.timeout_seconds), MAX_WAIT, MAX_WAIT);
     let output = cli::run_tolerant(
         ctx,
         &metas::tailscale_wait,
         Invocation::read(["wait".to_owned(), format!("--timeout={seconds}s")])
-            .with_timeout(Duration::from_secs(seconds + 5)),
+            .with_timeout(timeout),
     )
     .await?;
     report(WaitReport {
@@ -1099,8 +1063,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::context::SelfIdentity;
-    use crate::error::Redactor;
+    use crate::context::{PathPolicy, SelfIdentity};
+    use crate::error::{ErrorCode, Redactor};
     use crate::testing::{Reply, StubBackend};
 
     /// A recorded sample of what the real client prints.
@@ -1117,6 +1081,7 @@ mod tests {
             max_result_bytes: 1 << 20,
             identity: SelfIdentity::default(),
             cli_version: None,
+            paths: PathPolicy::default(),
         }
     }
 

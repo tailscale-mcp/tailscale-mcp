@@ -27,7 +27,7 @@ use crate::cli;
 use crate::context::ToolContext;
 use crate::error::{ErrorCode, ToolError, ToolResult};
 use crate::tools::common::{
-    find_url, flag, note, only_on, push_bool, push_list, push_text, report,
+    bounded_wait, find_url, flag, note, only_on, push_bool, push_list, push_text, report,
 };
 
 crate::tools! {
@@ -92,10 +92,6 @@ const DEFAULT_CONNECT_TIMEOUT: u64 = 60;
 /// The longest either may be asked to wait. The CLI's own default is to wait
 /// for ever, which an agent cannot recover from.
 const MAX_CONNECT_TIMEOUT: u64 = 300;
-/// What the CLI is given beyond the caller's own bound, so that the command
-/// gets to report its timeout rather than being killed mid-sentence.
-const GRACE: u64 = 5;
-
 /// The risks the CLI asks about before it disconnects something: losing an SSH
 /// session it is carrying, or taking down a macOS app connector. A tool that
 /// requires `confirm: true` has already asked the caller that question, so the
@@ -331,12 +327,9 @@ prefs_params! {
 // Argument helpers
 // ---------------------------------------------------------------------------
 
-/// Bound a caller's wait, and give the CLI a little longer than we wait for it.
+/// Bound a caller's wait against the cap the connecting commands share.
 fn connect_timeouts(requested: Option<u64>) -> (u64, Duration) {
-    let seconds = requested
-        .unwrap_or(DEFAULT_CONNECT_TIMEOUT)
-        .clamp(1, MAX_CONNECT_TIMEOUT);
-    (seconds, Duration::from_secs(seconds + GRACE))
+    bounded_wait(requested, DEFAULT_CONNECT_TIMEOUT, MAX_CONNECT_TIMEOUT)
 }
 
 /// A secret on its way to the CLI, held open for as long as the call takes.
@@ -710,7 +703,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::context::SelfIdentity;
+    use crate::context::{PathPolicy, SelfIdentity};
     use crate::error::Redactor;
     use crate::meta::{Tier, Toolset};
     use crate::testing::{Reply, StubBackend};
@@ -733,6 +726,7 @@ mod tests {
             max_result_bytes: 1 << 20,
             identity: SelfIdentity::default(),
             cli_version: None,
+            paths: PathPolicy::default(),
         }
     }
 

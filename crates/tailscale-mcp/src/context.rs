@@ -4,12 +4,47 @@
 //! itself: a handler that could reach the server could reach the router, and
 //! then the tests would have to construct one to call anything.
 
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use tailscale_cli::LocalBackend;
 
 use crate::error::Redactor;
 use crate::version::Version;
+
+/// Where a tool may write when the caller names a path on this machine.
+///
+/// In this release the tier is what confines host filesystem access: those
+/// tools sit at the write tier and no higher, so a read-only session reaches
+/// none of them. The allow-list is the mechanism meant to confine them further,
+/// and it is here rather than in a comment so that switching it on is a matter
+/// of populating one value: every tool that takes a path already asks.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum PathPolicy {
+    /// Any path the caller names. What this release ships.
+    #[default]
+    Unrestricted,
+    /// Only paths under one of these roots.
+    Within(Vec<PathBuf>),
+}
+
+impl PathPolicy {
+    /// Whether this policy would let a tool write to `path`.
+    #[must_use]
+    pub fn permits(&self, path: &Path) -> bool {
+        match self {
+            Self::Unrestricted => true,
+            // A `..` walks out of whatever root it is checked against, so a
+            // path carrying one is refused rather than resolved. Resolving
+            // would have to touch the filesystem, and the path a caller names
+            // here is usually one that does not exist yet.
+            Self::Within(roots) => {
+                !path.components().any(|c| c == Component::ParentDir)
+                    && roots.iter().any(|root| path.starts_with(root))
+            }
+        }
+    }
+}
 
 /// The identity of the node this server runs on, read from status at startup.
 ///
@@ -69,6 +104,8 @@ pub struct ToolContext {
     pub identity: SelfIdentity,
     /// The version the local CLI reports, when it could be read.
     pub cli_version: Option<Version>,
+    /// Where the tools that take a path are allowed to write.
+    pub paths: PathPolicy,
 }
 
 impl std::fmt::Debug for ToolContext {

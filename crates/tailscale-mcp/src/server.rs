@@ -20,7 +20,7 @@ use tailscale_cli::{CliBackend, LocalBackend, Unavailable};
 use tailscale_rest::Credentials;
 
 use crate::config::Config;
-use crate::context::{SelfIdentity, ToolContext};
+use crate::context::{PathPolicy, SelfIdentity, ToolContext};
 use crate::error::{ToolError, ToolResult};
 use crate::gating::{ConfigError, Gate};
 use crate::meta::Surface;
@@ -164,6 +164,7 @@ pub async fn build(
         max_result_bytes: config.max_result_bytes,
         identity,
         cli_version,
+        paths: PathPolicy::default(),
     };
 
     let visible = registry.visible(&gate).len();

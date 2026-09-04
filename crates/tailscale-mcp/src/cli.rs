@@ -235,6 +235,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::context::PathPolicy;
     use crate::error::{ErrorCode, Redactor};
     use crate::meta::{Tier, ToolMeta, Toolset};
     use crate::testing::StubBackend;
@@ -260,6 +261,7 @@ mod tests {
             max_result_bytes: 1 << 20,
             identity: SelfIdentity::default(),
             cli_version,
+            paths: PathPolicy::default(),
         }
     }
 

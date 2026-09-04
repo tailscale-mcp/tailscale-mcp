@@ -135,7 +135,7 @@ Two surfaces, detected at startup and each disableable. The local surface drives
 
 ### Tools
 
-184 tools: 60 typed local tools, a 30-tool debug toolset, one passthrough, and 93 tailnet tools, one per documented control-plane operation. Local tools are named `tailscale_<verb>`, tailnet tools `tailnet_<resource>_<verb>` with a fixed verb vocabulary. Each tool is declared once, in a form that expands to its parameter type, its schema, its argv or request builder, and a row in a metadata table; that table is the single source for the tool-listing subcommand, the contract tests and the README's tool table.
+186 tools: 62 typed local tools, a 30-tool debug toolset, one passthrough, and 93 tailnet tools, one per documented control-plane operation. Local tools are named `tailscale_<verb>`, tailnet tools `tailnet_<resource>_<verb>` with a fixed verb vocabulary. Each tool is declared once, in a form that expands to its parameter type, its schema, its argv or request builder, and a row in a metadata table; that table is the single source for the tool-listing subcommand, the contract tests and the README's tool table.
 
 Parameters the server owns are snake_case; anything that is Tailscale's own request body keeps Tailscale's shape and field names (ADR-0004). Small bodies are flattened into parameters, nested schemas are taken as one object. Every CLI flag becomes an optional parameter of the same name in snake_case; flags for other platforms remain in the schema, are documented as such, and fail before spawning.
 
@@ -191,7 +191,7 @@ Schema drift is tested by parsing the vendored API description and asserting eve
 
 ### Coverage
 
-One table-driven contract test row per tool asserting tier, toolset, annotations, a success case and an error case: 184 rows, so a tool cannot be added without classifying it. Fixtures are recorded from real responses and redacted of identity. End-to-end tests against a real node and a real tailnet exist but run only when the environment supplies credentials, and never in CI.
+One table-driven contract test row per tool asserting tier, toolset, annotations, a success case and an error case: 186 rows, so a tool cannot be added without classifying it. Fixtures are recorded from real responses and redacted of identity. End-to-end tests against a real node and a real tailnet exist but run only when the environment supplies credentials, and never in CI.
 
 ## Out of Scope
 

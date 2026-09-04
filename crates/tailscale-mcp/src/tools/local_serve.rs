@@ -29,7 +29,7 @@ use tailscale_cli::{Invocation, PrivateFile};
 use crate::cli;
 use crate::context::ToolContext;
 use crate::error::{ErrorCode, ToolError, ToolResult};
-use crate::tools::common::{find_url, flag, note, push_list, push_text, report};
+use crate::tools::common::{find_url, flag, note, printed, push_list, push_text, report};
 
 crate::tools! {
     /// Serve a local server, a file, a directory or a block of text to the
@@ -319,20 +319,6 @@ fn scope(service: Option<&str>, all: bool) -> ToolResult<(String, String)> {
     }
 }
 
-/// Everything the client printed, redacted, standard output first.
-///
-/// `serve` reports the address a handler is now reachable at on standard
-/// output and warns on standard error, and a caller wants both.
-fn printed(ctx: &ToolContext, stdout: &str, stderr: &str) -> Option<String> {
-    let joined = [stdout, stderr]
-        .iter()
-        .map(|part| part.trim())
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-    note(ctx, &joined)
-}
-
 // ---------------------------------------------------------------------------
 // Reports
 // ---------------------------------------------------------------------------
@@ -433,7 +419,7 @@ async fn serve_set(ctx: &ToolContext, params: ServeSetParams) -> ToolResult<Valu
         service,
         public: false,
         url: find_url(&stdout),
-        printed: printed(ctx, &stdout, &output.stderr),
+        printed: printed(ctx, &output),
     })
 }
 
@@ -453,7 +439,6 @@ async fn serve_off(ctx: &ToolContext, params: ServeOffParams) -> ToolResult<Valu
     args.push(OFF.to_owned());
 
     let output = cli::run(ctx, meta, Invocation::mutate(prefixed("serve", args))).await?;
-    let stdout = output.stdout_str().into_owned();
     report(HandlerReport {
         target: OFF.to_owned(),
         endpoint: describe(endpoint),
@@ -461,7 +446,7 @@ async fn serve_off(ctx: &ToolContext, params: ServeOffParams) -> ToolResult<Valu
         service,
         public: false,
         url: None,
-        printed: printed(ctx, &stdout, &output.stderr),
+        printed: printed(ctx, &output),
     })
 }
 
@@ -650,7 +635,7 @@ async fn funnel_set(ctx: &ToolContext, params: FunnelSetParams) -> ToolResult<Va
         service: None,
         public: true,
         url: find_url(&stdout),
-        printed: printed(ctx, &stdout, &output.stderr),
+        printed: printed(ctx, &output),
     })
 }
 
@@ -664,7 +649,6 @@ async fn funnel_off(ctx: &ToolContext, params: FunnelOffParams) -> ToolResult<Va
     args.push(OFF.to_owned());
 
     let output = cli::run(ctx, meta, Invocation::mutate(prefixed("funnel", args))).await?;
-    let stdout = output.stdout_str().into_owned();
     report(HandlerReport {
         target: OFF.to_owned(),
         endpoint: describe(endpoint),
@@ -672,7 +656,7 @@ async fn funnel_off(ctx: &ToolContext, params: FunnelOffParams) -> ToolResult<Va
         service: None,
         public: false,
         url: None,
-        printed: printed(ctx, &stdout, &output.stderr),
+        printed: printed(ctx, &output),
     })
 }
 
@@ -692,7 +676,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::context::SelfIdentity;
+    use crate::context::{PathPolicy, SelfIdentity};
     use crate::error::Redactor;
     use crate::meta::{Tier, Toolset};
     use crate::testing::{Reply, StubBackend};
@@ -711,6 +695,7 @@ mod tests {
             max_result_bytes: 1 << 20,
             identity: SelfIdentity::default(),
             cli_version: None,
+            paths: PathPolicy::default(),
         }
     }
 

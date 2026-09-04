@@ -114,7 +114,7 @@ mod tests {
     use tailscale_cli::Unavailable;
 
     use super::*;
-    use crate::context::SelfIdentity;
+    use crate::context::{PathPolicy, SelfIdentity};
     use crate::error::Redactor;
     use crate::gating::Preset;
     use crate::meta::Toolset;
@@ -130,6 +130,7 @@ mod tests {
                 ..SelfIdentity::default()
             },
             cli_version: Some(Version::new(1, 102, 2)),
+            paths: PathPolicy::default(),
         }
     }
 
@@ -194,6 +195,7 @@ mod tests {
         let bare = ToolContext {
             identity: SelfIdentity::default(),
             cli_version: None,
+            paths: PathPolicy::default(),
             ..context()
         };
         let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &bare);

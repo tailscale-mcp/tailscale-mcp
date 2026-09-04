@@ -269,3 +269,103 @@
 **Justification:** Making "all services" the meaning of an omitted parameter puts the widest possible write one forgotten field away, on the tool that overwrites handlers — the client refuses that call for the same reason, and reproducing the safety in the schema is cheaper than explaining it in a description. Two booleans-worth of state does admit two invalid combinations, but both are refused before spawning with a message that names the choice, which a single overloaded string could not do as clearly. The prefix is added because the client rejects a bare `web` with a flag-parsing error rather than adding it, and that error reaches a caller as `cli_failed` with nothing to act on; unlike `--advertise-tags`, which the client prefixes itself, there is nothing here to defer to.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/local_serve.rs`
+
+## Q28 — build/ticket-11 — deviation
+
+**Question:** Ticket 11 describes "the 9 tools" of the files and certificates toolset and then lists seven categories. Q24 of the design round, accepted by the user, additionally keeps `drive share`, `drive unshare`, `drive rename` and `drive list` as typed tools rather than leaving them to the passthrough. How many tools does `local-files` hold?
+**Options considered:** hold to nine and leave Taildrive to the passthrough tool / hold to nine and give Taildrive a toolset of its own / build eleven, taking the four Taildrive commands into `local-files`
+**Chosen:** Eleven, with the four Taildrive commands folded into this toolset.
+**Decided-by:** agent
+**Justification:** The count in the ticket is a summary of the categories it lists, and those categories were written before Q24 settled that Taildrive gets typed tools; the accepted answer is the later and more specific of the two, so it wins. Leaving Taildrive to `tailscale_passthrough` would put the only tools that share a host directory with the whole tailnet behind the one tool that has no schema, no tier and no description — the opposite of what Q24 asked for. A toolset of its own would be four tools that gate on exactly the same thing as the other seven, which is that they read and write paths on the host, and 20 toolsets is already at the limit of what a caller can hold in mind. The cost is that the ticket's number is wrong and this entry is the only record of why.
+**Outcome:** applied
+**Ref:** `.scratch/tailscale-mcp-v1/issues/11-local-files-toolset.md`; `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q29 — build/ticket-11 — interpreted-ambiguity
+
+**Question:** Ticket 11 says file transfer and certificate issuance "carry the longer timeouts agreed for them". The design round records that agreement twice and not identically: the Q29 table gives one row, "`file_cp`, `cert` call timeout | 300 s | 600 s", while the recap of the same round says "file_cp and cert default timeouts longer (300 s / 120 s)". Which defaults apply?
+**Options considered:** 300 s for both, per the table / 300 s and 120 s, per the recap / one shared default chosen fresh
+**Chosen:** `tailscale_file_cp` defaults to 300 s and `tailscale_cert` to 120 s, both bounded at the 600 s the two readings agree on, and both settable per call.
+**Decided-by:** agent
+**Justification:** The two records disagree only about `cert`, and the recap is the more specific of the two: the table groups the pair on one row for brevity, which is exactly the kind of compression a recap would undo rather than invent. The reading also matches what the two commands do. A Taildrop transfer is bounded by the size of the file and the path it takes, so minutes are ordinary; an ACME exchange is a handful of round trips to a certificate authority, and one that has not finished in two minutes has gone wrong rather than slow — waiting five more only delays the report. The cap is 600 s either way, so a caller who disagrees can say so in the call.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q30 — build/ticket-11 — deviation
+
+**Question:** Q14 groups tools by risk, which puts every read-only local command in `local-status`. `tailscale drive list` is read-only. `local-status` closed with ticket 08 behind a test asserting exactly 25 tools. Where does it go?
+**Options considered:** `local-status`, reopening ticket 08 to 26 tools / `local-files`, alongside the three Taildrive writers
+**Chosen:** `local-files`.
+**Decided-by:** agent
+**Justification:** Grouping by risk is what decides the tier, and `drive_list` keeps the read tier wherever it lives, so nothing about permission changes. What the toolset decides is what a session is offered together, and a caller that cannot share or unshare has almost no use for the list of shares: the four commands are one feature and are chosen as one. Reopening a closed ticket to move a tool across a boundary that gates nothing would cost a re-review of ticket 08 and buy a tidier rule. `tailscale_file_targets` sits in the same position for the same reason and was never a candidate for `local-status`.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_files.rs`; `crates/tailscale-mcp/src/tools/local_status.rs`
+
+## Q31 — build/ticket-11 — tradeoff
+
+**Question:** The macOS GUI packaging of the client carries the `drive` subcommands and refuses them: "Taildrive CLI commands are not supported when using the macOS GUI app", exit 1. Classified by the ordinary rules that is `cli_failed`, which tells a caller its request was wrong. How should the four Taildrive tools report it?
+**Options considered:** leave it as `cli_failed` / declare `platforms: ["linux", "windows"]` on the four tools so they are hidden on a Mac / detect the client's own wording at runtime and report `unsupported_platform`
+**Chosen:** Detect the wording and report `unsupported_platform`, with a hint naming where Taildrive is configured instead.
+**Decided-by:** agent
+**Justification:** A platform gate would be wrong twice over. It is not the operating system that decides this but the packaging: a Mac running the `tailscaled` variant supports every one of these commands, and hiding the tools there would remove working functionality from the surface for a reason that does not apply. It would also have to name the platforms that *do* support Taildrive, which is a list this server would then have to maintain against a client it does not ship. Reading the client's own sentence keeps the knowledge in one place and degrades safely: an unrecognised message falls through to the ordinary classification. The cost is a string match on English text that a future release could reword, which would return the tools to `cli_failed` — a worse error, not a wrong one.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q32 — build/ticket-11 — interpretation
+
+**Question:** Three of these commands have a default or a spelling that a tool call cannot live with: `cert` writes to standard output when a path is `-`, `file cp` reads standard input for a file named `-` and refuses a target without a trailing colon, and `file get` has `--wait` and `--loop` that would hold the call open. What does the server settle, and what does it leave to the client?
+**Options considered:** pass the caller's values through and let the client refuse / refuse the impossible ones before spawning and normalise the rest
+**Chosen:** Refuse `-` for both certificate paths, for every `file cp` source and for the `file get` directory; add the trailing colon to a transfer target that lacks one; pass `--wait=false --loop=false` explicitly, and `--update-interval=0` on every transfer. `--serve-demo` is not offered at all.
+**Decided-by:** agent
+**Justification:** `-` is the one value that turns a write to disk into a write to the answer, and for the key file that would put private key material into the response, the transcript and any log that keeps it — which is the acceptance criterion the ticket states, and it has to be enforced before the command runs rather than after. The trailing colon is a syntax detail of the command line with no meaning to the caller, so making it the caller's problem buys a round trip and an error message about argument formatting. `--wait` and `--loop` already default to off, and naming them costs two arguments and makes the promise in the tool description — that receiving never blocks and never loops — visible in what was actually run and assertable in a test, rather than resting on a default a future release could flip. `--update-interval=0` turns off a progress line that exists to be repainted in a terminal; captured into a pipe it would be most of what the caller read back. `--serve-demo` holds port 443 open instead of writing the files, which is a foreground server and not something a tool call can leave behind.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q33 — build/ticket-11 — deviation
+
+**Question:** `file cp`, `file get`, `cert` and `metrics write` were built on `Invocation::mutate`, which takes the exclusive lane. With a 600-second transfer bound that means one `tailscale_file_cp` call holds the write half of the process lock for ten minutes and every read tool blocks behind it. Is the exclusive lane right for these?
+**Options considered:** keep them exclusive because they are write-tier / give them the shared lane because they do not mutate node configuration / shorten the transfer bound so the stall is tolerable
+**Chosen:** Add `Invocation::mutate_shared` and move those four onto it. `configure_kubeconfig`, `syspolicy_reload` and the three Taildrive mutations stay exclusive.
+**Decided-by:** agent
+**Justification:** The lock's own documentation says what it is for: "two `tailscale set` calls racing produce a result neither caller asked for". It protects the local node's configuration, and none of these four touches that. Sending a file to a peer, emptying the Taildrop inbox, fetching a certificate and dumping metrics to a path all change the world, but none of them races `set` or `up`, so serialising them buys no safety at all and costs the entire read surface for the duration of the longest call this server can make. Shortening the bound was rejected because the bound is correct — a large transfer genuinely takes minutes — and it would trade a real capability for a symptom. What this settles is that tier and concurrency are independent axes: the tier says what a caller is allowed to do, the lane says what races. The three that keep the exclusive lane do so because a kubeconfig edited twice at once, a policy reload and the Taildrive share list are each genuinely shared mutable state.
+**Outcome:** applied
+**Ref:** `crates/tailscale-cli/src/backend.rs`, `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q34 — build/ticket-11 — deviation
+
+**Question:** The ticket asks for the allow-list mechanism "designed in but not enabled". The first cut had only a paragraph of module documentation saying so. Is prose enough, and if not, where does the mechanism live?
+**Options considered:** leave the prose and build the mechanism when it is switched on / add a `PathPolicy` to `ToolContext` that every path is already checked against
+**Chosen:** `PathPolicy` on `ToolContext`, defaulting to `Unrestricted`, consulted by `real_path` and therefore by all six path-taking parameters.
+**Decided-by:** agent
+**Justification:** "Designed in but not enabled" is not satisfied by a comment: the point of building the seam ahead of the need is that switching it on is later a matter of populating one value rather than of finding every place that should have asked, and a comment leaves exactly that search to be done. The cost is one field on the context and seven struct literals. `permits` refuses any path containing a `..` component rather than resolving it, because resolving would have to touch the filesystem and the path these tools take is usually one that does not exist yet — a root check that skipped this would be walked straight out of, so the seam would have been wrong the day it was switched on.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/context.rs`, `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q35 — build/ticket-11 — interpreted-ambiguity
+
+**Question:** Ticket 11 says "the 9 tools", but the categories it then lists sum to seven, and eleven were built. `spec.md` separately totalled 184 tools on the assumption of nine here. Which number is wrong, and what gets corrected?
+**Options considered:** cut two tools to reach nine / leave the totals and note the discrepancy / correct the totals to what is actually built
+**Chosen:** Correct `spec.md` to 186 tools and 62 typed local tools, and treat the ticket's "9" as superseded by its own category list plus the four Taildrive tools of Q28.
+**Decided-by:** agent
+**Justification:** Nine was never reachable from the ticket's own text — file transfer both ways, targets, certificates, metrics and the two configuration commands is seven, so the number and the list contradicted each other before any code existed. Cutting to nine would mean dropping working tools to satisfy an arithmetic that was already wrong, and the superset rule points the other way. Leaving the totals stale is worse than either, because `spec.md` states the contract-row count as a check that a tool cannot be added without being classified, and a target nobody can hit stops being a check. The corrected figures are the built counts: 25 status, 8 prefs, 10 serve, 11 files, 8 lock.
+**Outcome:** applied
+**Ref:** `.scratch/tailscale-mcp-v1/spec.md`
+
+## Q36 — build/ticket-11 — deviation
+
+**Question:** `parse_shares` split each row of the `drive list` table on the literal two-space string and then required exactly three columns, dropping silently any row that did not yield three. What replaces it?
+**Options considered:** accept two or three columns / split on runs of two or more spaces / cut each row at the offsets the header establishes
+**Chosen:** Cut every row at the character offsets taken from the header row.
+**Decided-by:** agent
+**Justification:** The split lost three real cases without a trace: a share whose `as` column is blank, which is every share on a platform that cannot share as another user; a path containing two consecutive spaces; and a share that happens to be called `name`, which the header heuristic ate. Silence is what makes this bad — the caller is told the tailnet has no shares rather than told the listing could not be read. Accepting two or three columns fixes only the first case; splitting on runs fixes only the first and third, because no split can tell a column gap from a gap inside a path. The header states the column widths for every row beneath it, so cutting at its offsets is the parse the client actually wrote, and offsets are counted in characters rather than bytes because Go pads these columns by rune count.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q37 — build/ticket-11 — interpretation
+
+**Question:** `CONTEXT.md` lists "host" as a term to avoid under **Node**, but this toolset needs to name the thing a caller-supplied path refers to, and "this machine" is also on an avoid list. Twenty descriptions had drifted to "this host's filesystem".
+**Options considered:** keep "host" here as a term of art / reuse "local node" / add the missing glossary term
+**Chosen:** Add **Local filesystem** to `CONTEXT.md` and rewrite every description onto it.
+**Decided-by:** agent
+**Justification:** Three spellings of one concept had appeared because the glossary had no word for it, which is the signal the domain docs describe rather than a lapse to correct in place. "Local node" is genuinely a different concept — that machine's membership of the tailnet, not its files — and using it here would blur the one distinction these tools exist to make clear, since a path is the only thing in this toolset that never refers to the tailnet at all. Keeping "host" would mean documenting an exception to an avoid list in the module that most needed the term.
+**Outcome:** applied
+**Ref:** `CONTEXT.md`, `crates/tailscale-mcp/src/tools/local_files.rs`

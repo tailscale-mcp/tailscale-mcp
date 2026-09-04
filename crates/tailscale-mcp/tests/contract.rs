@@ -358,6 +358,87 @@ fn contracts() -> Vec<Contract> {
                 Reply::failed(1, "error: failed to remove funnel: handler does not exist"),
                 "not_found"
         ),
+        contract!(
+            "tailscale_file_cp",
+            ok: {"files": ["/tmp/notes.txt"], "target": "laptop"} on ["file", "cp"] =>
+                Reply::ok("notes.txt: 4.1 kB\n"),
+            err: {"files": ["/tmp/notes.txt"], "target": "missing"} on ["file", "cp"] =>
+                Reply::failed(1, "error looking up IP of \"missing\": lookup missing: no such host"),
+                "not_found"
+        ),
+        contract!(
+            "tailscale_file_targets",
+            ok: {} on ["file", "cp"] => printed!("file-targets.txt"),
+            err: {} on ["file", "cp"] =>
+                Reply::failed(1, "file cp: not logged in"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_file_get",
+            ok: {"directory": "/tmp/inbox"} on ["file", "get"] => Reply::ok("notes.txt\n"),
+            err: {"directory": "/tmp/inbox"} on ["file", "get"] =>
+                Reply::failed(1, "\"/tmp/inbox\" is not a directory"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_cert",
+            ok: {
+                "domain": "workstation.example-tailnet.ts.net",
+                "cert_file": "/tmp/node.crt",
+                "key_file": "/tmp/node.key"
+            } on ["cert"] => Reply::ok(""),
+            err: {
+                "domain": "workstation.example-tailnet.ts.net",
+                "cert_file": "/tmp/node.crt",
+                "key_file": "/tmp/node.key"
+            } on ["cert"] =>
+                Reply::failed(1, "500 Internal Server Error: invalid domain"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_metrics_write",
+            ok: {"path": "/tmp/tailscaled.prom"} on ["metrics", "write"] => Reply::ok(""),
+            err: {"path": "/tmp/tailscaled.prom"} on ["metrics", "write"] =>
+                Reply::failed(1, "error writing metrics: read-only file system"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_configure_kubeconfig",
+            ok: {"hostname": "cluster"} on ["configure", "kubeconfig"] => Reply::ok(""),
+            err: {"hostname": "cluster"} on ["configure", "kubeconfig"] =>
+                Reply::failed(1, "no such host: cluster"), "not_found"
+        ),
+        contract!(
+            "tailscale_syspolicy_reload",
+            ok: {} on ["syspolicy", "reload"] => printed!("syspolicy-reload.json"),
+            err: {} on ["syspolicy", "reload"] =>
+                Reply::failed(1, "syspolicy: the policy store could not be reloaded"),
+                "cli_failed"
+        ),
+        contract!(
+            "tailscale_drive_list",
+            ok: {} on ["drive", "list"] => printed!("drive-list.txt"),
+            // The macOS GUI packaging carries the subcommand and refuses it,
+            // which is a fact about the build rather than about the call.
+            err: {} on ["drive", "list"] => Reply::failed(
+                1,
+                "Taildrive CLI commands are not supported when using the macOS GUI app."
+            ), "unsupported_platform"
+        ),
+        contract!(
+            "tailscale_drive_share",
+            ok: {"name": "docs", "path": "/srv/docs"} on ["drive", "share"] => Reply::ok(""),
+            err: {"name": "docs", "path": "/srv/docs"} on ["drive", "share"] =>
+                Reply::failed(1, "drive share: \"/srv/docs\" is not a directory"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_drive_rename",
+            ok: {"name": "docs", "new_name": "handbook"} on ["drive", "rename"] => Reply::ok(""),
+            err: {"name": "docs", "new_name": "handbook"} on ["drive", "rename"] =>
+                Reply::failed(1, "share \"docs\" does not exist"), "not_found"
+        ),
+        contract!(
+            "tailscale_drive_unshare",
+            ok: {"name": "docs"} on ["drive", "unshare"] => Reply::ok(""),
+            err: {"name": "docs"} on ["drive", "unshare"] =>
+                Reply::failed(1, "share \"docs\" does not exist"), "not_found"
+        ),
     ]
 }
 

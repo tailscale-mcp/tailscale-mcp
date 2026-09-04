@@ -194,7 +194,7 @@ model! {
 
     /// What accepting a share answers with.
     ///
-    /// Three flat objects rather than the [`Device`] and [`User`] models
+    /// Three flat objects rather than the [`Device`] and `User` models
     /// beside them: the description gives each its own small shape here, and a
     /// caller reading `device.ipv4` would not find it on a `Device`.
     AcceptedDeviceInvite as "POST /device-invites/-/accept 200" {

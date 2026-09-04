@@ -150,6 +150,28 @@ impl Setup {
         self
     }
 
+    /// Give the fake control plane a rule that answers once, so a sequence of
+    /// answers to the same request can be arranged — a paginated listing being
+    /// the case that needs it.
+    ///
+    /// # Panics
+    /// If no loopback socket can be bound, which no test can work without.
+    pub async fn api_answers_once(
+        mut self,
+        method: &str,
+        path: &str,
+        response: tailscale_rest::fake::Response,
+    ) -> Self {
+        let fake = match self.control_plane.take() {
+            Some(fake) => fake,
+            None => FakeControlPlane::start()
+                .await
+                .expect("a loopback socket for the fake control plane"),
+        };
+        self.control_plane = Some(fake.once(method, path, response));
+        self
+    }
+
     /// Set an environment variable for this server.
     #[must_use]
     pub fn env(mut self, key: &str, value: &str) -> Self {

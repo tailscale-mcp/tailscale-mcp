@@ -404,4 +404,46 @@ model! {
         rate_total_requests: "rateTotalRequests" => f64,
         rate_failed_requests: "rateFailedRequests" => f64,
     }
+
+    // -----------------------------------------------------------------------
+    // The shapes the routes carry.
+    // -----------------------------------------------------------------------
+
+    /// A page of the configuration audit log.
+    ///
+    /// `version` and `tailnet` come back beside the records, which is why this
+    /// is not simply a list.
+    AuditLogPage as "GET /tailnet/{tailnet}/logging/configuration 200" {
+        version: "version" => String,
+        tailnet: "tailnet" => String,
+        logs: "logs" => Vec<ConfigurationAuditLog>,
+    }
+
+    /// A page of the network flow log.
+    NetworkFlowLogPage as "GET /tailnet/{tailnet}/logging/network 200" {
+        logs: "logs" => Vec<NetworkFlowLog>,
+    }
+
+    /// What asking for an AWS external identifier sends.
+    AwsExternalIdRequest as "POST /tailnet/{tailnet}/aws-external-id body" {
+        /// Whether the identifier may be used for more than one role.
+        reusable: "reusable" => bool,
+    }
+
+    /// What checking an AWS trust policy sends.
+    AwsTrustPolicyRequest
+        as "POST /tailnet/{tailnet}/aws-external-id/{id}/validate-aws-trust-policy body" {
+        /// The role Tailscale should be able to assume.
+        role_arn: "roleArn" => String,
+    }
+
+    /// What a failed trust-policy check answers with.
+    ///
+    /// The one place in the description where a failure has a shape of its own
+    /// rather than the shared `Error`: the check answers 422 with what is
+    /// wrong with the policy.
+    AwsTrustPolicyFailure
+        as "POST /tailnet/{tailnet}/aws-external-id/{id}/validate-aws-trust-policy 422" {
+        message: "message" => String,
+    }
 }

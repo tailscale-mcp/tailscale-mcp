@@ -17,10 +17,15 @@ pub mod tailnet_devices;
 pub mod tailnet_dns;
 pub mod tailnet_invites;
 pub mod tailnet_keys;
+pub mod tailnet_logging;
+pub mod tailnet_oauth;
+pub mod tailnet_org;
 pub mod tailnet_policy;
 pub mod tailnet_posture;
+pub mod tailnet_services;
 pub mod tailnet_settings;
 pub mod tailnet_users;
+pub mod tailnet_webhooks;
 
 /// Every tool this server can offer, before any gating.
 pub fn entries() -> Vec<crate::registry::ToolEntry> {
@@ -40,6 +45,11 @@ pub fn entries() -> Vec<crate::registry::ToolEntry> {
     all.extend(tailnet_users::entries());
     all.extend(tailnet_settings::entries());
     all.extend(tailnet_posture::entries());
+    all.extend(tailnet_webhooks::entries());
+    all.extend(tailnet_services::entries());
+    all.extend(tailnet_oauth::entries());
+    all.extend(tailnet_logging::entries());
+    all.extend(tailnet_org::entries());
     all
 }
 

@@ -63,4 +63,30 @@ model! {
         /// is created and when the secret is rotated.
         secret: "secret" => Secret,
     }
+
+    // -----------------------------------------------------------------------
+    // The shapes the routes carry.
+    // -----------------------------------------------------------------------
+
+    /// Every webhook endpoint the tailnet posts to.
+    WebhookList as "GET /tailnet/{tailnet}/webhooks 200" {
+        webhooks: "webhooks" => Vec<Webhook>,
+    }
+
+    /// What creating an endpoint sends.
+    CreateWebhookRequest as "POST /tailnet/{tailnet}/webhooks body" {
+        /// Where the `POST` goes. Required.
+        endpoint_url: "endpointUrl" => String,
+        /// One of [`PROVIDER_TYPES`], which shapes the payload for a receiver
+        /// that expects its own format. Omit for Tailscale's own shape.
+        provider_type: "providerType" => String,
+        /// Which events to send. Any of [`SUBSCRIPTIONS`]. Required.
+        subscriptions: "subscriptions" => Vec<String>,
+    }
+
+    /// What changing one sends, which is the subscriptions and nothing else:
+    /// the URL and the provider cannot be changed after creation.
+    UpdateWebhookRequest as "PATCH /webhooks/{endpointId} body" {
+        subscriptions: "subscriptions" => Vec<String>,
+    }
 }

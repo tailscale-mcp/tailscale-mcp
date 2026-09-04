@@ -107,6 +107,38 @@ fn contracts() -> Vec<Contract> {
                 ),
             }
         };
+        (
+            $tool:literal,
+            ok: $ok_args:tt on $method:literal $path:literal => $answer:expr,
+            err: $err_args:tt also $fallback:literal
+        ) => {
+            Contract {
+                tool: $tool,
+                success: (
+                    json!($ok_args),
+                    Arrangement::default().api($method, $path, $answer),
+                ),
+                failure: (
+                    json!($err_args),
+                    // Both spellings refused: these tools retry a 404 at the
+                    // other path, and whatever *it* answers is what the caller
+                    // gets. Arranging only one would test the fake's fallback
+                    // rather than the tool's.
+                    Arrangement::default()
+                        .api(
+                            $method,
+                            $path,
+                            Response::status(404, json!({"message": "not found"})),
+                        )
+                        .api(
+                            $method,
+                            $fallback,
+                            Response::status(404, json!({"message": "not found"})),
+                        ),
+                    "not_found",
+                ),
+            }
+        };
     }
 
     /// A recorded answer from `tests/fixtures`.
@@ -1137,6 +1169,244 @@ fn contracts() -> Vec<Contract> {
             ok: {"settings": {"devicesApprovalOn": true}}
                 on "PATCH" "/api/v2/tailnet/-/settings" => Response::empty(),
             err: {"settings": {"devicesApprovalOn": true}}
+        ),
+        // --- Ticket 20: webhooks -------------------------------------------
+        api_contract!(
+            "tailnet_webhook_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/webhooks"
+                => Response::json(json!({"webhooks": []})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_webhook_create",
+            ok: {"endpoint_url": "https://example.com/hook", "subscriptions": ["nodeCreated"]}
+                on "POST" "/api/v2/tailnet/-/webhooks"
+                => Response::json(json!({"endpointId": "whk-example", "secret": "tskey-webhook-redacted"})),
+            err: {"endpoint_url": "https://example.com/hook", "subscriptions": ["nodeCreated"]}
+        ),
+        api_contract!(
+            "tailnet_webhook_get",
+            ok: {"endpoint_id": "whk-example"} on "GET" "/api/v2/webhooks/whk-example"
+                => Response::json(json!({"endpointId": "whk-example"})),
+            err: {"endpoint_id": "whk-example"}
+        ),
+        api_contract!(
+            "tailnet_webhook_update",
+            ok: {"endpoint_id": "whk-example", "subscriptions": ["nodeCreated", "nodeDeleted"]}
+                on "PATCH" "/api/v2/webhooks/whk-example"
+                => Response::json(json!({"endpointId": "whk-example"})),
+            err: {"endpoint_id": "whk-example", "subscriptions": ["nodeCreated"]}
+        ),
+        api_contract!(
+            "tailnet_webhook_delete",
+            ok: {"endpoint_id": "whk-example"} on "DELETE" "/api/v2/webhooks/whk-example"
+                => Response::empty(),
+            err: {"endpoint_id": "whk-example"}
+        ),
+        api_contract!(
+            "tailnet_webhook_test",
+            ok: {"endpoint_id": "whk-example"} on "POST" "/api/v2/webhooks/whk-example/test"
+                => Response::empty(),
+            err: {"endpoint_id": "whk-example"}
+        ),
+        api_contract!(
+            "tailnet_webhook_secret_rotate",
+            ok: {"endpoint_id": "whk-example"} on "POST" "/api/v2/webhooks/whk-example/rotate"
+                => Response::json(json!({"endpointId": "whk-example", "secret": "tskey-webhook-redacted"})),
+            err: {"endpoint_id": "whk-example"}
+        ),
+
+        // --- Ticket 20: services -------------------------------------------
+        api_contract!(
+            "tailnet_service_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/services"
+                => Response::json(json!({"vipServices": []})),
+            err: {} also "/api/v2/tailnet/-/vip-services"
+        ),
+        api_contract!(
+            "tailnet_service_get",
+            ok: {"service_name": "svc:example"} on "GET" "/api/v2/tailnet/-/services/svc:example"
+                => Response::json(json!({"name": "svc:example"})),
+            err: {"service_name": "svc:example"} also "/api/v2/tailnet/-/vip-services/svc:example"
+        ),
+        api_contract!(
+            "tailnet_service_replace",
+            ok: {"service_name": "svc:example", "service": {"name": "svc:example"}}
+                on "PUT" "/api/v2/tailnet/-/services/svc:example"
+                => Response::json(json!({"name": "svc:example"})),
+            err: {"service_name": "svc:example", "service": {"name": "svc:example"}} also "/api/v2/tailnet/-/vip-services/svc:example"
+        ),
+        api_contract!(
+            "tailnet_service_delete",
+            ok: {"service_name": "svc:example"} on "DELETE" "/api/v2/tailnet/-/services/svc:example"
+                => Response::empty(),
+            err: {"service_name": "svc:example"} also "/api/v2/tailnet/-/vip-services/svc:example"
+        ),
+        api_contract!(
+            "tailnet_service_hosts_list",
+            ok: {"service_name": "svc:example"}
+                on "GET" "/api/v2/tailnet/-/services/svc:example/devices"
+                => Response::json(json!({"devices": []})),
+            err: {"service_name": "svc:example"} also "/api/v2/tailnet/-/vip-services/svc:example/devices"
+        ),
+        api_contract!(
+            "tailnet_service_approval_get",
+            ok: {"service_name": "svc:example", "device_id": "n1111111CNTRL"}
+                on "GET" "/api/v2/tailnet/-/services/svc:example/device/n1111111CNTRL/approved"
+                => Response::json(json!({"approved": true})),
+            err: {"service_name": "svc:example", "device_id": "n1111111CNTRL"} also "/api/v2/tailnet/-/vip-services/svc:example/device/n1111111CNTRL/approved"
+        ),
+        api_contract!(
+            "tailnet_service_approval_set",
+            ok: {"service_name": "svc:example", "device_id": "n1111111CNTRL", "approved": true}
+                on "POST" "/api/v2/tailnet/-/services/svc:example/device/n1111111CNTRL/approved"
+                => Response::json(json!({"approved": true})),
+            // `approved: true`: withdrawing is refused by the tier floor
+            // before a request is made, which is `tailnet_surface.rs`'s to
+            // assert rather than this table's.
+            err: {"service_name": "svc:example", "device_id": "n1111111CNTRL", "approved": true} also "/api/v2/tailnet/-/vip-services/svc:example/device/n1111111CNTRL/approved"
+        ),
+
+        // --- Ticket 20: OAuth apps -----------------------------------------
+        api_contract!(
+            "tailnet_oauth_app_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/oauth-apps"
+                => Response::json(json!({"oauthApps": []})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_oauth_app_create",
+            ok: {
+                "name": "my-oauth-app",
+                "redirect_uris": ["https://example.com/oauth/callback"],
+                "scopes": ["auth_keys:create"]
+            } on "POST" "/api/v2/tailnet/-/oauth-apps"
+                => Response::json(json!({"id": "a111111CNTRL", "name": "my-oauth-app"})),
+            err: {
+                "name": "my-oauth-app",
+                "redirect_uris": ["https://example.com/oauth/callback"],
+                "scopes": ["auth_keys:create"]
+            }
+        ),
+        api_contract!(
+            "tailnet_oauth_app_get",
+            ok: {"app_id": "a111111CNTRL"} on "GET" "/api/v2/tailnet/-/oauth-apps/a111111CNTRL"
+                => Response::json(json!({"id": "a111111CNTRL"})),
+            err: {"app_id": "a111111CNTRL"}
+        ),
+        api_contract!(
+            "tailnet_oauth_app_update",
+            ok: {
+                "app_id": "a111111CNTRL",
+                "name": "my-oauth-app",
+                "redirect_uris": ["https://example.com/oauth/callback"],
+                "scopes": ["auth_keys:create"]
+            } on "PUT" "/api/v2/tailnet/-/oauth-apps/a111111CNTRL"
+                => Response::json(json!({"id": "a111111CNTRL"})),
+            err: {
+                "app_id": "a111111CNTRL",
+                "name": "my-oauth-app",
+                "redirect_uris": ["https://example.com/oauth/callback"],
+                "scopes": ["auth_keys:create"]
+            }
+        ),
+        api_contract!(
+            "tailnet_oauth_app_delete",
+            ok: {"app_id": "a111111CNTRL"} on "DELETE" "/api/v2/tailnet/-/oauth-apps/a111111CNTRL"
+                => Response::empty(),
+            err: {"app_id": "a111111CNTRL"}
+        ),
+
+        // --- Ticket 20: logging --------------------------------------------
+        api_contract!(
+            "tailnet_audit_log_list",
+            ok: {"start": "2023-12-19T16:39:57-08:00", "end": "2023-12-22T02:15:23-08:00"}
+                on "GET" "/api/v2/tailnet/-/logging/configuration"
+                => Response::json(json!({"logs": []})),
+            err: {"start": "2023-12-19T16:39:57-08:00", "end": "2023-12-22T02:15:23-08:00"}
+        ),
+        api_contract!(
+            "tailnet_network_log_list",
+            ok: {"start": "2023-12-19T16:39:57-08:00", "end": "2023-12-22T02:15:23-08:00"}
+                on "GET" "/api/v2/tailnet/-/logging/network"
+                => Response::json(json!({"logs": []})),
+            err: {"start": "2023-12-19T16:39:57-08:00", "end": "2023-12-22T02:15:23-08:00"}
+        ),
+        api_contract!(
+            "tailnet_log_stream_get",
+            ok: {"log_type": "configuration"}
+                on "GET" "/api/v2/tailnet/-/logging/configuration/stream"
+                => Response::json(json!({"destinationType": "elastic"})),
+            err: {"log_type": "configuration"}
+        ),
+        api_contract!(
+            "tailnet_log_stream_status_get",
+            ok: {"log_type": "network"}
+                on "GET" "/api/v2/tailnet/-/logging/network/stream/status"
+                => Response::json(json!({"lastActivity": "2023-12-19T16:39:57-08:00"})),
+            err: {"log_type": "network"}
+        ),
+        api_contract!(
+            "tailnet_log_stream_set",
+            ok: {
+                "log_type": "configuration",
+                "configuration": {"destinationType": "elastic", "url": "https://example.com/logs"}
+            } on "PUT" "/api/v2/tailnet/-/logging/configuration/stream"
+                => Response::json(json!({"destinationType": "elastic"})),
+            err: {
+                "log_type": "configuration",
+                "configuration": {"destinationType": "elastic", "url": "https://example.com/logs"}
+            }
+        ),
+        api_contract!(
+            "tailnet_log_stream_delete",
+            ok: {"log_type": "network"}
+                on "DELETE" "/api/v2/tailnet/-/logging/network/stream" => Response::empty(),
+            err: {"log_type": "network"}
+        ),
+        api_contract!(
+            "tailnet_aws_external_id_create",
+            ok: {"reusable": true} on "POST" "/api/v2/tailnet/-/aws-external-id"
+                => Response::json(json!({
+                    "externalId": "00000000-0000-0000-0000-000000000000",
+                    "tailscaleAwsAccountId": "000000000000"
+                })),
+            err: {"reusable": true}
+        ),
+        api_contract!(
+            "tailnet_aws_trust_policy_validate",
+            ok: {
+                "external_id": "00000000-0000-0000-0000-000000000000",
+                "role_arn": "arn:aws:iam::000000000000:role/tailscale-log-writer"
+            } on "POST"
+                "/api/v2/tailnet/-/aws-external-id/00000000-0000-0000-0000-000000000000/validate-aws-trust-policy"
+                => Response::empty(),
+            err: {
+                "external_id": "00000000-0000-0000-0000-000000000000",
+                "role_arn": "arn:aws:iam::000000000000:role/tailscale-log-writer"
+            }
+        ),
+
+        // --- Ticket 20: organisation ---------------------------------------
+        api_contract!(
+            "tailnet_organization_tailnet_list",
+            ok: {"organization": "example.com"}
+                on "GET" "/api/v2/organizations/example.com/tailnets"
+                => Response::json(json!({"tailnets": [], "totalCount": 0})),
+            err: {"organization": "example.com"}
+        ),
+        api_contract!(
+            "tailnet_organization_tailnet_create",
+            ok: {"organization": "example.com", "display_name": "Production staging"}
+                on "POST" "/api/v2/organizations/example.com/tailnets"
+                => Response::json(json!({"id": "T111111CNTRL", "displayName": "Production staging"})),
+            err: {"organization": "example.com", "display_name": "Production staging"}
+        ),
+        api_contract!(
+            "tailnet_organization_tailnet_delete",
+            ok: {"tailnet": "T111111CNTRL"} on "DELETE" "/api/v2/tailnet/T111111CNTRL"
+                => Response::empty(),
+            err: {"tailnet": "T111111CNTRL"}
         ),
     ]
 }

@@ -50,4 +50,28 @@ model! {
         /// `true` where an auto-approver did it rather than a person.
         auto_approved: "autoApproved" => bool,
     }
+
+    // -----------------------------------------------------------------------
+    // The shapes the routes carry.
+    // -----------------------------------------------------------------------
+
+    /// Every service the tailnet advertises.
+    ///
+    /// `vipServices` rather than `services`, which is the envelope keeping the
+    /// Go client's spelling where the path does not — see the drift test's
+    /// note on the two names.
+    VipServiceList as "GET /tailnet/{tailnet}/services 200" {
+        vip_services: "vipServices" => Vec<VipServiceInfo>,
+    }
+
+    /// The devices standing behind one service.
+    ServiceHostList as "GET /tailnet/{tailnet}/services/{serviceName}/devices 200" {
+        hosts: "hosts" => Vec<ServiceHostInfo>,
+    }
+
+    /// What approving or unapproving one host sends.
+    ServiceApprovalRequest
+        as "POST /tailnet/{tailnet}/services/{serviceName}/device/{deviceId}/approved body" {
+        approved: "approved" => bool,
+    }
 }

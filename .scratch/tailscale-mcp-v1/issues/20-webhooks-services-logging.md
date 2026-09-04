@@ -1,6 +1,6 @@
 # 20 — Webhooks, services, OAuth clients, logging and organisation toolsets
 
-Status: ready-for-agent
+Status: done
 Milestone: 3 — Tailnet surface
 Blocked by: 16
 
@@ -15,3 +15,105 @@ The organisation tools are alpha upstream; their descriptions say so. Tailnet de
 - The rotated webhook secret is returned once and never logged.
 - Service naming follows the path the live API serves, not only the published description, with the divergence noted.
 - The webhook, service and logging shapes deferred to this ticket in `schema_drift.rs`'s `DEFERRED` table are modelled, and their rows removed (Q64).
+
+## As built
+
+Thirty tools in five modules — `tailnet_webhooks` (7), `tailnet_services` (7),
+`tailnet_oauth` (5), `tailnet_logging` (8) and `tailnet_org` (3) — the eleven
+models the deferral table was holding for them, thirty contract rows, and the
+tests each criterion asked for. This finishes the tailnet surface at 93 tools
+and empties `DEFERRED`.
+
+### Services: the path is asked for, not assumed
+
+The vendored description documents `/tailnet/{tailnet}/services`; Tailscale's
+own Go client calls `/tailnet/{tailnet}/vip-services`. The drift test has
+recorded that disagreement since ticket 16 and neither source settles it. The
+criterion says naming should follow the path the live API serves rather than
+only the published description, and from here the only way to find that out is
+to ask: these tools send the documented spelling and, on a 404, send the same
+call again at the other one (Q81).
+
+The retry is safe for these seven specifically. None acts before answering a
+404, so a request that reached a base path the control plane does not serve did
+nothing, and a service that is genuinely missing answers 404 at both spellings
+— which is then what the caller gets. The service name is checked once before
+either call rather than inside the retry, so a name that is not a path segment
+is one refusal instead of two round trips.
+
+`tailnet_service_approval_set` carries `varying: true` for the same reason
+`tailnet_device_authorize` does (Q70): approving adds a host, withdrawing takes
+a working one out of the service and stops traffic reaching it. The row is the
+floor and the argument decides.
+
+### The one paginated endpoint
+
+`tailnet_organization_tailnet_list` is the only tool on either surface with
+real pagination behind it. It follows the cursor by default and answers with
+every tailnet, and takes a single page when the caller passes a `cursor` —
+both halves of what the ticket asks for, and not in conflict (Q82). The walk is
+bounded at ten pages, and an answer that stopped early carries the cursor and
+says so, because an answer that quietly ended would be read as the whole
+organisation. `limit` above 100 is refused rather than clamped, for the same
+reason: a short page nobody was told about reads as a complete one.
+
+This is the converse of Q69's client-side window, not a contradiction of it.
+`tailnet_device_list` has no pagination to follow, so slicing here is all that
+is available; where an endpoint really paginates, its own mechanism is used and
+nothing is sliced.
+
+### Deleting a tailnet
+
+One of the four tailnet-scale operations `spec.md`'s closed list puts behind an
+explicit confirmation, and the only one of the four outside tailnet lock. The
+tailnet is named in the call rather than taken from the session's default,
+because deleting whatever `TAILSCALE_TAILNET` happens to say is exactly the
+accident the confirmation exists to prevent. All three organisation tools are
+Alpha upstream and every description says so.
+
+### Logging
+
+The two readings take a window the API requires both ends of, and neither
+paginates: the window is the only bound, which is why `start` and `end` are
+required here rather than defaulted to something this server chose. The audit
+filters are repeated query parameters rather than a joined list, because the
+API reads one parameter per value and a comma-joined list would be one actor
+whose name has commas in it.
+
+The stream configuration is passed through as the caller wrote it (ADR-0004).
+Nineteen fields, most conditional on `destinationType`, and a struct here would
+have to encode which are required for S3 with `rolearn` versus S3 with
+`accesskey` versus Splunk — and would be wrong the day a destination is added.
+What *is* checked is the three closed lists, and only when present. `logType`
+is dropped from the body rather than checked against the path: it is read-only
+upstream and in the path already, and a body that says it too can say it
+differently.
+
+The tool descriptions state that `token`, `s3SecretAccessKey` and
+`gcsCredentials` are write-only and never come back, because the obvious use —
+read the configuration, change one field, write it back — silently erases the
+credential that authenticates the stream.
+
+### Webhooks and OAuth apps
+
+The rotated secret is forwarded whole and `tests/minted_secrets.rs` holds it to
+the same rule as a minted key: it reaches the caller, and it reaches no log
+line, asserted against what a `trace` session actually collected rather than
+against a reading of the code. Rotation sits at the destructive tier because
+the old secret stops verifying the moment the new one exists, so every receiver
+checking signatures rejects every delivery until it is handed the new one.
+
+OAuth *apps* are not the OAuth *clients* in `tailnet_keys`, and both sets of
+descriptions say which is which: a client is a credential this tailnet mints
+for its own automation, an app is a registration for someone else's software to
+run the authorization-code flow. An update is a `PUT` with the same three
+required fields as the create, so all three are required here too — Q80 is
+about fields the description marks optional, and these it marks required.
+
+### The contract table grew an arm
+
+`api_contract!` gained a second form taking `also "<other path>"`, for a tool
+that retries at a second path. Arranging only one would have tested the fake's
+own fallback rather than the tool: the services failure case needs both
+spellings refused, so that what the caller sees is the tool's second 404 and
+not the fake's 501.

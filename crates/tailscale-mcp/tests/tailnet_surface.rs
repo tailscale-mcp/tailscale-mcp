@@ -835,3 +835,174 @@ async fn an_invitation_refused_for_the_credential_says_which_credential_it_needs
 
     harness.shutdown().await;
 }
+
+#[tokio::test]
+async fn a_service_call_asks_the_other_spelling_when_the_documented_one_is_not_there() {
+    // The criterion: service naming follows the path the live API serves, not
+    // only the published description. Neither source can be checked from here,
+    // so the tool asks (Q81).
+    let documented = "/api/v2/tailnet/-/services/svc:example";
+    let go_client = "/api/v2/tailnet/-/vip-services/svc:example";
+    let harness = Setup::new()
+        .toolsets("tailnet-services")
+        .api_answers(
+            "GET",
+            documented,
+            Response::status(404, json!({"message": "not found"})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            go_client,
+            Response::json(json!({"name": "svc:example", "addrs": ["100.64.0.1"]})),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok("tailnet_service_get", json!({"service_name": "svc:example"}))
+        .await;
+    assert_eq!(answer["name"], json!("svc:example"), "the second path's answer");
+
+    let asked = harness.control_plane().recorded();
+    assert_eq!(
+        asked.iter().map(|r| r.path.as_str()).collect::<Vec<_>>(),
+        vec![documented, go_client],
+        "the documented spelling should be tried first, and only then the other"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn withdrawing_a_host_needs_the_destructive_tier_and_approving_does_not() {
+    // Same shape as `tailnet_device_authorize` (Q70): the row's tier is a
+    // floor, and the argument decides.
+    let path = "/api/v2/tailnet/-/services/svc:example/device/n1111111CNTRL/approved";
+    let harness = Setup::new()
+        .toolsets("tailnet-services")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .api_answers("POST", path, Response::json(json!({"approved": true})))
+        .await
+        .start()
+        .await;
+
+    harness
+        .call_ok(
+            "tailnet_service_approval_set",
+            json!({"service_name": "svc:example", "device_id": "n1111111CNTRL", "approved": true}),
+        )
+        .await;
+
+    let error = harness
+        .call_err(
+            "tailnet_service_approval_set",
+            json!({"service_name": "svc:example", "device_id": "n1111111CNTRL", "approved": false}),
+        )
+        .await;
+    assert_eq!(error["code"], "not_permitted");
+    assert_eq!(
+        harness.control_plane().request_count(),
+        1,
+        "the refusal should happen here, not at the control plane"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_one_paginated_listing_follows_its_cursor_to_the_end() {
+    // The criterion, and the reason `tailnet_device_list` needed a window of
+    // this server's own while this one does not (Q82).
+    let path = "/api/v2/organizations/example.com/tailnets";
+    let harness = Setup::new()
+        .toolsets("tailnet-org")
+        .api_answers_once(
+            "GET",
+            path,
+            Response::json(json!({
+                "tailnets": [{"id": "T111111CNTRL"}],
+                "cursor": "page-two",
+                "totalCount": 2
+            })),
+        )
+        .await
+        .api_answers_once(
+            "GET",
+            path,
+            Response::json(json!({"tailnets": [{"id": "T222222CNTRL"}], "totalCount": 2})),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok(
+            "tailnet_organization_tailnet_list",
+            json!({"organization": "example.com"}),
+        )
+        .await;
+    assert_eq!(
+        answer["tailnets"],
+        json!([{"id": "T111111CNTRL"}, {"id": "T222222CNTRL"}]),
+        "both pages, in order"
+    );
+    assert_eq!(answer["totalCount"], json!(2));
+    assert_eq!(
+        answer.get("cursor"),
+        None,
+        "a walk that finished has nothing left to hand back"
+    );
+
+    let asked = harness.control_plane().recorded();
+    assert_eq!(asked.len(), 2);
+    assert_eq!(
+        asked[0].query.get("limit").map(String::as_str),
+        Some("100"),
+        "the API's maximum page size, and its default"
+    );
+    assert_eq!(asked[0].query.get("cursor"), None);
+    assert_eq!(
+        asked[1].query.get("cursor").map(String::as_str),
+        Some("page-two"),
+        "the second page should be asked for with what the first answered"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn deleting_a_tailnet_needs_a_confirmation_the_call_itself_carries() {
+    let path = "/api/v2/tailnet/T111111CNTRL";
+    let harness = Setup::new()
+        .toolsets("tailnet-org")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers("DELETE", path, Response::empty())
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err(
+            "tailnet_organization_tailnet_delete",
+            json!({"tailnet": "T111111CNTRL"}),
+        )
+        .await;
+    assert_eq!(error["code"], "confirmation_required");
+    assert_eq!(
+        harness.control_plane().request_count(),
+        0,
+        "nothing should reach the control plane without the confirmation"
+    );
+
+    let answer = harness
+        .call_ok(
+            "tailnet_organization_tailnet_delete",
+            json!({"tailnet": "T111111CNTRL", "confirm": true}),
+        )
+        .await;
+    assert_eq!(answer["done"], json!("tailnet deleted"));
+
+    harness.shutdown().await;
+}

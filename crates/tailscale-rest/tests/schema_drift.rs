@@ -315,56 +315,18 @@ fn resolve<'a>(reference: &str, all: &'a Map<String, Value>) -> &'a Value {
 /// document, and an object the document grows that is neither modelled nor
 /// listed here fails the walk. So the list can only shrink, and it shrinks by
 /// a ticket landing rather than by anyone editing this table.
+///
+/// It is now empty: tickets 17 to 20 each took their rows, and every object the
+/// description carries has a model. The table stays because the next refresh of
+/// the description is what it is for — an object the document grows has to be
+/// modelled or listed here, and an empty list makes the second option visible
+/// rather than forgotten.
 const DEFERRED: &[(&str, &str)] = &[
     // Ticket 17 — devices and posture.
     // Ticket 18 — DNS and policy: modelled, and the rows gone.
     // Ticket 19 — keys, users, invites and contacts: modelled, and the rows
     // gone.
-    // Ticket 20 — webhooks, services and logging.
-    (
-        "GET /tailnet/{tailnet}/webhooks 200",
-        "the `{webhooks: […]}` envelope",
-    ),
-    (
-        "POST /tailnet/{tailnet}/webhooks body",
-        "built from `tailnet_webhook_create`",
-    ),
-    (
-        "PATCH /webhooks/{endpointId} body",
-        "built from `tailnet_webhook_update`",
-    ),
-    (
-        "GET /tailnet/{tailnet}/services 200",
-        "the `{vipServices: […]}` envelope",
-    ),
-    (
-        "GET /tailnet/{tailnet}/services/{serviceName}/devices 200",
-        "the `{hosts: […]}` envelope",
-    ),
-    (
-        "POST /tailnet/{tailnet}/services/{serviceName}/device/{deviceId}/approved body",
-        "built from `tailnet_service_approve_host`",
-    ),
-    (
-        "GET /tailnet/{tailnet}/logging/configuration 200",
-        "the audit log page and its cursor",
-    ),
-    (
-        "GET /tailnet/{tailnet}/logging/network 200",
-        "the flow log page",
-    ),
-    (
-        "POST /tailnet/{tailnet}/aws-external-id body",
-        "built from `tailnet_logstream_aws_id`",
-    ),
-    (
-        "POST /tailnet/{tailnet}/aws-external-id/{id}/validate-aws-trust-policy body",
-        "built from the trust-policy parameters",
-    ),
-    (
-        "POST /tailnet/{tailnet}/aws-external-id/{id}/validate-aws-trust-policy 422",
-        "the one endpoint that answers a failure with its own shape",
-    ),
+    // Ticket 20 — webhooks, services and logging: modelled, and the rows gone.
 ];
 
 fn deferred(path: &str) -> Option<&'static str> {
@@ -789,8 +751,8 @@ fn the_walk_reaches_the_whole_document() {
     assert_eq!(schemas(&document).len(), 43, "named schemas");
     assert_eq!(objects.len(), 91, "objects walked: {:?}", objects.keys());
     assert_eq!(enums.len(), 33, "enumerations walked: {:?}", enums.keys());
-    assert_eq!(models().len(), 80, "models");
-    assert_eq!(DEFERRED.len(), 11, "deferrals");
+    assert_eq!(models().len(), 91, "models");
+    assert_eq!(DEFERRED.len(), 0, "deferrals");
 }
 
 /// The deferral table cannot outlive what it defers.

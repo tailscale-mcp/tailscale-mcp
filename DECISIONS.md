@@ -936,3 +936,47 @@ This is the same rule ticket 18 already applied to MagicDNS — "the control pla
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/tools/tailnet_keys.rs`, `crates/tailscale-mcp/src/tools/tailnet_invites.rs`
+
+## Q81 — build/ticket-20 — interpretation
+
+**Question:** The services endpoints have two path spellings. The vendored description documents `/tailnet/{tailnet}/services`; Tailscale's own Go client calls `/tailnet/{tailnet}/vip-services`. The drift test has recorded the disagreement since ticket 16 and neither source settles it. Ticket 20 asks that "service naming follows the path the live API serves, not only the published description". Which does the server send?
+
+**Options considered:** send the documented one and let a wrong guess be a 404 / send the Go client's one on the grounds that shipped code beats a description / send the documented one and retry the other on a 404 / make the base path a configuration option
+
+**Chosen:** Send the documented spelling; on a 404, send the same call again at the other one.
+
+**Decided-by:** agent
+
+**Justification:** The criterion says to follow the path the *live* API serves, and asking it is the only way to find out from here. Both static answers are guesses, and a guess that is wrong turns every one of these seven tools into a 404 with nothing in the message about why.
+
+Retrying is safe here specifically, not in general: all seven are addressed by a path that either exists or does not, none of them acts before answering a 404, and a request that reached a base path the control plane does not serve did nothing. Where the service itself is genuinely missing, the second call answers 404 too and that is what the caller gets — the retry costs one extra request on a call that was going to fail anyway.
+
+A configuration option was the alternative worth taking seriously, and it fails on who would set it: an operator would have to know which spelling their control plane serves, which is exactly the thing nobody can find out except by trying.
+
+The order is documented-first because the description is what this repo is held to elsewhere — the drift test, the known-value lists, the model shapes — and a build that quietly preferred an undocumented path would be inconsistent with all of it.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_services.rs`
+
+## Q82 — build/ticket-20 — interpretation
+
+**Question:** `GET /organizations/{organization}/tailnets` is the only paginated endpoint in the whole API, with a `cursor` and a `limit` capped at 100. Ticket 20 asks that "the paginated listing follows its cursor and respects the API's maximum page size", and separately that it is "the only one whose pagination is exposed". Following and exposing are different tools. Which is it?
+
+**Options considered:** expose `cursor` and `limit` and let the caller page / follow to the end and hide pagination entirely / follow by default, and take one page when the caller passes a cursor
+
+**Chosen:** Follow by default; a `cursor` argument takes exactly one page instead.
+
+**Decided-by:** agent
+
+**Justification:** The ticket asks for both and they are not in conflict: following is the default because "what tailnets does this organisation have" is the question an agent actually asks, and an answer that silently stopped at the first hundred would be read as the whole organisation. Exposing the cursor is what makes the other question askable.
+
+The walk is bounded at ten pages — a thousand tailnets, which no organisation has. The bound is not about size but about control: a control plane that keeps answering with a cursor would otherwise hold a tool call open until the session's timeout, and this way the answer arrives with the cursor and a sentence saying it stopped early. An answer that quietly ended is the failure this is guarding against, and it is the same failure the `window` object exists for in `tailnet_device_list` (Q69).
+
+`limit` above 100 is refused rather than clamped. A caller asking for 500 and being given 100 without being told has been handed a short page it will read as a complete one — the same failure again, in the shape the API's own maximum makes easy.
+
+The client-side window of Q69 is the opposite case and stays as it is: `tailnet_device_list` has no pagination to follow, so slicing here is all that is available. Where an endpoint really paginates, its own mechanism is used and nothing is sliced.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_org.rs`

@@ -28,6 +28,9 @@ use harness::Setup;
 /// suffix is the fixture convention `tests/fixtures_are_redacted.rs` enforces.
 const MINTED: &str = "tskey-auth-nExAmPlE1-redactedSecretValue";
 
+/// A webhook signing secret nobody holds, in the shape the control plane sends.
+const ROTATED: &str = "tskey-webhook-nExAmPlE2-redactedRotatedValue";
+
 /// Everything anything logged during this process.
 #[derive(Clone, Default)]
 struct Collected(Arc<Mutex<Vec<u8>>>);
@@ -175,5 +178,54 @@ async fn an_invite_url_reaches_the_caller_and_no_log_line() {
     assert!(
         !log.contains("example-redacted-code"),
         "the invite URL reached a log line:\n{log}"
+    );
+}
+
+#[tokio::test]
+async fn a_rotated_webhook_secret_reaches_the_caller_and_no_log_line() {
+    logged();
+    let harness = Setup::new()
+        .toolsets("tailnet-webhooks")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers(
+            "POST",
+            "/api/v2/webhooks/whk-example/rotate",
+            Response::json(json!({
+                "endpointId": "whk-example",
+                "endpointUrl": "https://example.com/hook",
+                "secret": ROTATED,
+                "subscriptions": ["nodeCreated"],
+            })),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok(
+            "tailnet_webhook_secret_rotate",
+            json!({"endpoint_id": "whk-example"}),
+        )
+        .await;
+
+    // The new secret is the only thing the call is for: every receiver
+    // verifying signatures is broken until it has been handed on, and a read
+    // never returns it.
+    assert_eq!(
+        answer["secret"],
+        json!(ROTATED),
+        "the rotated secret should reach the caller: {answer:#?}"
+    );
+
+    harness.shutdown().await;
+
+    let log = everything_logged();
+    assert!(
+        !log.contains(ROTATED),
+        "the rotated secret reached a log line:\n{log}"
+    );
+    assert!(
+        !log.contains("redactedRotatedValue"),
+        "and no part of it did either:\n{log}"
     );
 }

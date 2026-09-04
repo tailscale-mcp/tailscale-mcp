@@ -439,8 +439,79 @@ fn contracts() -> Vec<Contract> {
             err: {"name": "docs"} on ["drive", "unshare"] =>
                 Reply::failed(1, "share \"docs\" does not exist"), "not_found"
         ),
+        // Tailnet lock. Every key here is a documentation value: a real
+        // `tlpub:` key names a real signing node, and none belongs in a repo.
+        contract!(
+            "tailscale_lock_init",
+            ok: {"trusted_keys": [TLPUB]} on ["lock", "init"] =>
+                Reply::ok("disablement-secret:00112233445566778899aabbccddeeff\n"),
+            err: {"trusted_keys": [TLPUB]} on ["lock", "init"] => Reply::failed(
+                1,
+                "the tailnet lock key of the current node must be one of the trusted keys during initialization"
+            ), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_add",
+            ok: {"keys": [TLPUB]} on ["lock", "add"] => Reply::ok(""),
+            err: {"keys": [TLPUB]} on ["lock", "add"] =>
+                Reply::failed(1, "tailnet lock is not enabled"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_remove",
+            ok: {"keys": [TLPUB]} on ["lock", "remove"] => Reply::ok(""),
+            err: {"keys": [TLPUB]} on ["lock", "remove"] =>
+                Reply::failed(1, "tailnet lock is not enabled"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_sign",
+            ok: {"key": NODEKEY} on ["lock", "sign"] => Reply::ok(""),
+            err: {"key": NODEKEY} on ["lock", "sign"] => Reply::failed(
+                1,
+                "error: 500 Internal Server Error: signing failed: tailnet-lock is not active"
+            ), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_disable",
+            ok: {"secret": DISABLEMENT_SECRET} on ["lock", "disable"] => Reply::ok(""),
+            err: {"secret": DISABLEMENT_SECRET} on ["lock", "disable"] => Reply::failed(
+                1,
+                "error: 400 Bad Request: tailnet-lock disable failed: tailnet-lock is not active"
+            ), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_disablement_kdf",
+            ok: {"secret": DISABLEMENT_HEX} on ["lock", "disablement-kdf"] =>
+                Reply::ok("disablement:756fe19f200fbfc9ad431e75c7942b82\n"),
+            err: {"secret": DISABLEMENT_HEX} on ["lock", "disablement-kdf"] =>
+                Reply::failed(1, "encoding/hex: invalid byte: U+007A 'z'"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_local_disable",
+            ok: {} on ["lock", "local-disable"] => Reply::ok(""),
+            err: {} on ["lock", "local-disable"] => Reply::failed(
+                1,
+                "error: 400 Bad Request: tailnet-lock local disable failed: tailnet-lock is not active"
+            ), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_revoke_keys",
+            ok: {"keys": [TLPUB]} on ["lock", "revoke-keys"] =>
+                Reply::ok("run this on the next signing node\n"),
+            err: {"keys": [TLPUB]} on ["lock", "revoke-keys"] => Reply::failed(
+                1,
+                "generation of recovery AUM failed: sending generate-recovery-aum: 500 Internal Server Error: tailnet-lock is not active"
+            ), "cli_failed"
+        ),
     ]
 }
+
+/// A tailnet-lock key that names nobody.
+const TLPUB: &str = "tlpub:0000000000000000000000000000000000000000000000000000000000000000";
+/// A node key that names nobody.
+const NODEKEY: &str = "nodekey:0000000000000000000000000000000000000000000000000000000000000000";
+/// A disablement secret in the two shapes the two commands want it in.
+const DISABLEMENT_SECRET: &str = "disablement-secret:00112233445566778899aabbccddeeff";
+const DISABLEMENT_HEX: &str = "00112233445566778899aabbccddeeff";
 
 /// Build a session in which `meta`'s tool is on offer, arranged as the case says.
 async fn session(meta: &ToolMeta, arrangement: &Arrangement) -> harness::Harness {

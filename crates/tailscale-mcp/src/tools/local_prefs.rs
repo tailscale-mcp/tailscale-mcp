@@ -28,6 +28,7 @@ use crate::context::ToolContext;
 use crate::error::{ErrorCode, ToolError, ToolResult};
 use crate::tools::common::{
     bounded_wait, find_url, flag, note, only_on, push_bool, push_list, push_text, report,
+    secret_value,
 };
 
 crate::tools! {
@@ -332,23 +333,11 @@ fn connect_timeouts(requested: Option<u64>) -> (u64, Duration) {
     bounded_wait(requested, DEFAULT_CONNECT_TIMEOUT, MAX_CONNECT_TIMEOUT)
 }
 
-/// A secret on its way to the CLI, held open for as long as the call takes.
-///
-/// A value that is already a `file:` reference is passed through: it is a path,
-/// not a secret, and re-copying it would gain nothing. Anything else is written
-/// to a private temporary file, so that the key itself never reaches an
-/// argument list that `ps` can read.
+/// The `--name=<value>` form of a secret, over the shared
+/// [`secret_value`] that keeps the secret itself off the argument list.
 fn secret_argument(name: &str, value: &str) -> ToolResult<(String, Option<SecretFile>)> {
-    if value.starts_with("file:") {
-        return Ok((format!("--{name}={value}"), None));
-    }
-    let file = SecretFile::new(value).map_err(|e| {
-        ToolError::new(
-            ErrorCode::CliFailed,
-            format!("the {name} could not be written to a private file: {e}"),
-        )
-    })?;
-    Ok((format!("--{name}={}", file.arg()), Some(file)))
+    let (value, file) = secret_value(name, value)?;
+    Ok((format!("--{name}={value}"), file))
 }
 
 // ---------------------------------------------------------------------------

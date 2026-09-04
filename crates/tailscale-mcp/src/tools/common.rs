@@ -5,11 +5,12 @@
 //! interesting on its own; it lives here so that three modules cannot drift
 //! into three spellings of it.
 
+use std::path::Path;
 use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::{Value, json};
-use tailscale_cli::{Invocation, Output};
+use tailscale_cli::{Invocation, Output, SecretFile};
 
 use crate::cli;
 use crate::context::ToolContext;
@@ -99,15 +100,90 @@ pub fn lines(text: &str) -> impl DoubleEndedIterator<Item = &str> {
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
 }
 
+/// Every whitespace-separated token beginning with one of `prefixes`, in the
+/// order the text printed them and with trailing sentence punctuation removed.
+///
+/// The client hands back its products inside prose written for a person: a
+/// login URL in a sentence, the disablement secrets `lock init` just minted,
+/// the auth key `lock sign` countersigned. Each of those is recognisable by its
+/// own prefix, which is part of the value's format, whereas the sentence around
+/// it is not and changes between releases. So this looks for the prefix and
+/// ignores the prose.
+///
+/// Whatever it finds is always offered *alongside* the client's own text rather
+/// than instead of it, so a layout change costs the caller nothing.
+pub fn tokens_with_prefix(text: &str, prefixes: &[&str]) -> Vec<String> {
+    text.split_whitespace()
+        .filter(|word| prefixes.iter().any(|prefix| word.starts_with(prefix)))
+        .map(|word| word.trim_end_matches(['.', ',']).to_owned())
+        .collect()
+}
+
 /// The first URL in a block of text.
 ///
 /// Three commands hand a person something to open rather than doing it
 /// themselves: `login` and an interactive `up` print a login URL, and `serve`
 /// prints the address the handler is now reachable at.
 pub fn find_url(text: &str) -> Option<String> {
-    text.split_whitespace()
-        .find(|word| word.starts_with("https://") || word.starts_with("http://"))
-        .map(|url| url.trim_end_matches(['.', ',']).to_owned())
+    tokens_with_prefix(text, &["https://", "http://"])
+        .into_iter()
+        .next()
+}
+
+/// Refuse a path the caller cannot have meant, naming which one it was.
+///
+/// `-` is the client's spelling of "a stream rather than a file": the private
+/// key on standard output for `cert`, standard input for `file cp`, the
+/// disablement secret typed at a prompt for `lock disable`. A tool call has
+/// none of those, so every command that offers the spelling is refused it here.
+///
+/// The configured [`PathPolicy`](crate::context::PathPolicy) is asked last, so
+/// that a caller who named something impossible is told that rather than told
+/// about the policy.
+pub fn real_path(ctx: &ToolContext, what: &str, path: &str) -> ToolResult<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(ToolError::invalid_args(format!("`{what}` cannot be empty")));
+    }
+    if trimmed == "-" {
+        return Err(ToolError::invalid_args(format!(
+            "`{what}` has to be a path on this machine; `-` means a stream, which a tool call has none of"
+        )));
+    }
+    if !ctx.paths.permits(Path::new(trimmed)) {
+        return Err(ToolError::new(
+            ErrorCode::NotPermitted,
+            format!("`{what}` is outside the paths this server may use"),
+        )
+        .with_hint("Name a path under one of the server's configured roots."));
+    }
+    // The validated spelling, so that what was checked is what runs: a path
+    // the caller padded with a newline is the path it meant.
+    Ok(trimmed.to_owned())
+}
+
+/// A secret on its way to the CLI, held open for as long as the call takes.
+///
+/// Answers with the *value* the argument should carry and the file keeping it
+/// alive; how that value is spelled is the caller's business, because the
+/// commands disagree — `set` wants `--auth-key=<value>` and `lock sign` wants a
+/// bare positional. Drop the file once the command has returned, not before.
+///
+/// A value that is already a `file:` reference is passed through: it is a path,
+/// not a secret, and re-copying it would gain nothing. Anything else is written
+/// to a private temporary file, so that the secret itself never reaches an
+/// argument list that `ps` can read.
+pub fn secret_value(what: &str, value: &str) -> ToolResult<(String, Option<SecretFile>)> {
+    if value.starts_with("file:") {
+        return Ok((value.to_owned(), None));
+    }
+    let file = SecretFile::new(value).map_err(|e| {
+        ToolError::new(
+            ErrorCode::CliFailed,
+            format!("the {what} could not be written to a private file: {e}"),
+        )
+    })?;
+    Ok((file.arg(), Some(file)))
 }
 
 /// Refuse a setting that does not exist on this operating system, naming both

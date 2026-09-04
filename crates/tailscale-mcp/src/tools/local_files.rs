@@ -26,7 +26,6 @@
 //! `tailscale_cert` carry the longer budgets agreed in DECISIONS Q29 rather
 //! than the ordinary 30 seconds.
 
-use std::path::Path;
 use std::time::Duration;
 
 use rmcp::schemars::JsonSchema;
@@ -39,7 +38,7 @@ use crate::context::ToolContext;
 use crate::error::{ErrorCode, ToolError, ToolResult};
 use crate::meta::ToolMeta;
 use crate::tools::common::{
-    bounded_wait, flag, note, object, printed, push_bool, push_text, report,
+    bounded_wait, flag, note, object, printed, push_bool, push_text, real_path, report,
 };
 
 crate::tools! {
@@ -372,36 +371,6 @@ pub struct SharesReport {
 // ---------------------------------------------------------------------------
 // Argument helpers
 // ---------------------------------------------------------------------------
-
-/// Refuse a path the caller cannot have meant, naming which one it was.
-///
-/// `-` is the client's spelling of "a stream rather than a file", which for
-/// `cert` means the private key on standard output and for `file cp` means
-/// reading standard input that a tool call does not have.
-///
-/// The configured [`PathPolicy`] is asked last, so that a caller who named
-/// something impossible is told that rather than told about the policy.
-fn real_path(ctx: &ToolContext, what: &str, path: &str) -> ToolResult<String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err(ToolError::invalid_args(format!("`{what}` cannot be empty")));
-    }
-    if trimmed == "-" {
-        return Err(ToolError::invalid_args(format!(
-            "`{what}` has to be a path on this machine; `-` means a stream, which a tool call has none of"
-        )));
-    }
-    if !ctx.paths.permits(Path::new(trimmed)) {
-        return Err(ToolError::new(
-            ErrorCode::NotPermitted,
-            format!("`{what}` is outside the paths this server may write to"),
-        )
-        .with_hint("Name a path under one of the server's configured roots."));
-    }
-    // The validated spelling, so that what was checked is what runs: a path
-    // the caller padded with a newline is the path it meant.
-    Ok(trimmed.to_owned())
-}
 
 /// The trailing colon `file cp` insists on, added when the caller left it off.
 ///

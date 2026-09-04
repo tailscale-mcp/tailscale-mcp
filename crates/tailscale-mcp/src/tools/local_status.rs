@@ -1306,6 +1306,31 @@ mod tests {
         );
     }
 
+    /// A caller that says nothing about the limit gets the client's own
+    /// default, which is the number the schema advertises.
+    #[tokio::test]
+    async fn the_lock_log_limit_defaults_to_the_one_the_client_uses() {
+        let params: LockLogParams =
+            serde_json::from_value(json!({})).expect("an empty call parses");
+        assert_eq!(params.limit, DEFAULT_LOCK_LIMIT);
+
+        let (_, argv) = against(
+            Reply::ok(fixture!("lock-log.json")),
+            |ctx, p| async move { lock_log(&ctx, p).await },
+            params,
+        )
+        .await;
+        assert_eq!(
+            argv,
+            [[
+                "lock",
+                "log",
+                "--json=true",
+                &format!("--limit={DEFAULT_LOCK_LIMIT}")
+            ]]
+        );
+    }
+
     // -- parsers --------------------------------------------------------------
 
     #[test]

@@ -38,6 +38,18 @@ _Avoid_: host filesystem, disk, local disk, this machine's files
 A node as represented by the control-plane REST API. Used only when naming or talking to that API.
 _Avoid_: device for anything seen from the local node
 
+**Tailnet lock**:
+The tailnet's own admission rule, enforced by its nodes independently of the control plane: a node is accepted only once a key the tailnet already trusts has signed it.
+_Avoid_: TKA, key authority, network lock
+
+**Tailnet-lock key**:
+The public key, beginning `tlpub:`, that identifies one node as trusted to sign nodes and to change tailnet lock. Public by design and meant to be copied between nodes, unlike everything else in this vocabulary that ends in "key".
+_Avoid_: lock key, signing key, TKA key
+
+**Signing node**:
+A node whose tailnet-lock key tailnet lock trusts, and therefore one that can admit other nodes.
+_Avoid_: trusted node, authority
+
 ### Credentials
 
 **API access token**:
@@ -59,6 +71,14 @@ _Avoid_: pre-auth key, join key, token
 **Secret**:
 Any value that grants access if disclosed: an API access token, a trust credential's secret, an auth key, or a key or webhook secret a tool has just minted.
 _Avoid_: credential (for the value itself), key (unqualified)
+
+**Disablement secret**:
+A secret minted when tailnet lock is initialised, and the only way to turn it off again. Spending one consumes it and makes it public. Written `disablement-secret:<hex>`.
+_Avoid_: disablement key, recovery key, kill switch
+
+**Disablement value**:
+The public half of a disablement secret, derived from it and reported by tailnet lock so that a stored secret can be checked without being spent. Written `disablement:<hex>`, and distinct from the secret it comes from — the two are not interchangeable, and the commands that take them disagree about which.
+_Avoid_: disablement (unqualified), disablement hash
 
 ### Server
 

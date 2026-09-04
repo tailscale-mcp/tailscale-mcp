@@ -369,3 +369,63 @@
 **Justification:** Three spellings of one concept had appeared because the glossary had no word for it, which is the signal the domain docs describe rather than a lapse to correct in place. "Local node" is genuinely a different concept — that machine's membership of the tailnet, not its files — and using it here would blur the one distinction these tools exist to make clear, since a path is the only thing in this toolset that never refers to the tailnet at all. Keeping "host" would mean documenting an exception to an avoid list in the module that most needed the term.
 **Outcome:** applied
 **Ref:** `CONTEXT.md`, `crates/tailscale-mcp/src/tools/local_files.rs`
+
+## Q38 — build/ticket-12 — deviation
+
+**Question:** `lock sign` reads a key from `file:<path>` so the key never reaches an argument list, but `lock disable` and `lock disablement-kdf` take their disablement secret as a bare positional and have no `file:` form at all. What does this server accept at those two parameters?
+**Options considered:** accept only a literal, since that is all the client accepts / refuse a literal and require a file, reading it here / accept both, honouring `file:` on the client's behalf
+**Chosen:** Accept both, and resolve `file:<path>` in this module by reading the file before the client runs.
+**Decided-by:** agent
+**Justification:** `file:` has to mean one thing at every key parameter in the module or it becomes a trap: a caller that learned it at `tailscale_lock_sign` would otherwise pass a path to `tailscale_lock_disable` and have it spent as if it were the secret. Honouring it here buys the exposure a caller actually controls — the secret need not be pasted into the conversation, the transcript or the model's context — and it is honest about the exposure it cannot buy: the client's own interface puts that positional on the argument list, where `ps` can read it, and no wrapper can change that. Requiring a file would have been the stricter rule but would refuse the ordinary case of a caller who has just been handed a secret by `tailscale_lock_init` and wants to spend it. The limit is stated in the module documentation rather than left for someone to discover. It is also a deviation from `spec.md`'s "Secrets are never placed on the command line": that rule is kept everywhere this server has the choice, and these two commands are where it does not — the client offers no file form, so the alternative to putting the secret on the argument list is not having the tools.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_lock.rs`
+
+## Q39 — build/ticket-12 — interpretation
+
+**Question:** `lock init` has a `--confirm` flag that suppresses an interactive prompt. Should the tool pass it, pass it only when the caller confirmed, or leave it off?
+**Options considered:** leave it off and let the client prompt / pass it only on a confirmed call / always pass `--confirm=true`
+**Chosen:** Always pass `--confirm=true`.
+**Decided-by:** agent
+**Justification:** Probed on the installed client 1.102.2: without the flag, `tailscale lock init` prints its warning, reads end-of-file from a standard input that a tool call does not have, and **exits 0 having initialised nothing**. A silent no-op reported as success is the worst answer available — worse than an error, because the caller goes on believing the tailnet is locked. Making the flag conditional on the confirmation would reproduce that failure for exactly the callers who did not confirm, when the registry has already refused those calls before the handler runs: by the time this argument is built, the question has been asked and answered somewhere a person could answer it. The flag is stated rather than omitted for the same reason every other boolean here is stated. This is `spec.md`'s own rule rather than a departure from it — "The CLI's own risk acceptance is passed only on a call that carried a confirmation, so its checks become the gate rather than being bypassed" — and the probing is what shows why the rule matters here: the check being bypassed is not a prompt but the initialisation itself.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_lock.rs`, `.scratch/tailscale-mcp-v1/spec.md`
+
+## Q40 — build/ticket-12 — interpretation
+
+**Question:** `spec.md` names initialising, disabling and revoking keys as the tailnet-lock operations that need a confirmation on top of the destructive tier. Where does that leave `lock remove` and `lock local-disable`, which are also irreversible?
+**Options considered:** confirm everything destructive in the toolset / confirm the three the spec names and put the other two at the destructive tier / put `local-disable` at the write tier
+**Chosen:** Destructive tier for all five; a confirmation on the three the spec names and on no others.
+**Decided-by:** agent
+**Justification:** The spec's own phrase for the confirmed set is "tailnet-scale irreversible", and that is the line the two unnamed commands fall on the other side of. `lock local-disable` changes only what *this* node will accept and leaves every other node enforcing the lock, so it is exactly node-scale; it is destructive because a locked-out peer becomes reachable and nothing here puts that back. `lock remove` re-signs by default, so its ordinary outcome takes nothing away, and its taking-away form is reached by asking for it. Confirming everything would spend the mechanism on the cases that do not need it, which is how a confirmation becomes something a caller passes without reading.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_lock.rs`, `.scratch/tailscale-mcp-v1/spec.md`
+
+## Q41 — build/ticket-12 — deviation
+
+**Question:** `lock sign` on a pre-approved auth key prints the signed key, which begins `tskey-` and is therefore removed by the shape-based redaction every other answer goes through. Redacted, the tool returns nothing; unredacted, it puts key material in the answer.
+**Options considered:** return it redacted and document the tool as unusable for auth keys / add a general redaction bypass to `Redactor` / write it to a caller-named file the way `tailscale_cert` does / read the signed key off standard output and carry it in one field, unredacted
+**Chosen:** Carry the signed key in its own `signed_auth_key` field, whole, and withhold the standard output it came from.
+**Decided-by:** agent
+**Justification:** The design already settled that a minted secret comes back verbatim in the answer to the call that minted it — that is how `tailscale_lock_init` returns its disablement secrets, which survive only because `disablement-secret:` happens not to be a shape the redactor knows. (Whether the answer *also* keeps the text the secret was read out of is a separate question, settled differently for the two tools by Q43.) A signed auth key is the same thing: the product of the call, not something leaking out of it, and redacting the product leaves the caller with a tool that reports success and hands back nothing. A general `Redactor` bypass was drafted and dropped: the value here is a single token, so the literal-secret pass is vacuous on it, and the narrow read means no new API exists for a later toolset to reach for. Writing it to a file was the `tailscale_cert` precedent but answers a different question — a certificate is consumed by a server process on that machine, whereas this key exists to be handed to whoever brings the next node up. Which of the two things the client did is read off what it printed rather than off what was asked for, because a caller that named a `file:` path never told us which kind of key was in it.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_lock.rs`
+
+## Q42 — build/ticket-12 — interpretation
+
+**Question:** `lock revoke-keys` has two usage forms behind one positional: the keys to revoke on the first call, and the recovery blob from the previous step on every call after. Does the tool copy that shape?
+**Options considered:** one `keys` list carrying whichever the caller means / two parameters, `keys` and `recovery_blob`, with the invalid combinations refused
+**Chosen:** Two parameters, and refuse naming both, naming neither, or continuing without a blob.
+**Decided-by:** agent
+**Justification:** The two forms hold values that look nothing alike and mean nothing alike, and the client tells them apart by trying to parse the argument — which is why `revoke-keys --cosign --finish tlpub:…` fails with `parsing hex: invalid byte 't'` rather than with anything a caller could act on. A model choosing between three named booleans and two named values has the shape of the process in front of it; a model filling one list has to have read the help text. The combinations refused here are the ones the CLI's own instructions rule out — `cosign` on each further signing node, `finish` once the co-signatures outnumber the keys — so nothing reachable through the client is unreachable through the tool.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_lock.rs`
+
+## Q43 — build/ticket-12 — interpretation
+
+**Question:** Both `lock init` and `lock sign` print a secret this server then reads a field out of. `spec.md` asks for "a newly minted secret returned once and never logged". Does the answer also carry the printed text the secret was parsed from, or is the parsed field the only copy?
+**Options considered:** withhold the printed text in both, so each secret appears in exactly one field / keep it in both, so the parse is never the only copy / decide per tool, on what a lost secret costs
+**Chosen:** Per tool: `tailscale_lock_sign` withholds the standard output it read the auth key from; `tailscale_lock_init` keeps it alongside `disablement_secrets`.
+**Decided-by:** agent
+**Justification:** "Returned once" is a rule about the calls that follow, not about how many fields of one answer carry the value: nothing here stores a secret, nothing logs one, and no later call can produce one again, which is the whole of the exposure the story is about. Within a single answer the question is a different one — what happens if the parse is wrong — and it has different answers for the two tools because the loss is not the same size. A missed auth key costs a second `tailscale_lock_sign`, so the tidier answer is free and worth having. A missed disablement secret cannot be recovered by any call at all: `lock init` mints them once, and a tailnet whose disablement secrets are lost can never turn its lock off again. Trading that against a parse written against one release's output is not a trade worth making, so `tailscale_lock_init` keeps the client's own text and says in the field's own documentation why. The asymmetry is the point rather than an oversight, so it is stated in the module header too.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_lock.rs`

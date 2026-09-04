@@ -116,7 +116,8 @@ pub enum Toolset {
 
 impl Toolset {
     /// Every toolset, in listing order. Adding a variant without adding it here
-    /// is caught by [`Self::all_is_exhaustive`].
+    /// is caught by `all_is_exhaustive`, which is a test and so cannot be linked
+    /// from documentation built without `cfg(test)`.
     pub const ALL: &'static [Toolset] = &[
         Self::LocalStatus,
         Self::LocalPrefs,
@@ -229,6 +230,15 @@ pub struct ToolMeta {
     pub requires_confirmation: bool,
     /// Repeating the call has the same effect as making it once.
     pub idempotent: bool,
+    /// Whether [`Self::tier`] is a floor rather than the whole truth.
+    ///
+    /// One tool sets this: the passthrough, whose risk is decided by the
+    /// arguments it is given rather than by its row. The gate still reads the
+    /// tier, so the tool is offered as soon as its floor is permitted, and the
+    /// handler refuses anything above what the session allows. The annotations
+    /// state the worst case, because a client reading `read_only` has no way to
+    /// know that this one is conditional.
+    pub varying_tier: bool,
     /// The lowest `tailscale` version that accepts this command, where the
     /// command is newer than our supported floor.
     pub min_version: Option<&'static str>,
@@ -258,8 +268,8 @@ impl ToolMeta {
     /// read-only while sitting at the destructive tier.
     pub const fn annotations(&self) -> Annotations {
         Annotations {
-            read_only: matches!(self.tier, Tier::Read),
-            destructive: matches!(self.tier, Tier::Destructive),
+            read_only: !self.varying_tier && matches!(self.tier, Tier::Read),
+            destructive: self.varying_tier || matches!(self.tier, Tier::Destructive),
             idempotent: self.idempotent,
             // Both surfaces reach a network the server does not control.
             open_world: true,
@@ -318,6 +328,7 @@ mod tests {
             self_severing: false,
             requires_confirmation: false,
             idempotent: true,
+            varying_tier: false,
             min_version: None,
             platforms: None,
         };
@@ -331,5 +342,26 @@ mod tests {
         };
         assert!(!destructive.annotations().read_only);
         assert!(destructive.annotations().destructive);
+    }
+
+    #[test]
+    fn a_varying_tier_is_annotated_at_its_worst_case() {
+        // The passthrough sits at the read tier so that a read-only session can
+        // still reach the commands it may run, but a client must not be told
+        // that calling it changes nothing.
+        let passthrough = ToolMeta {
+            name: "tailscale_run",
+            toolset: Toolset::LocalPassthrough,
+            tier: Tier::Read,
+            summary: "",
+            self_severing: false,
+            requires_confirmation: false,
+            idempotent: false,
+            varying_tier: true,
+            min_version: None,
+            platforms: None,
+        };
+        assert!(!passthrough.annotations().read_only);
+        assert!(passthrough.annotations().destructive);
     }
 }

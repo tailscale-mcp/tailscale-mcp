@@ -12,6 +12,7 @@ pub mod local_lock;
 pub mod local_prefs;
 pub mod local_serve;
 pub mod local_status;
+pub mod passthrough;
 
 /// Every tool this server can offer, before any gating.
 pub fn entries() -> Vec<crate::registry::ToolEntry> {
@@ -22,6 +23,7 @@ pub fn entries() -> Vec<crate::registry::ToolEntry> {
     all.extend(local_files::entries());
     all.extend(local_lock::entries());
     all.extend(local_debug::entries());
+    all.extend(passthrough::entries());
     all
 }
 

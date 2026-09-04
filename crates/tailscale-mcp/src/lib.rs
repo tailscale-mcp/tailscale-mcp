@@ -29,6 +29,30 @@ pub mod version;
 /// reach for the same fake.
 #[cfg(test)]
 pub(crate) mod testing {
+    use std::sync::Arc;
+
     #[allow(unused_imports)]
     pub(crate) use tailscale_cli::stub::{Reply, StubBackend};
+
+    use crate::context::{PathPolicy, SelfIdentity, ToolContext};
+    use crate::error::Redactor;
+    use crate::meta::Tier;
+
+    /// A context wired to a scripted client and to nothing else.
+    ///
+    /// Every toolset's unit tests want the same one, and used to spell it out
+    /// six identical times. The tier is the most permissive: a handler called
+    /// directly has already passed the gate, so anything less would be testing
+    /// a check that is not this code's to make.
+    pub(crate) fn context(backend: Arc<StubBackend>) -> ToolContext {
+        ToolContext {
+            local: backend as Arc<dyn tailscale_cli::LocalBackend>,
+            redactor: Redactor::default(),
+            max_result_bytes: 1 << 20,
+            identity: SelfIdentity::default(),
+            cli_version: None,
+            paths: PathPolicy::default(),
+            max_tier: Tier::Destructive,
+        }
+    }
 }

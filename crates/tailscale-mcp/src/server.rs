@@ -165,6 +165,7 @@ pub async fn build(
         identity,
         cli_version,
         paths: PathPolicy::default(),
+        max_tier: config.max_tier,
     };
 
     let visible = registry.visible(&gate).len();

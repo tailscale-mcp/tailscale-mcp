@@ -130,6 +130,10 @@ _Avoid_: setting, toggle, hack
 The variant of a CLI command that would otherwise run until interrupted, limited by a count or a time limit so that every tool call returns.
 _Avoid_: one-shot, non-blocking
 
+**Covered command**:
+A `tailscale` CLI command that a typed tool already runs, and whose tier and confirmation the passthrough therefore takes as its own rather than inventing.
+_Avoid_: known, supported, mapped
+
 **Excluded command**:
 A `tailscale` CLI command that never becomes a tool and that the passthrough refuses to run, because it is interactive, runs in the foreground indefinitely, alters the host outside Tailscale, or prints a secret.
 _Avoid_: blacklisted, banned, unsupported (that word is for version and platform gaps)

@@ -1063,26 +1063,15 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::context::{PathPolicy, SelfIdentity};
-    use crate::error::{ErrorCode, Redactor};
-    use crate::testing::{Reply, StubBackend};
+
+    use crate::error::ErrorCode;
+    use crate::testing::{Reply, StubBackend, context};
 
     /// A recorded sample of what the real client prints.
     macro_rules! fixture {
         ($name:literal) => {
             include_str!(concat!("../../tests/fixtures/", $name))
         };
-    }
-
-    fn context(backend: Arc<StubBackend>) -> ToolContext {
-        ToolContext {
-            local: backend as Arc<dyn tailscale_cli::LocalBackend>,
-            redactor: Redactor::default(),
-            max_result_bytes: 1 << 20,
-            identity: SelfIdentity::default(),
-            cli_version: None,
-            paths: PathPolicy::default(),
-        }
     }
 
     /// Run a handler against a scripted client and report both what it answered

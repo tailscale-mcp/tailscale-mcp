@@ -6,7 +6,7 @@
 //! fall out of step with the first.
 //!
 //! The router is this table. `list_tools` filters it through the
-//! [`Gate`](crate::gating::Gate); `call_tool` looks a name up in it. There is
+//! [`crate::gating::Gate`]; `call_tool` looks a name up in it. There is
 //! no parallel registration anywhere.
 
 use std::collections::BTreeMap;
@@ -274,7 +274,7 @@ fn validate_name(name: &'static str) -> Result<(), RegistryError> {
 ///
 /// Optional trailing settings, each defaulting to the safe answer:
 /// `idempotent` (false), `confirm` (false), `severing` (false, and implies
-/// `confirm`), `since` (no minimum version).
+/// `confirm`), `varying` (false), `since` (no minimum version).
 #[macro_export]
 macro_rules! tools {
     (
@@ -286,6 +286,7 @@ macro_rules! tools {
                 $(, idempotent: $idempotent:literal)?
                 $(, confirm: $confirm:literal)?
                 $(, severing: $severing:literal)?
+                $(, varying: $varying:literal)?
                 $(, since: $since:literal)?
                 $(, platforms: [$($platform:literal),+ $(,)?])?
                 $(,)?
@@ -312,6 +313,9 @@ macro_rules! tools {
                     let mut idempotent = false;
                     $( idempotent = $idempotent; )?
                     #[allow(unused_mut, unused_assignments)]
+                    let mut varying_tier = false;
+                    $( varying_tier = $varying; )?
+                    #[allow(unused_mut, unused_assignments)]
                     let mut since: ::std::option::Option<&'static str> =
                         ::std::option::Option::None;
                     $( since = ::std::option::Option::Some($since); )?
@@ -328,6 +332,7 @@ macro_rules! tools {
                         self_severing: severing,
                         requires_confirmation: confirm,
                         idempotent,
+                        varying_tier,
                         min_version: since,
                         platforms,
                     }

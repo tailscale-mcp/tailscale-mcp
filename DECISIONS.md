@@ -469,3 +469,77 @@
 **Justification:** This is the road the server already takes for a foreground command it bounds itself: a foreground `tailscale_funnel` "comes back as a timeout carrying the URL that enables it", and `ToolError::timeout`'s own hint reads "The command was waiting on something. Act on what it printed, then call again." Following it costs no new machinery and gives the watcher the same shape as its neighbours. The alternative was drafted: `ExecError::Timeout` already holds what the child printed, so a partial success was reachable — but only by widening `Invocation` and `Output` for one tool, and the text it holds merges both streams and is capped for use in a message, so the notifications would come back worse than the error already reports them. "Always returns" is satisfied either way: the call ends at a bound this server set, rather than running until something interrupts it. What makes the common case return promptly is the count, which the client itself honours, so the bound is the safety net rather than the mechanism.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/local_debug.rs`
+
+## Q48 — build/ticket-14 — interpretation
+
+**Question:** `spec.md` line 148 says the passthrough "inherits the tier of the typed tool covering the same subcommand". Where does that correspondence live: computed from the tools themselves, or written down?
+**Options considered:** give `ToolMeta` a `command_path` field and derive the mapping from the registry at startup / have each handler declare its argv shape / write the correspondence out as a table in `passthrough.rs` and pin it with a test that drives every typed tool
+**Chosen:** A written table, `passthrough::COVERED`, held true by a test that re-derives it from the tools.
+**Decided-by:** agent
+**Justification:** Deriving it was the first design and does not work, because a tool's command path is not a property of its metadata but of what its handler builds at call time from the arguments it was given: `tailscale_serve_path` and `tailscale_serve_off` both run `serve` with different flags, `tailscale_debug_file_list` runs `debug --file=get` and has no subcommand path at all, and several tools choose between paths on a parameter. A `command_path` field would therefore be a second, hand-written claim about the handler, sitting further from the code that makes it true than a table does. So the choice is not between derived and written but between two places to write it, and the table wins on being one list a reader can check against the client's own command tree. What makes it trustworthy is `the_covered_table_follows_the_tools_it_claims_to_follow`, which drives every one of the other 92 typed tools through a real session, reads back the argument list each one actually gave the client, classifies it with the passthrough's own matcher, and checks both directions: no row is weaker than a tool that runs its command, and no row is stronger than every tool that runs it. A tool that changes what it runs fails that test rather than quietly widening what the passthrough allows. The two exemptions are stated in the test: the passthrough itself, which has no fixed command, and `tailscale_debug_file_list`, whose flag-on-the-parent form the matcher refuses outright — the test asserts that refusal rather than skipping it.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/passthrough.rs`, `crates/tailscale-mcp/tests/contract.rs`
+
+## Q49 — build/ticket-14 — interpretation
+
+**Question:** The ticket says the passthrough is "enabled by one switch that is equivalent to adding its toolset". Is that switch a dedicated `--allow-passthrough` flag, or the toolset itself?
+**Options considered:** add `--allow-passthrough` as its own flag / accept both / the toolset only, named as `--toolsets +local-passthrough`
+**Chosen:** The toolset only.
+**Decided-by:** agent
+**Justification:** "Equivalent to adding its toolset" is most simply satisfied by *being* the toolset. The flag surface has no per-toolset flags anywhere else — `--allow-write` and `--allow-destructive` are tiers, which is the other axis — and ticket 13's debug toolset is opt-in on exactly these terms with no flag of its own. A dedicated flag would be a second spelling of one thing, and two spellings need a rule for what happens when they disagree, which is cost with no gain. What the ticket is really asking for is that the toolset be reachable from no preset, and that is what `Preset::Full` excluding `LocalDebug | LocalPassthrough` does; `the_passthrough_is_reached_by_naming_it_and_no_other_way` holds both halves down. The tier switches still apply on top, so running anything destructive through it needs two switches rather than one.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/gating.rs`, `crates/tailscale-mcp/src/tools/passthrough.rs`
+
+## Q50 — build/ticket-14 — interpretation
+
+**Question:** Every tool's MCP annotations are computed from its tier, and the gate uses the same tier to decide what a session may offer. The passthrough has no fixed tier. What does its row say, and what do its annotations say?
+**Options considered:** register it at the destructive tier, so the gate is the whole check / register it at the read tier and let the handler do the whole check / register a floor and mark the row as a floor, so the annotations can tell the truth about both
+**Chosen:** A read-tier floor plus a new `varying_tier` axis on `ToolMeta`; the annotations state the worst case.
+**Decided-by:** agent
+**Justification:** The first option makes the acceptance criterion unreachable — "with the read tier only, a status subcommand runs" cannot happen if the gate withholds the tool from a read-tier session. The second leaves the row saying `read` about a tool that can run `logout`, which is a lie told to the gate and to every reader of the table. The third states both facts separately: the row's tier is the floor the gate applies, and `varying_tier` says that floor is not the whole truth, so `annotations()` reports `read_only: false, destructive: true` regardless of the floor. That is the honest reading of the MCP annotations, which are a client's hint about what a call might do rather than a description of one call; a client that trusted `read_only` here would be trusting it about arguments it has not seen. `varying_tier` sits alongside `severing`, `confirm` and `idempotent` as one more axis that is independent of the tier, which is the shape the macro already had. The handler then makes the same decision the gate makes, against the command it was given, which is why `ToolContext` gained `max_tier`: exactly one tool needs to know it, and it needs to know it for a reason no other tool has.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/meta.rs`, `crates/tailscale-mcp/src/context.rs`, `crates/tailscale-mcp/src/tools/passthrough.rs`
+
+## Q51 — build/ticket-14 — deviation
+
+**Question:** `cli::command_failure` and the timeout path put `Invocation::display()` — the argument list verbatim — into the error message and the log line. With the passthrough, those arguments are the caller's. Where is that redacted?
+**Options considered:** redact in the passthrough handler before calling `cli::run` / give `Invocation` a redacted display / redact in `cli::run` and `cli::run_tolerant`, where a command line first turns into text
+**Chosen:** In `cli.rs`, at the one place a command line becomes a message or a log line.
+**Decided-by:** agent
+**Justification:** The rule is that a secret never reaches an argument list, and for every typed tool that rule is kept by the tool: the server assembles those arguments itself and an auth key only ever reaches the client through a 0600 file. The passthrough is the one tool that cannot promise it, because the argument list is the caller's. Redacting in the handler was the smaller change and was rejected as the wrong shape — it leaves the unsafe path in place for whoever adds the next tool that takes an argument list, and it is a promise made in the caller rather than enforced where it matters. Redacting in `Invocation` was rejected because the display is also what the exclusive-lane bookkeeping and the tests read, and a type whose `Display` silently differs from its contents is a trap. `cli::run`/`run_tolerant` computing `displayed(ctx, &invocation)` once, up front, costs one redactor pass per command and closes the path for good; the argument list the client is actually given is untouched, which a test asserts alongside the redacted report.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/cli.rs`
+
+## Q52 — build/ticket-14 — deviation
+
+**Question:** `spec.md` line 152 says the excluded commands come to "roughly 34 command paths in total". The list as built is 23: nine documented commands and the fourteen hidden `debug` members from ticket 13. Is the shortfall a gap?
+**Options considered:** find eleven more paths to exclude / count sub-paths and flag variants to reach the number / report 23 and leave the estimate as the estimate it was
+**Chosen:** Report 23.
+**Decided-by:** agent
+**Justification:** "Roughly 34" was written during design from the research table's own count, before the tools existed to say which commands a passthrough would otherwise reach; it is an estimate in a sentence whose load-bearing half is the four grounds for exclusion, and each of the 23 is one of those grounds applied to a real command. Padding the list to the number would mean excluding commands with no ground under `CONTEXT.md`'s definition, which is the opposite of what the estimate was for — and every excluded command is a capability removed from a caller who has already opted into two switches to get here. Counting differently was the other way to reach 34 and is worse: it would make the number true by changing what it counts. The four grounds are each represented — interactive (`ssh`, `nc`), foreground (`web`, `systray`), host-altering (`update`, the two `configure sysext` and two `configure mac-vpn` paths), and printing a secret (`debug prefs`, from Q45) — and `every_excluded_command_is_refused` walks all 23 and asserts the refusal, its reason, that no switch is suggested, and that nothing reached the client. `spec.md` keeps its "roughly".
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/passthrough.rs`, `crates/tailscale-mcp/src/tools/local_debug.rs`
+
+## Q53 — build/ticket-14 — deviation
+
+**Question:** `classify` read the subcommand as the leading run of non-flag words. `/code-review` found two ways past that: `tailscale serve --bg reset` runs `serve reset` but reads as `serve`, and `tailscale DEBUG PREFS` runs `debug prefs` but matches no row at all. How is the command read, given that this server does not parse the client's flags?
+**Options considered:** parse the flags, using the client's own flag table / read every non-flag word instead of the leading run / refuse any argument list with a flag before a bare word / take both readings and keep the stricter, with the words case-folded before matching
+**Chosen:** Both readings, stricter wins, case-folded and trimmed.
+**Decided-by:** agent
+**Justification:** The first finding is an escalation — a write-tier session wiping the serve configuration with no confirmation, and `serve clear` and `switch remove` the same way — and the second is worse, reaching `debug prefs` and its `PrivateNodeKey` through the destructive tier, because ffcli matches subcommands with `EqualFold` at every depth. Verified against the real client 1.102.2: `tailscale VERSION`, `tailscale DEBUG --help` and `tailscale SERVE STATUS` all resolve, so the tables must be compared case-folded or they are decoration.
+
+Parsing the flags would be right and is not available: it means carrying the client's flag table for every subcommand of every version, and being wrong about one flag's arity is the same bug again with more code behind it. Reading every non-flag word fails in the opposite direction — `tailscale funnel --set-path status 8080` would read as `funnel status`, a reader, when `status` is only a flag's value — so it trades an escalation for a de-escalation, which is the worse trade. Refusing every flag-before-a-word was rejected because it refuses `["serve", "--https=443", "off"]`, an ordinary and correct call.
+
+Taking both readings and keeping the stricter needs no flag knowledge and can only be wrong in one direction: a caller is charged a tier or a confirmation they did not need, never spared one they did. An exclusion binds on either reading. A reading that matches nothing and stops partway into an excluded path — `["debug", "--file=get"]` — is still refused outright rather than run as unknown, because unknown means runnable at the destructive tier.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/passthrough.rs`
+
+## Q54 — build/ticket-14 — deviation
+
+**Question:** `exec_error` turned `ExecError::Io` into a message with `error.to_string()`, whose `Display` embeds the argument list verbatim rather than the redacted one Q51 computes. Q51 said the leak was closed. Where is it actually closed?
+**Options considered:** rebuild the message from the redacted display in that one arm / apply the session redactor to that one arm / apply the session redactor to every arm of `exec_error`
+**Chosen:** Every arm.
+**Decided-by:** agent
+**Justification:** Q51 closed the two paths a command line was known to take — the failure message and the timeout — and `ExecError::Io` is a third, built inside `exec.rs` from `invocation.display()` before anything redacts. `ToolError::new` redacts by shape, which catches a `tskey-` but not a value the session registered, so the arm was leaking exactly the class of secret the redactor exists for. Rebuilding the message from `display` was rejected as a second spelling of `ExecError`'s own `Display`, which is the thing that has to stay in one place. Redacting the single arm fixes today and leaves the next variant to be judged by whoever adds it. Redacting every arm makes `exec_error` the seam it already is — the one place an `ExecError` becomes caller-visible text — at the cost of a redundant pass over two messages that carry only a binary path.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/cli.rs`

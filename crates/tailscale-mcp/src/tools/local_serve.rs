@@ -676,10 +676,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::context::{PathPolicy, SelfIdentity};
-    use crate::error::Redactor;
+
     use crate::meta::{Tier, Toolset};
-    use crate::testing::{Reply, StubBackend};
+    use crate::testing::{Reply, StubBackend, context};
 
     /// What the client prints when a handler goes up, with this tailnet's own
     /// names replaced by the documentation ones.
@@ -687,17 +686,6 @@ mod tests {
         https://workstation.example-tailnet.ts.net/\n\
         |-- proxy http://127.0.0.1:3000\n\n\
         Serve started and running in the background.\n";
-
-    fn context(backend: Arc<StubBackend>) -> ToolContext {
-        ToolContext {
-            local: backend as Arc<dyn tailscale_cli::LocalBackend>,
-            redactor: Redactor::default(),
-            max_result_bytes: 1 << 20,
-            identity: SelfIdentity::default(),
-            cli_version: None,
-            paths: PathPolicy::default(),
-        }
-    }
 
     /// Run a handler against a scripted client and report both what it answered
     /// and what it ran.

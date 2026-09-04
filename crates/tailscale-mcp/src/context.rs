@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tailscale_cli::LocalBackend;
 
 use crate::error::Redactor;
+use crate::meta::Tier;
 use crate::version::Version;
 
 /// Where a tool may write when the caller names a path on this machine.
@@ -106,6 +107,13 @@ pub struct ToolContext {
     pub cli_version: Option<Version>,
     /// Where the tools that take a path are allowed to write.
     pub paths: PathPolicy,
+    /// The most dangerous tier this session permits.
+    ///
+    /// The gate is what normally applies this, before a handler is reached, so
+    /// no typed tool has to look at it. The passthrough does: its row carries a
+    /// floor rather than its real tier, so it is the one tool that has to make
+    /// the same decision the gate makes, against the command it was given.
+    pub max_tier: Tier,
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -115,6 +123,7 @@ impl std::fmt::Debug for ToolContext {
             .field("max_result_bytes", &self.max_result_bytes)
             .field("identity", &self.identity)
             .field("cli_version", &self.cli_version)
+            .field("max_tier", &self.max_tier)
             .finish_non_exhaustive()
     }
 }

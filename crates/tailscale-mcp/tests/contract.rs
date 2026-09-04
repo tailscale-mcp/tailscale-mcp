@@ -697,6 +697,15 @@ fn contracts() -> Vec<Contract> {
             err: {} on ["debug", "force-netmap-update"] =>
                 Reply::failed(1, "Access denied: cannot debug without operator access"), "needs_operator"
         ),
+        contract!(
+            // Its session runs at the tier of its row, which is the read floor,
+            // so the failing call is a command the floor does not reach. That
+            // is the passthrough's own contract rather than an accident of the
+            // harness: what it may run is decided by the command.
+            "tailscale_run",
+            ok: {"args": ["version"]} on ["version"] => printed!("tailscale-version.txt"),
+            err: {"args": ["down"]} on ["down"] => Reply::ok(""), "not_permitted"
+        ),
     ]
 }
 
@@ -799,16 +808,24 @@ async fn every_tool_describes_itself_the_way_its_tier_says() {
         let annotations = tool
             .annotations
             .unwrap_or_else(|| panic!("`{}` is not annotated", meta.name));
+        // A tool whose row is a floor rather than its whole tier is annotated
+        // at its worst case: a client reading `read_only` cannot learn from
+        // the annotation that this one depends on the arguments.
+        let (read_only, destructive) = if meta.varying_tier {
+            (false, true)
+        } else {
+            (meta.tier == Tier::Read, meta.tier == Tier::Destructive)
+        };
         assert_eq!(
             annotations.read_only_hint,
-            Some(meta.tier == Tier::Read),
+            Some(read_only),
             "`{}` is at the {} tier",
             meta.name,
             meta.tier
         );
         assert_eq!(
             annotations.destructive_hint,
-            Some(meta.tier == Tier::Destructive),
+            Some(destructive),
             "`{}` is at the {} tier",
             meta.name,
             meta.tier
@@ -1207,5 +1224,386 @@ async fn no_excluded_debug_subcommand_is_reachable_as_a_tool() {
         let error = harness.call_err(&name, json!({})).await;
         assert_eq!(error["code"], "not_found", "{name}");
     }
+    harness.shutdown().await;
+}
+
+// ---------------------------------------------------------------------------
+// the passthrough
+// ---------------------------------------------------------------------------
+
+/// A session with the passthrough on offer and nothing else.
+async fn passthrough(tier: Tier, answers: &[(&[&str], Reply)]) -> harness::Harness {
+    let mut setup = Setup::new().toolsets("local-passthrough").tier(tier);
+    for (argv, reply) in answers {
+        setup = setup.cli_answers(argv, reply.clone());
+    }
+    setup.start().await
+}
+
+#[tokio::test]
+async fn the_passthrough_is_reached_by_naming_it_and_no_other_way() {
+    // `full` means every toolset a preset is willing to imply, and this is not
+    // one of them: the switch that turns it on is naming it.
+    let broad = Setup::new()
+        .preset("full")
+        .tier(Tier::Destructive)
+        .start()
+        .await;
+    assert!(
+        !broad
+            .tool_names()
+            .await
+            .contains(&"tailscale_run".to_owned()),
+        "`full` offered the passthrough"
+    );
+    broad.shutdown().await;
+
+    let named = Setup::new()
+        .preset("full")
+        .toolsets("+local-passthrough")
+        .tier(Tier::Destructive)
+        .start()
+        .await;
+    assert!(
+        named
+            .tool_names()
+            .await
+            .contains(&"tailscale_run".to_owned()),
+        "adding the toolset did not offer the passthrough"
+    );
+    named.shutdown().await;
+}
+
+/// The read tier runs a read command and refuses a destructive one.
+#[tokio::test]
+async fn at_the_read_tier_the_command_decides_what_may_run() {
+    let harness = passthrough(
+        Tier::Read,
+        &[(&["status"], Reply::ok(harness::fixture("status.json")))],
+    )
+    .await;
+
+    let answer = harness
+        .call_ok("tailscale_run", json!({"args": ["status", "--json"]}))
+        .await;
+    assert_eq!(answer["tier"], "read");
+    assert_eq!(answer["covered"], true);
+
+    let error = harness
+        .call_err("tailscale_run", json!({"args": ["down"]}))
+        .await;
+    assert_eq!(error["code"], "not_permitted", "{error:#}");
+    assert!(
+        error["hint"]
+            .as_str()
+            .is_some_and(|h| h.contains("--allow-destructive")),
+        "the refusal should name the switch that would allow it: {error:#}"
+    );
+    assert!(
+        harness
+            .cli_calls()
+            .iter()
+            .all(|argv| argv.first().map(String::as_str) != Some("down")),
+        "`down` was refused and should not have run"
+    );
+
+    harness.shutdown().await;
+}
+
+/// A subcommand no tool covers is destructive, and is refused below that tier.
+#[tokio::test]
+async fn an_unknown_subcommand_is_judged_at_the_top() {
+    for tier in [Tier::Read, Tier::Write] {
+        let harness = passthrough(tier, &[]).await;
+        let error = harness
+            .call_err("tailscale_run", json!({"args": ["nonesuch"]}))
+            .await;
+        assert_eq!(
+            error["code"], "not_permitted",
+            "at the {tier} tier: {error:#}"
+        );
+        assert!(harness.cli_calls().iter().all(|argv| argv != &["nonesuch"]));
+        harness.shutdown().await;
+    }
+
+    let harness = passthrough(Tier::Destructive, &[(&["nonesuch"], Reply::ok("it ran\n"))]).await;
+    let answer = harness
+        .call_ok("tailscale_run", json!({"args": ["nonesuch"]}))
+        .await;
+    assert_eq!(answer["tier"], "destructive");
+    assert_eq!(
+        answer["covered"], false,
+        "an unknown command must say the tier was a refusal to guess: {answer:#}"
+    );
+    harness.shutdown().await;
+}
+
+/// Every excluded command, enumerated, is refused with the permission code.
+#[tokio::test]
+async fn every_excluded_command_is_refused() {
+    let harness = passthrough(Tier::Destructive, &[]).await;
+
+    let mut checked = 0;
+    for excluded in tailscale_mcp::tools::passthrough::excluded() {
+        let words: Vec<&str> = excluded.path.split(' ').collect();
+        let before = harness.cli_calls().len();
+        let error = harness
+            .call_err("tailscale_run", json!({"args": words}))
+            .await;
+        assert_eq!(
+            error["code"], "not_permitted",
+            "`{}` was not refused: {error:#}",
+            excluded.path
+        );
+        assert!(
+            error["message"]
+                .as_str()
+                .is_some_and(|m| m.contains(excluded.reason)),
+            "`{}` was refused without its reason: {error:#}",
+            excluded.path
+        );
+        assert!(
+            error["hint"].is_null(),
+            "`{}` is refused by no switch, so nothing should suggest one: {error:#}",
+            excluded.path
+        );
+        assert_eq!(
+            harness.cli_calls().len(),
+            before,
+            "`{}` reached the client",
+            excluded.path
+        );
+        checked += 1;
+    }
+
+    // Nine documented commands and the fourteen hidden ones ticket 13 named.
+    assert_eq!(checked, 23, "the whole exclusion list has to be walked");
+
+    // The one `debug` member in neither list stays runnable, which is what
+    // makes the list above a list rather than a blanket refusal.
+    let runnable = harness
+        .call_err("tailscale_run", json!({"args": ["debug", "reload-config"]}))
+        .await;
+    assert_ne!(
+        runnable["code"], "not_permitted",
+        "`debug reload-config` is deliberately runnable (DECISIONS Q44): {runnable:#}"
+    );
+
+    harness.shutdown().await;
+}
+
+/// A command cannot be spelled past the judgement that applies to it.
+///
+/// Both of these were `/code-review` findings on this ticket, and both are one
+/// mistake: reading the argument list as a single spelling when the client
+/// reads it as another. What holds them closed is `classify` taking two
+/// readings and keeping the stricter; these are the end-to-end proof that the
+/// gate, the tables and the handler agree with it.
+#[tokio::test]
+async fn a_command_cannot_be_disguised_past_its_own_judgement() {
+    // The client matches its own subcommands without regard to case, so this
+    // is `debug prefs`, excluded for printing the node's private key.
+    let harness = passthrough(Tier::Destructive, &[]).await;
+    let before = harness.cli_calls().len();
+    let error = harness
+        .call_err("tailscale_run", json!({"args": ["DEBUG", "PREFS"]}))
+        .await;
+    assert_eq!(error["code"], "not_permitted", "{error:#}");
+    assert_eq!(
+        harness.cli_calls().len(),
+        before,
+        "a shouted `debug prefs` reached the client"
+    );
+    harness.shutdown().await;
+
+    // `tailscale serve --bg reset` runs `serve reset`, which is destructive and
+    // wants a confirmation. Read as `serve`, it is a write needing neither.
+    let harness = passthrough(Tier::Write, &[]).await;
+    let before = harness.cli_calls().len();
+    let error = harness
+        .call_err("tailscale_run", json!({"args": ["serve", "--bg", "reset"]}))
+        .await;
+    assert_eq!(error["code"], "not_permitted", "{error:#}");
+    assert_eq!(
+        harness.cli_calls().len(),
+        before,
+        "a write-tier session reset the serve configuration"
+    );
+    harness.shutdown().await;
+
+    // And at the tier that does allow it, the confirmation is still owed.
+    let harness = passthrough(Tier::Destructive, &[]).await;
+    let before = harness.cli_calls().len();
+    let error = harness
+        .call_err("tailscale_run", json!({"args": ["serve", "--bg", "reset"]}))
+        .await;
+    assert_eq!(error["code"], "confirmation_required", "{error:#}");
+    assert_eq!(
+        harness.cli_calls().len(),
+        before,
+        "the serve configuration was reset without a confirmation"
+    );
+    harness.shutdown().await;
+}
+
+/// An argument full of shell syntax is one argument.
+#[tokio::test]
+async fn nothing_a_caller_writes_is_parsed_by_a_shell() {
+    let awkward = "; rm -rf / & $(whoami) `id` | tee /tmp/x #'\"";
+    let harness = passthrough(Tier::Read, &[(&["ping"], Reply::ok("pong\n"))]).await;
+
+    harness
+        .call_ok("tailscale_run", json!({"args": ["ping", awkward]}))
+        .await;
+
+    let ran = harness
+        .cli_calls()
+        .into_iter()
+        .find(|argv| argv.first().map(String::as_str) == Some("ping"))
+        .expect("`ping` ran");
+    assert_eq!(
+        ran,
+        vec!["ping".to_owned(), awkward.to_owned()],
+        "the argument was split, quoted or expanded on its way to the client"
+    );
+
+    harness.shutdown().await;
+}
+
+/// Arguments the schema-derived generator cannot satisfy, written out.
+///
+/// Each of these validates its input before spawning — a key has a prefix, a
+/// selector is required, `set` refuses to change nothing — so the emptiest
+/// value its type allows never reaches the client.
+fn hand_written_arguments(name: &str) -> Option<Value> {
+    Some(match name {
+        "tailscale_debug_via" => json!({"route": "fd7a:115c:a1e0:b1a:0:7:a01:0/112"}),
+        "tailscale_lock_add" => json!({"keys": [TLPUB]}),
+        "tailscale_lock_remove" => json!({"keys": [TLPUB]}),
+        "tailscale_lock_init" => json!({"trusted_keys": [TLPUB], "confirm": true}),
+        "tailscale_lock_disable" => json!({"secret": DISABLEMENT_SECRET, "confirm": true}),
+        "tailscale_lock_disablement_kdf" => json!({"secret": DISABLEMENT_HEX}),
+        "tailscale_lock_revoke_keys" => json!({"keys": [TLPUB], "confirm": true}),
+        "tailscale_lock_sign" => json!({"key": NODEKEY}),
+        "tailscale_prefs_set" => json!({"nickname": "workstation"}),
+        "tailscale_serve_get_config" => json!({"all": true}),
+        "tailscale_serve_set_config" => json!({"all": true, "configuration": {}}),
+        _ => return None,
+    })
+}
+
+/// The passthrough's table of covered commands is the typed tools' own terms.
+///
+/// [`COVERED`](tailscale_mcp::tools::passthrough::COVERED) is eighty-seven
+/// hand-written rows claiming to state, for each command, the tier and
+/// confirmation of the tool that runs it. Nothing about a hand-written table
+/// stays true on its own, so this drives every typed tool through a real
+/// session, reads back the command each one actually ran, and re-derives the
+/// table from that. Both directions are checked: no row is weaker than a tool
+/// that runs its command, and no row is stronger than every tool that does.
+#[tokio::test]
+async fn the_covered_table_follows_the_tools_it_claims_to_follow() {
+    use std::collections::BTreeMap;
+    use tailscale_mcp::tools::passthrough::{COVERED, Known, classify};
+
+    let harness = Setup::new()
+        .preset("full")
+        .toolsets("+local-debug")
+        .tier(Tier::Destructive)
+        .start()
+        .await;
+
+    // What the tools say, path by path: the highest tier any of them runs the
+    // command at, and whether any of them requires a confirmation.
+    let mut derived: BTreeMap<String, (Tier, bool)> = BTreeMap::new();
+
+    for meta in table() {
+        if meta.name == "tailscale_run" {
+            // The tool doing the judging; it has no fixed command to judge.
+            continue;
+        }
+        let tool = harness
+            .tool(meta.name)
+            .await
+            .unwrap_or_else(|| panic!("`{}` was not offered", meta.name));
+        let mut arguments =
+            hand_written_arguments(meta.name).unwrap_or_else(|| minimal_arguments(&tool));
+        if meta.requires_confirmation
+            && let Some(object) = arguments.as_object_mut()
+        {
+            object.insert("confirm".to_owned(), json!(true));
+        }
+
+        let before = harness.cli_calls().len();
+        let _ = harness.call(meta.name, arguments.clone()).await;
+        let calls = harness.cli_calls();
+        let ran = &calls[before..];
+        assert_eq!(
+            ran.len(),
+            1,
+            "`{}` ran {} commands, and this test reads one; it was called with \
+             {arguments}",
+            meta.name,
+            ran.len()
+        );
+        let argv = &ran[0];
+
+        if meta.name == "tailscale_debug_file_list" {
+            // The one tool whose command is not a subcommand: `debug --file=get`
+            // is a flag on the parent, so there is no path to put in the table.
+            // The passthrough refuses it rather than reading `debug` and
+            // guessing, which is why this tool exists.
+            assert_eq!(argv, &["debug", "--file=get"]);
+            let error = classify(argv).expect_err("a bare `debug` cannot be judged");
+            assert_eq!(error.code, tailscale_mcp::error::ErrorCode::InvalidArgs);
+            continue;
+        }
+
+        let (path, known) = classify(argv).unwrap_or_else(|e| {
+            panic!(
+                "`{}` ran `{}`, which the passthrough refuses to read: {e:?}",
+                meta.name,
+                argv.join(" ")
+            )
+        });
+        let Known::Covered(row) = known else {
+            panic!(
+                "`{}` runs `tailscale {path}`, which is in no row of COVERED",
+                meta.name
+            );
+        };
+        assert!(
+            row.tier >= meta.tier,
+            "`tailscale {path}` is {} in COVERED but `{}` runs it at {}",
+            row.tier,
+            meta.name,
+            meta.tier
+        );
+        assert!(
+            row.confirm >= meta.requires_confirmation,
+            "`{}` confirms and `tailscale {path}` does not",
+            meta.name
+        );
+
+        let entry = derived.entry(path).or_insert((Tier::Read, false));
+        entry.0 = entry.0.max(meta.tier);
+        entry.1 |= meta.requires_confirmation;
+    }
+
+    for row in COVERED {
+        let (tier, confirm) = *derived.get(row.path).unwrap_or_else(|| {
+            panic!(
+                "no tool runs `tailscale {}`, so its row states nobody's terms",
+                row.path
+            )
+        });
+        assert_eq!(
+            (row.tier, row.confirm),
+            (tier, confirm),
+            "`tailscale {}` is stricter in COVERED than every tool that runs it",
+            row.path
+        );
+    }
+
     harness.shutdown().await;
 }

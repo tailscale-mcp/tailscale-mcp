@@ -83,7 +83,8 @@ use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
 use crate::meta::ToolMeta;
 use crate::tools::common::{
-    bounded_wait, document, note, object, printed, push_bool, push_text, real_path, report,
+    Excluded, bounded_wait, document, note, object, printed, push_bool, push_text, real_path,
+    report,
 };
 
 crate::tools! {
@@ -248,20 +249,6 @@ crate::tools! {
     /// exercise everything that reacts to one.
     tailscale_debug_force_netmap_update => NoParams, force_netmap_update,
         toolset: LocalDebug, tier: Write, idempotent: true;
-}
-
-/// A `debug` subcommand this server does not offer, and why.
-///
-/// The reason is not decoration. It is what the passthrough tells a caller that
-/// asked for one of these, and what a later reader of this list has to argue
-/// with before adding one back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Excluded {
-    /// The subcommand as it is written after `tailscale`, words separated by
-    /// spaces, so that a caller's argument list can be matched against it.
-    pub path: &'static str,
-    /// Why it is not offered, phrased to be read by whoever asked for it.
-    pub reason: &'static str,
 }
 
 /// Every `debug` subcommand that never becomes a tool.
@@ -1162,21 +1149,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::context::{PathPolicy, SelfIdentity};
-    use crate::error::{ErrorCode, Redactor};
-    use crate::meta::{Tier, Toolset};
-    use crate::testing::{Reply, StubBackend};
 
-    fn context(backend: Arc<StubBackend>) -> ToolContext {
-        ToolContext {
-            local: backend as Arc<dyn tailscale_cli::LocalBackend>,
-            redactor: Redactor::default(),
-            max_result_bytes: 1 << 20,
-            identity: SelfIdentity::default(),
-            cli_version: None,
-            paths: PathPolicy::default(),
-        }
-    }
+    use crate::error::ErrorCode;
+    use crate::meta::{Tier, Toolset};
+    use crate::testing::{Reply, StubBackend, context};
 
     /// Run a handler against a scripted client and report both what it answered
     /// and what it ran.

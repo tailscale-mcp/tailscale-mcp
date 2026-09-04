@@ -259,3 +259,24 @@ pub async fn object(
         json!({ "document": value })
     })
 }
+
+/// A subcommand this server does not offer, and why.
+///
+/// The reason is not decoration. It is what the passthrough tells a caller that
+/// asked for one of these, and what a later reader of such a list has to argue
+/// with before adding one back.
+///
+/// It lives here rather than beside either list because there are two:
+/// [`crate::tools::local_debug::EXCLUDED`] holds the hidden `debug` subcommands
+/// that never become tools, and the passthrough's own `EXCLUDED` holds the
+/// documented commands this server will not run at all. The passthrough refuses
+/// both from one iterator — [`crate::tools::passthrough::excluded`] — which
+/// needs them to be one type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Excluded {
+    /// The subcommand as it is written after `tailscale`, words separated by
+    /// spaces, so that a caller's argument list can be matched against it.
+    pub path: &'static str,
+    /// Why it is not offered, phrased to be read by whoever asked for it.
+    pub reason: &'static str,
+}

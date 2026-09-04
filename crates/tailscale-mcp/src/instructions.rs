@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 
 use crate::context::ToolContext;
 use crate::gating::Gate;
-use crate::meta::{Surface, Tier};
+use crate::meta::{Surface, Tier, Toolset};
 
 /// Compose the instructions for a server in this configuration.
 pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
@@ -61,6 +61,21 @@ pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
              public internet. Prefer reading before writing, and say what a call will do before \
              making it.\n\n",
         ),
+    }
+
+    if gate.toolsets().contains(&Toolset::LocalPassthrough) {
+        // Without this the two halves of what the session is told contradict
+        // each other: the tier paragraph says which tools are offered, and
+        // `tailscale_run` is annotated destructive at every tier because its
+        // arguments decide what it does and nobody has seen them yet.
+        out.push_str(
+            "`tailscale_run` is the exception to the paragraph above. It runs a `tailscale` \
+             subcommand no other tool covers, so what it does is decided by its arguments \
+             rather than by the tool, and it is annotated as destructive for that reason \
+             alone. It is still held to the permitted tier, command by command, and it \
+             refuses outright the commands this server never runs. Prefer a typed tool \
+             wherever one exists.\n\n",
+        );
     }
 
     out.push_str(
@@ -131,6 +146,7 @@ mod tests {
             },
             cli_version: Some(Version::new(1, 102, 2)),
             paths: PathPolicy::default(),
+            max_tier: Tier::Destructive,
         }
     }
 
@@ -167,6 +183,20 @@ mod tests {
             &context(),
         );
         assert!(text.contains("read, write and destructive"), "{text}");
+    }
+
+    #[test]
+    fn the_passthrough_is_explained_only_where_it_is_offered() {
+        // Its annotations say destructive at every tier, which contradicts the
+        // tier paragraph unless the session is told why.
+        let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &context());
+        assert!(!text.contains("tailscale_run"), "{text}");
+
+        let mut with_passthrough = Preset::Core.toolsets();
+        with_passthrough.insert(Toolset::LocalPassthrough);
+        let text = render(&gate(with_passthrough, Tier::Read), &context());
+        assert!(text.contains("`tailscale_run` is the exception"), "{text}");
+        assert!(text.contains("held to the permitted tier"), "{text}");
     }
 
     #[test]

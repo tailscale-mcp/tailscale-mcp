@@ -272,6 +272,7 @@ mod tests {
             self_severing: false,
             requires_confirmation: false,
             idempotent: true,
+            varying_tier: false,
             min_version: None,
             platforms: None,
         }

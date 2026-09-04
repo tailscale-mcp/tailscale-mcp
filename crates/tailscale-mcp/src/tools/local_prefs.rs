@@ -692,10 +692,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::context::{PathPolicy, SelfIdentity};
-    use crate::error::Redactor;
+
     use crate::meta::{Tier, Toolset};
-    use crate::testing::{Reply, StubBackend};
+    use crate::testing::{Reply, StubBackend, context};
 
     /// A recorded sample of what the real client prints.
     macro_rules! fixture {
@@ -707,17 +706,6 @@ mod tests {
     /// An authentication key of the right shape and no value, so that a test
     /// can look for it in an argument list without ever holding a real one.
     const FAKE_KEY: &str = "tskey-auth-example-notarealkey";
-
-    fn context(backend: Arc<StubBackend>) -> ToolContext {
-        ToolContext {
-            local: backend as Arc<dyn tailscale_cli::LocalBackend>,
-            redactor: Redactor::default(),
-            max_result_bytes: 1 << 20,
-            identity: SelfIdentity::default(),
-            cli_version: None,
-            paths: PathPolicy::default(),
-        }
-    }
 
     /// Run a handler against a scripted client and report both what it answered
     /// and what it ran.

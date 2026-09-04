@@ -15,7 +15,7 @@ use crate::version::{Version, satisfies};
 
 /// Run a command, and turn anything other than a clean exit into a tool error.
 pub async fn run(ctx: &ToolContext, meta: &ToolMeta, invocation: Invocation) -> ToolResult<Output> {
-    let display = invocation.display();
+    let display = displayed(ctx, &invocation);
     let output = ctx
         .local
         .run(invocation)
@@ -44,7 +44,7 @@ pub async fn run_tolerant(
     meta: &ToolMeta,
     invocation: Invocation,
 ) -> ToolResult<Output> {
-    let display = invocation.display();
+    let display = displayed(ctx, &invocation);
     let output = ctx
         .local
         .run(invocation)
@@ -75,20 +75,40 @@ pub async fn run_text(
     Ok(output.stdout_str().into_owned())
 }
 
+/// The command line as it may be shown: what ran, with any secret in it gone.
+///
+/// [`Invocation::display`] is the argument list verbatim, which every typed
+/// tool could show as it stands, because the server assembled those arguments
+/// itself and knows an auth key only ever reaches the CLI through a file. The
+/// passthrough has no such assurance: its arguments are the caller's, so a
+/// command line that turns into an error message, a log line or a report goes
+/// through here first. It is `pub(crate)` for the last of those: the
+/// passthrough puts the command in what it answers with, and a second spelling
+/// of this expression is a second place to forget it.
+pub(crate) fn displayed(ctx: &ToolContext, invocation: &Invocation) -> String {
+    ctx.redactor.apply(&invocation.display()).into_owned()
+}
+
 /// Something went wrong before the command produced a result.
+///
+/// Every message here goes through the session's redactor, not just the
+/// shape-based pass [`ToolError::new`] applies for itself. `ExecError::Io`
+/// names the command it was talking to, and since the passthrough that command
+/// line is the caller's; the rest are redacted too so that the next variant
+/// added does not have to be judged for whether it carries one.
 fn exec_error(ctx: &ToolContext, display: &str, error: ExecError) -> ToolError {
+    let told = |error: &ExecError| ctx.redactor.apply(&error.to_string()).into_owned();
     match error {
-        ExecError::BinaryNotFound { .. } | ExecError::BinaryNotExecutable { .. } => {
-            ToolError::backend_unavailable("the local surface", &error.to_string())
+        ExecError::BinaryNotFound { .. }
+        | ExecError::BinaryNotExecutable { .. }
+        | ExecError::Spawn { .. } => {
+            ToolError::backend_unavailable("the local surface", &told(&error))
         }
         ExecError::Timeout {
             timeout, printed, ..
         } => ToolError::timeout(display, timeout.as_secs(), &ctx.redactor.apply(&printed)),
-        ExecError::Spawn { .. } => {
-            ToolError::backend_unavailable("the local surface", &error.to_string())
-        }
         ExecError::Io { .. } | ExecError::SecretFile(_) => {
-            ToolError::new(crate::error::ErrorCode::CliFailed, error.to_string())
+            ToolError::new(crate::error::ErrorCode::CliFailed, told(&error))
         }
     }
 }
@@ -249,6 +269,7 @@ mod tests {
             self_severing: false,
             requires_confirmation: false,
             idempotent: true,
+            varying_tier: false,
             min_version,
             platforms: None,
         }
@@ -262,6 +283,7 @@ mod tests {
             identity: SelfIdentity::default(),
             cli_version,
             paths: PathPolicy::default(),
+            max_tier: crate::meta::Tier::Destructive,
         }
     }
 

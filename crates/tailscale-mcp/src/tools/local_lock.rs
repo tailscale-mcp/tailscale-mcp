@@ -665,9 +665,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::context::{PathPolicy, SelfIdentity};
-    use crate::error::Redactor;
-    use crate::testing::{Reply, StubBackend};
+
+    use crate::testing::{Reply, StubBackend, context};
 
     /// Documentation values throughout: a real `tlpub:` key names a real
     /// signing node, and none of this tailnet's belong in a repository.
@@ -676,17 +675,6 @@ mod tests {
     const NODEKEY: &str =
         "nodekey:0000000000000000000000000000000000000000000000000000000000000000";
     const HEX: &str = "00112233445566778899aabbccddeeff";
-
-    fn context(backend: Arc<StubBackend>) -> ToolContext {
-        ToolContext {
-            local: backend as Arc<dyn tailscale_cli::LocalBackend>,
-            redactor: Redactor::default(),
-            max_result_bytes: 1 << 20,
-            identity: SelfIdentity::default(),
-            cli_version: None,
-            paths: PathPolicy::default(),
-        }
-    }
 
     /// Run a handler against a scripted client and report both what it answered
     /// and what it ran.

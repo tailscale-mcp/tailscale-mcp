@@ -43,6 +43,52 @@ impl fmt::Display for Surface {
     }
 }
 
+/// The verbs a `tailnet_*` tool's name may end in.
+///
+/// `spec.md` asks for "a fixed verb vocabulary", and this is it. The point is
+/// not tidiness: there are ninety-three of these tools across five tickets, and
+/// without one list to conform to the same operation gets called `delete` in
+/// one toolset and `remove` in the next, which a model then has to learn
+/// twice. So the set is closed and `every_tailnet_tool_ends_in_a_known_verb`
+/// holds every name to it.
+///
+/// Deliberately declared whole rather than grown as tools land. A vocabulary
+/// that gains a word whenever a name does not fit is not one, and the entries
+/// with no tool yet are the constraint on the tickets that add them.
+///
+/// - `list`, `get` — read a collection, read one thing.
+/// - `create`, `update`, `delete` — the usual three. `update` changes the
+///   fields it is given; `replace` is for the endpoints that take the whole
+///   object and discard what is missing.
+/// - `set` — assign one named thing on a resource: `..._tags_set`. Distinct
+///   from `update` because the resource is not what is being replaced.
+/// - `authorize`, `approve`, `expire`, `rename`, `enable`, `disable` — actions
+///   with no CRUD spelling, each the API's own word for it.
+/// - `accept`, `resend` — what an invitation can have done to it.
+/// - `validate`, `preview` — the policy file's two dry runs.
+/// - `test`, `rotate` — a webhook's delivery check and its secret.
+pub const TAILNET_VERBS: &[&str] = &[
+    "accept",
+    "approve",
+    "authorize",
+    "create",
+    "delete",
+    "disable",
+    "enable",
+    "expire",
+    "get",
+    "list",
+    "preview",
+    "rename",
+    "replace",
+    "resend",
+    "rotate",
+    "set",
+    "test",
+    "update",
+    "validate",
+];
+
 /// A tool's risk class.
 ///
 /// The ordering is meaningful and is relied upon by the gate: a server allowed

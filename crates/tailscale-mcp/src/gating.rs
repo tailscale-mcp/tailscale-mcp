@@ -253,6 +253,19 @@ impl Gate {
         &self.toolsets
     }
 
+    /// Whether this session offers any tool on `surface`.
+    ///
+    /// Both halves matter and neither alone is the answer: a surface whose
+    /// toolsets nobody selected offers nothing, and so does one that was
+    /// selected but is not there — no binary, no credential, or an operator
+    /// switch. [`permits`](Self::permits) asks the same two questions of one
+    /// tool; this asks them of a whole surface, for the instructions, which
+    /// have to describe what a session can actually do rather than what it was
+    /// asked for.
+    pub fn offers(&self, surface: Surface) -> bool {
+        !self.unavailable.contains(&surface) && self.toolsets.iter().any(|t| t.surface() == surface)
+    }
+
     pub fn max_tier(&self) -> Tier {
         self.max_tier
     }

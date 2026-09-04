@@ -1,0 +1,421 @@
+//! The tailnet surface, as a session actually gets it.
+//!
+//! What is checked here is not any one tool's behaviour — the contract table
+//! covers that — but the things every tailnet tool inherits and none of them
+//! implements: that a call carries the credential, means the tailnet the
+//! environment named, is held to the session's result cap, and says something
+//! useful when there is no credential or the control plane cannot be reached.
+//!
+//! This replaces `tests/control_plane.rs`, which asserted the same properties
+//! by reaching into the session's context and driving the client directly.
+//! That was a provisional third seam, kept because ticket 15 built a transport
+//! with no tool above it (Q59) and re-aimed at this ticket when ticket 16 also
+//! landed none (Q63). Every assertion below is now an ordinary tool call, so
+//! nothing here knows how the server is wired.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
+mod harness;
+
+use serde_json::json;
+use tailscale_mcp::config::API_BASE_URL_ENV;
+use tailscale_rest::credentials::TAILNET_ENV;
+use tailscale_rest::fake::{FakeControlPlane, Response};
+
+use harness::{Setup, TEST_API_KEY};
+
+const DEVICES: &str = "/api/v2/tailnet/-/devices";
+
+#[tokio::test]
+async fn a_tool_call_reaches_the_control_plane_with_the_session_credential() {
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .api_answers("GET", DEVICES, Response::json(json!({"devices": []})))
+        .await
+        .start()
+        .await;
+
+    let answer = harness.call_ok("tailnet_device_list", json!({})).await;
+    assert_eq!(answer["devices"], json!([]));
+
+    let request = harness.control_plane().only_request();
+    assert_eq!(request.path, DEVICES);
+    assert_eq!(
+        request.authorization(),
+        Some(format!("Bearer {TEST_API_KEY}").as_str()),
+        "the credential the session was built with should be the one on the wire"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_tailnet_a_tool_acts_on_is_the_one_the_environment_named() {
+    let path = "/api/v2/tailnet/example.com/devices";
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .env(TAILNET_ENV, "example.com")
+        .api_answers("GET", path, Response::json(json!({"devices": []})))
+        .await
+        .start()
+        .await;
+
+    harness.call_ok("tailnet_device_list", json!({})).await;
+
+    assert_eq!(harness.control_plane().only_request().path, path);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_answer_over_the_session_cap_is_refused_rather_than_truncated() {
+    // The same ceiling a tool result is held to. A control-plane answer that
+    // could not be returned anyway is better refused before it is parsed.
+    let big = json!({
+        "devices": (0..50)
+            .map(|n| json!({"name": format!("example-node-{n}")}))
+            .collect::<Vec<_>>(),
+    });
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .env("TAILSCALE_MCP_MAX_RESULT_BYTES", "128")
+        .api_answers("GET", DEVICES, Response::json(&big))
+        .await
+        .start()
+        .await;
+
+    let error = harness.call_err("tailnet_device_list", json!({})).await;
+    assert_eq!(error["code"], json!("result_too_large"));
+    // The session's cap refuses an oversized *result* with the same code, so
+    // the code alone would not say which check fired. The message does: the
+    // transport's names the request and the ceiling it was held to, while the
+    // result cap's states an exact size, which the transport never learns
+    // because it stops reading.
+    let message = error["message"].as_str().expect("a message");
+    assert!(
+        message.contains(DEVICES) && message.contains("more than 128 bytes"),
+        "the refusal should be the transport's, before the body was parsed: {error:#?}"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_control_plane_that_cannot_be_reached_is_the_surface_being_unavailable() {
+    // The one arm of the mapping that cannot be built by hand: a transport
+    // failure carries a `reqwest::Error`, which only a real failed request
+    // produces. So one is produced — the fake is started and then dropped, so
+    // its port is a place nothing is listening.
+    let address = {
+        let fake = FakeControlPlane::start().await.expect("a loopback socket");
+        fake.base_url().to_owned()
+    };
+
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .env(API_BASE_URL_ENV, &address)
+        .start()
+        .await;
+
+    let error = harness.call_err("tailnet_device_list", json!({})).await;
+    assert_eq!(error["code"], json!("backend_unavailable"));
+    assert!(
+        error["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("the control plane is unavailable")),
+        "the refusal should say which backend: {error:#?}"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn without_a_credential_the_tailnet_tools_are_absent_and_the_session_is_told_why() {
+    // `control_plane.rs` asserted this through the context, where the missing
+    // client carries a sentence naming `TAILSCALE_API_KEY`. Through a session
+    // that sentence is unreachable: a surface with no credential is switched
+    // off at startup, so its tools are never offered and no call can arrive to
+    // be refused. What a caller can see is the absence and the instructions,
+    // so that is what is checked. The sentence still exists, for the one case
+    // that can reach it — a credential that stops working mid-session — and
+    // `context.rs`'s
+    // `a_context_with_no_credential_names_the_variables_that_would_give_it_one`
+    // is where it is asserted.
+    let harness = Setup::new()
+        .toolsets("local-status,tailnet-devices")
+        .without_credentials()
+        .start()
+        .await;
+
+    let offered = harness.tool_names().await;
+    assert!(
+        offered.iter().any(|name| name.starts_with("tailscale_")),
+        "the local tools are unaffected: {offered:?}"
+    );
+    assert!(
+        !offered.iter().any(|name| name.starts_with("tailnet_")),
+        "no tailnet tool should be offered: {offered:?}"
+    );
+    assert!(
+        harness
+            .instructions()
+            .contains("tailnet surface is not available"),
+        "a session that cannot reach the control plane should be told so"
+    );
+
+    harness.shutdown().await;
+}
+
+// ---------------------------------------------------------------------------
+// What the surface adds on top of the transport
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn both_device_identifier_forms_reach_the_device_they_name() {
+    // The API takes either the node id or the numeric one, and a tool that
+    // preferred one would be a tool that could not address half the tailnet.
+    for id in ["n1111111CNTRL", "123456789"] {
+        let path = format!("/api/v2/device/{id}");
+        let harness = Setup::new()
+            .toolsets("tailnet-devices")
+            .api_answers("GET", &path, Response::json(json!({"nodeId": id})))
+            .await
+            .start()
+            .await;
+
+        let answer = harness
+            .call_ok("tailnet_device_get", json!({"device_id": id}))
+            .await;
+
+        assert_eq!(answer["nodeId"], json!(id));
+        assert_eq!(harness.control_plane().only_request().path, path);
+        harness.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn field_selection_and_filters_travel_as_the_api_spells_them() {
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .api_answers("GET", DEVICES, Response::json(json!({"devices": []})))
+        .await
+        .start()
+        .await;
+
+    harness
+        .call_ok(
+            "tailnet_device_list",
+            json!({"fields": "all", "filters": {"isEphemeral": "true", "tags": "tag:example"}}),
+        )
+        .await;
+
+    let query = harness.control_plane().only_request().query.clone();
+    assert_eq!(
+        query.get("fields").map(String::as_str),
+        Some("all"),
+        "{query:?}"
+    );
+    assert_eq!(
+        query.get("isEphemeral").map(String::as_str),
+        Some("true"),
+        "a filter travels as its own query parameter: {query:?}"
+    );
+    assert_eq!(
+        query.get("tags").map(String::as_str),
+        Some("tag:example"),
+        "{query:?}"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_window_slices_the_listing_without_changing_its_shape() {
+    let devices: Vec<_> = (0..5)
+        .map(|n| json!({"nodeId": format!("n111111{n}CNTRL")}))
+        .collect();
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .api_answers("GET", DEVICES, Response::json(json!({"devices": devices})))
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok("tailnet_device_list", json!({"offset": 1, "limit": 2}))
+        .await;
+
+    let listed = answer["devices"].as_array().expect("still a device list");
+    assert_eq!(listed.len(), 2, "{answer:#?}");
+    assert_eq!(listed[0]["nodeId"], json!("n1111111CNTRL"));
+    assert_eq!(
+        answer["window"],
+        json!({"total": 5, "returned": 2, "offset": 1, "limit": 2}),
+        "a windowed answer says how much it left out, and what was asked for"
+    );
+
+    // The window is this server's, not the API's: the request is unchanged.
+    let query = harness.control_plane().only_request().query.clone();
+    assert!(!query.contains_key("limit"), "{query:?}");
+    assert!(!query.contains_key("offset"), "{query:?}");
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_unwindowed_listing_is_the_api_answer_and_nothing_else() {
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .api_answers(
+            "GET",
+            DEVICES,
+            Response::json(json!({"devices": [{"nodeId": "n1111111CNTRL"}]})),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness.call_ok("tailnet_device_list", json!({})).await;
+
+    assert_eq!(answer, json!({"devices": [{"nodeId": "n1111111CNTRL"}]}));
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_posture_attribute_round_trips_through_the_control_plane() {
+    let device = "n1111111CNTRL";
+    let attribute = format!("/api/v2/device/{device}/attributes/custom:example");
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers("POST", &attribute, Response::empty())
+        .await
+        .api_answers(
+            "GET",
+            &format!("/api/v2/device/{device}/attributes"),
+            Response::json(json!({
+                "attributes": {"custom:example": 80},
+                "expiries": {"custom:example": "2027-01-01T00:00:00Z"},
+            })),
+        )
+        .await
+        .api_answers("DELETE", &attribute, Response::empty())
+        .await
+        .start()
+        .await;
+
+    harness
+        .call_ok(
+            "tailnet_device_attribute_set",
+            json!({"device_id": device, "attribute_key": "custom:example", "value": 80,
+                   "expiry": "2027-01-01T00:00:00Z"}),
+        )
+        .await;
+
+    let read = harness
+        .call_ok(
+            "tailnet_device_attributes_get",
+            json!({"device_id": device}),
+        )
+        .await;
+    assert_eq!(read["attributes"]["custom:example"], json!(80));
+
+    let deleted = harness
+        .call_ok(
+            "tailnet_device_attribute_delete",
+            json!({"device_id": device, "attribute_key": "custom:example"}),
+        )
+        .await;
+    assert_eq!(deleted["done"], json!("attribute deleted"));
+
+    let sent = harness.control_plane().recorded();
+    assert_eq!(sent.len(), 3, "one call each: {sent:#?}");
+    assert_eq!(
+        sent[0].json(),
+        json!({"value": 80, "expiry": "2027-01-01T00:00:00Z"}),
+        "the body is Tailscale's own shape, and carries only what was given"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_batched_attribute_update_refuses_a_key_the_api_would_reject() {
+    // Refused here rather than by the control plane, because the batch is
+    // all-or-nothing: one bad key in a hundred devices would fail the whole
+    // call after it had been sent, and the refusal names the device.
+    // An answer is arranged that the call must not reach: if the check were
+    // missing, the tool would send the batch and answer with this instead.
+    let harness = Setup::new()
+        .toolsets("tailnet-devices")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .api_answers(
+            "PATCH",
+            "/api/v2/tailnet/-/device-attributes",
+            Response::empty(),
+        )
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err(
+            "tailnet_device_attributes_update",
+            json!({"nodes": {"n1111111CNTRL": {"node:os": "linux"}}}),
+        )
+        .await;
+
+    assert_eq!(error["code"], json!("invalid_args"));
+    assert!(
+        error["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("custom:") && m.contains("n1111111CNTRL")),
+        "the refusal should name the key and the device: {error:#?}"
+    );
+    assert_eq!(
+        harness.control_plane().request_count(),
+        0,
+        "nothing should have been sent"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_posture_integration_secret_is_sent_and_never_answered_with() {
+    let harness = Setup::new()
+        .toolsets("tailnet-posture")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .api_answers(
+            "POST",
+            "/api/v2/tailnet/-/posture/integrations",
+            // What the control plane really does: the secret it was given is
+            // absent from the answer.
+            Response::json(json!({"id": "pi-example", "provider": "falcon"})),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok(
+            "tailnet_posture_integration_create",
+            json!({"provider": "falcon", "client_secret": "example-secret-value"}),
+        )
+        .await;
+
+    assert_eq!(answer["id"], json!("pi-example"));
+    assert!(
+        !serde_json::to_string(&answer)
+            .expect("the answer serialises")
+            .contains("example-secret-value"),
+        "the answer should not carry the secret back: {answer:#?}"
+    );
+    assert_eq!(
+        harness.control_plane().only_request().json()["clientSecret"],
+        json!("example-secret-value"),
+        "and it should have reached the control plane"
+    );
+
+    harness.shutdown().await;
+}

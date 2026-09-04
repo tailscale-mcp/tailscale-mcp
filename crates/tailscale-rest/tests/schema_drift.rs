@@ -296,74 +296,6 @@ fn resolve<'a>(reference: &str, all: &'a Map<String, Value>) -> &'a Value {
 /// a ticket landing rather than by anyone editing this table.
 const DEFERRED: &[(&str, &str)] = &[
     // Ticket 17 — devices and posture.
-    (
-        "GET /tailnet/{tailnet}/devices 200",
-        "the `{devices: […]}` envelope",
-    ),
-    (
-        "POST /device/{deviceId}/authorized body",
-        "built from `tailnet_device_authorize`",
-    ),
-    (
-        "POST /device/{deviceId}/ip body",
-        "built from `tailnet_device_set_ipv4`",
-    ),
-    (
-        "POST /device/{deviceId}/key body",
-        "built from `tailnet_device_set_key_expiry`",
-    ),
-    (
-        "POST /device/{deviceId}/name body",
-        "built from `tailnet_device_rename`",
-    ),
-    (
-        "POST /device/{deviceId}/routes body",
-        "built from `tailnet_device_set_routes`",
-    ),
-    (
-        "POST /device/{deviceId}/tags body",
-        "built from `tailnet_device_set_tags`",
-    ),
-    (
-        "POST /device/{deviceId}/attributes/{attributeKey} body",
-        "built from the posture attribute parameters",
-    ),
-    (
-        "PATCH /tailnet/{tailnet}/device-attributes body",
-        "the bulk posture body, built from parameters",
-    ),
-    (
-        "PATCH /tailnet/{tailnet}/device-attributes body.nodes{}{}|anyOf[0]",
-        "the `{value, expiry}` half of that body's union",
-    ),
-    (
-        "GET /tailnet/{tailnet}/posture/integrations 200",
-        "the `{integrations: […]}` envelope",
-    ),
-    (
-        "POST /device/{deviceId}/device-invites body[]",
-        "built from the invite parameters",
-    ),
-    (
-        "POST /device-invites/-/accept body",
-        "the `{invite}` wrapper",
-    ),
-    (
-        "POST /device-invites/-/accept 200",
-        "what accepting an invite answers",
-    ),
-    (
-        "POST /device-invites/-/accept 200.device",
-        "the device inside that answer",
-    ),
-    (
-        "POST /device-invites/-/accept 200.sharer",
-        "the sharer inside that answer",
-    ),
-    (
-        "POST /device-invites/-/accept 200.acceptedBy",
-        "the acceptor inside that answer",
-    ),
     // Ticket 18 — DNS and policy.
     (
         "GET /tailnet/{tailnet}/dns/nameservers 200",
@@ -390,6 +322,30 @@ const DEFERRED: &[(&str, &str)] = &[
         "one rule inside that preview",
     ),
     // Ticket 19 — keys, users and invites.
+    (
+        "POST /device/{deviceId}/device-invites body[]",
+        "built from the invite parameters",
+    ),
+    (
+        "POST /device-invites/-/accept body",
+        "the `{invite}` wrapper",
+    ),
+    (
+        "POST /device-invites/-/accept 200",
+        "what accepting an invite answers",
+    ),
+    (
+        "POST /device-invites/-/accept 200.device",
+        "the device inside that answer",
+    ),
+    (
+        "POST /device-invites/-/accept 200.sharer",
+        "the sharer inside that answer",
+    ),
+    (
+        "POST /device-invites/-/accept 200.acceptedBy",
+        "the acceptor inside that answer",
+    ),
     (
         "GET /tailnet/{tailnet}/keys 200",
         "the `{keys: […]}` envelope",
@@ -870,8 +826,8 @@ fn the_walk_reaches_the_whole_document() {
     assert_eq!(schemas(&document).len(), 43, "named schemas");
     assert_eq!(objects.len(), 90, "objects walked: {:?}", objects.keys());
     assert_eq!(enums.len(), 33, "enumerations walked: {:?}", enums.keys());
-    assert_eq!(models().len(), 45, "models");
-    assert_eq!(DEFERRED.len(), 45, "deferrals");
+    assert_eq!(models().len(), 56, "models");
+    assert_eq!(DEFERRED.len(), 34, "deferrals");
 }
 
 /// The deferral table cannot outlive what it defers.

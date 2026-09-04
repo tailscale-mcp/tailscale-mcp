@@ -202,6 +202,86 @@ pub fn only_on(setting: &str, platforms: &[&str]) -> ToolResult<()> {
     ))
 }
 
+/// A caller's identifier, checked before it becomes part of a URL.
+///
+/// The control plane accepts a device by either of two spellings — the node id
+/// `n1234567CNTRL` or the numeric one — and an attribute by a `custom:`-
+/// prefixed key, so the tools take whatever the caller has rather than making
+/// it convert. What they will not take is anything that could change which
+/// endpoint is being called: a segment carrying `/`, `?`, `#` or a space is a
+/// path being written by the caller rather than an identifier, and is refused
+/// here rather than escaped, because there is no legitimate identifier this
+/// rejects and an escaped one would only fail further away.
+pub fn path_segment(what: &str, value: &str) -> ToolResult<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ToolError::invalid_args(format!("`{what}` cannot be empty")));
+    }
+    let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '@');
+    if let Some(bad) = trimmed.chars().find(|c| !allowed(*c)) {
+        return Err(ToolError::invalid_args(format!(
+            "`{what}` contains {bad:?}, which cannot appear in an identifier"
+        )));
+    }
+    // `.` is in the allow-list because identifiers contain it, and `.` and `..`
+    // are made of nothing else. A dot segment does not sit in the path: it
+    // rewrites it when the URL is parsed, so `/api/v2/device/../routes`
+    // reaches `/api/v2/routes` and a deletion aimed at `..` reaches
+    // `/api/v2/`. That is the whole failure this guard exists to prevent, and
+    // it is the one spelling the character check lets through.
+    if trimmed.chars().all(|c| c == '.') {
+        return Err(ToolError::invalid_args(format!(
+            "`{what}` is `{trimmed}`, which is not an identifier"
+        )));
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// What an endpoint that answers with nothing answers with here.
+///
+/// The control plane sends an empty body for a deletion and for six of the
+/// writes, which reaches a tool as `null`. A caller cannot tell that apart
+/// from a tool that lost its answer, so the tool says what it did instead
+/// (Q67). Deliberately not shaped like a resource: `done` is a phrase for a
+/// reader rather than a status to branch on, and `about` carries only the
+/// identifiers the call was given, so nothing here can be mistaken for
+/// something the control plane said.
+#[derive(Debug, Serialize)]
+pub struct Done {
+    done: &'static str,
+    #[serde(flatten)]
+    about: serde_json::Map<String, Value>,
+}
+
+impl Done {
+    pub fn new(done: &'static str) -> Self {
+        Self {
+            done,
+            about: serde_json::Map::new(),
+        }
+    }
+
+    pub fn about(mut self, name: &str, value: impl Into<Value>) -> Self {
+        self.about.insert(name.to_owned(), value.into());
+        self
+    }
+}
+
+/// Forward what the control plane answered, or say what was done if it said
+/// nothing.
+///
+/// Several control-plane writes are documented as answering with the resource
+/// as it now stands, and answer with an empty body in practice. Forwarding the
+/// answer is worth more to a caller than a report that the call worked, so the
+/// answer wins when there is one; an empty body falls back to the report the
+/// rest of this surface uses (Q67), rather than to `null`.
+pub fn answered_or(answer: Value, otherwise: Done) -> ToolResult<Value> {
+    match answer {
+        Value::Null => report(otherwise),
+        answer => Ok(answer),
+    }
+}
+
 /// Turn a serialisable report into the value a tool answers with.
 ///
 /// Serialisation of a plain struct of owned strings and numbers cannot fail, so
@@ -279,4 +359,41 @@ pub struct Excluded {
     pub path: &'static str,
     /// Why it is not offered, phrased to be read by whoever asked for it.
     pub reason: &'static str,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_dot_segment_is_not_an_identifier() {
+        // The one spelling the character allow-list lets through, and the
+        // worst: `..` is normalised away when the URL is parsed, so it does
+        // not address a device — it addresses a different endpoint.
+        for bad in [".", "..", "...", " .. "] {
+            let error = path_segment("device_id", bad).expect_err("a dot segment");
+            assert_eq!(
+                serde_json::to_value(&error).expect("reportable")["code"],
+                serde_json::json!("invalid_args"),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_identifier_containing_a_dot_is_still_an_identifier() {
+        // MagicDNS names reach these tools too, and dropping every dot would
+        // reject the commonest way a person names a device.
+        for good in [
+            "n1111111CNTRL",
+            "123456789",
+            "laptop.example-tailnet.ts.net",
+            "custom:a.b",
+        ] {
+            assert_eq!(
+                path_segment("device_id", good).expect("a valid identifier"),
+                good
+            );
+        }
+    }
 }

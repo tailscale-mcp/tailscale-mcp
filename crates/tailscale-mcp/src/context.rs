@@ -198,4 +198,26 @@ mod tests {
     fn an_unknown_identity_matches_nothing() {
         assert!(!SelfIdentity::default().matches("anything"));
     }
+
+    #[test]
+    fn a_context_with_no_credential_names_the_variables_that_would_give_it_one() {
+        // Reachable only when a session has the tailnet surface but no client:
+        // startup switches the surface off when there is no credential, so the
+        // tools are not offered and no call arrives (`tailnet_surface.rs`
+        // asserts that absence). What is left is a credential that stops being
+        // usable mid-session, and this is the sentence such a call gets. It is
+        // asserted here because there is nowhere else it can be seen.
+        let ctx = crate::testing::context(std::sync::Arc::new(crate::testing::StubBackend::ok("")));
+        let error = ctx.tailnet().expect_err("no credential was configured");
+        let reported = serde_json::to_value(&error).expect("reportable");
+        assert_eq!(reported["code"], serde_json::json!("backend_unavailable"));
+        let message = reported["message"].as_str().expect("a message");
+        for variable in [
+            "TAILSCALE_API_KEY",
+            "TAILSCALE_OAUTH_CLIENT_ID",
+            "TAILSCALE_OAUTH_CLIENT_SECRET",
+        ] {
+            assert!(message.contains(variable), "{message}");
+        }
+    }
 }

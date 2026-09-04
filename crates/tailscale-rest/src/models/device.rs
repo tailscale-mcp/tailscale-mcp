@@ -201,4 +201,86 @@ model! {
         matched_count: "matchedCount" => i64,
         possible_matched_count: "possibleMatchedCount" => i64,
     }
+
+    // -----------------------------------------------------------------------
+    // What the endpoints send and answer with.
+    //
+    // The description spells these out where they are used rather than naming
+    // them, so their paths are the routes rather than schema names (Q64). They
+    // are here because the tools that build them are, and because the drift
+    // test holds a route to its shape exactly as it holds a named schema.
+    // -----------------------------------------------------------------------
+
+    /// What a device listing answers with.
+    ///
+    /// One field, and it stays one field: the endpoint has no pagination and
+    /// no total, so a caller windowing the list is windowing the whole of it.
+    DeviceList as "GET /tailnet/{tailnet}/devices 200" {
+        devices: "devices" => Vec<Device>,
+    }
+
+    /// Authorise a device, or revoke its authorisation with `false`.
+    DeviceAuthorization as "POST /device/{deviceId}/authorized body" {
+        authorized: "authorized" => bool,
+    }
+
+    /// Move a device to another address in the tailnet's range.
+    DeviceAddress as "POST /device/{deviceId}/ip body" {
+        ipv4: "ipv4" => String,
+    }
+
+    /// Turn a device's key expiry off, or back on.
+    DeviceKeyExpiry as "POST /device/{deviceId}/key body" {
+        key_expiry_disabled: "keyExpiryDisabled" => bool,
+    }
+
+    /// Rename a device, which retires its old MagicDNS names.
+    DeviceName as "POST /device/{deviceId}/name body" {
+        name: "name" => String,
+    }
+
+    /// Replace the routes a device is permitted to carry.
+    ///
+    /// Only the enabled set: what a device *advertises* it can route is the
+    /// device's own business and cannot be set through the API.
+    DeviceEnabledRoutes as "POST /device/{deviceId}/routes body" {
+        routes: "routes" => Vec<String>,
+    }
+
+    /// Replace a device's tags.
+    DeviceTags as "POST /device/{deviceId}/tags body" {
+        tags: "tags" => Vec<String>,
+    }
+
+    /// Set one custom posture attribute on one device.
+    PostureAttribute as "POST /device/{deviceId}/attributes/{attributeKey} body" {
+        /// A string, a number or a boolean. The type is fixed by the first
+        /// write and a later write of another type is refused.
+        value: "value" => Value,
+        /// When the control plane should forget it.
+        expiry: "expiry" => String,
+        comment: "comment" => String,
+    }
+
+    /// Set custom posture attributes on many devices at once.
+    ///
+    /// A JSON Merge Patch: a `null` value deletes the attribute, and a device
+    /// the map does not mention is left alone.
+    PostureAttributeBatch as "PATCH /tailnet/{tailnet}/device-attributes body" {
+        nodes: "nodes" => BTreeMap<String, BTreeMap<String, Value>>,
+        comment: "comment" => String,
+    }
+
+    /// The longer form a batched attribute may take, where a bare value would
+    /// not carry an expiry.
+    PostureAttributeValue
+        as "PATCH /tailnet/{tailnet}/device-attributes body.nodes{}{}|anyOf[0]" {
+        value: "value" => Value,
+        expiry: "expiry" => String,
+    }
+
+    /// What a posture integration listing answers with.
+    PostureIntegrationList as "GET /tailnet/{tailnet}/posture/integrations 200" {
+        integrations: "integrations" => Vec<PostureIntegration>,
+    }
 }

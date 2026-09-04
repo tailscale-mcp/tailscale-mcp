@@ -23,14 +23,12 @@ pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
          They affect every device and user in it, including this node.\n\n",
     );
 
-    let local = gate
-        .toolsets()
-        .iter()
-        .any(|t| t.surface() == Surface::Local);
-    let tailnet = gate
-        .toolsets()
-        .iter()
-        .any(|t| t.surface() == Surface::Tailnet);
+    // What the session can actually do, not what it was asked for. A surface
+    // whose toolsets were selected but whose backend is absent offers nothing,
+    // and telling a model otherwise is worse than telling it nothing: it will
+    // keep proposing tools that are not in the listing.
+    let local = gate.offers(Surface::Local);
+    let tailnet = gate.offers(Surface::Tailnet);
     match (local, tailnet) {
         (true, true) => {}
         (true, false) => out.push_str(
@@ -170,6 +168,24 @@ mod tests {
 
         let tailnet_only: BTreeSet<Toolset> = BTreeSet::from([Toolset::TailnetDevices]);
         let text = render(&gate(tailnet_only, Tier::Read), &context());
+        assert!(text.contains("local surface is not available"), "{text}");
+    }
+
+    #[test]
+    fn a_surface_that_was_asked_for_and_is_not_there_is_stated_too() {
+        // The case a session actually meets: both surfaces selected, and the
+        // control plane has no credential. Reading the selection alone said
+        // the tailnet surface was present while every tailnet tool was hidden,
+        // which is the one thing these instructions exist to prevent.
+        let both = BTreeSet::from([Toolset::LocalStatus, Toolset::TailnetDevices]);
+        let no_control_plane =
+            Gate::unchecked(both.clone(), Tier::Read, BTreeSet::from([Surface::Tailnet]));
+        let text = render(&no_control_plane, &context());
+        assert!(text.contains("tailnet surface is not available"), "{text}");
+        assert!(!text.contains("local surface is not available"), "{text}");
+
+        let no_cli = Gate::unchecked(both, Tier::Read, BTreeSet::from([Surface::Local]));
+        let text = render(&no_cli, &context());
         assert!(text.contains("local surface is not available"), "{text}");
     }
 

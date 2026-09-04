@@ -426,6 +426,15 @@ pub fn redact(input: &str) -> Cow<'_, str> {
     let mut copied = 0;
 
     while i < bytes.len() {
+        // Byte indices, because a secret is ASCII and scanning for one is a
+        // byte comparison. But the text around it need not be: a hint with an
+        // em dash in it puts multi-byte characters in this string, and slicing
+        // at a byte inside one panics. A secret can only begin at a boundary,
+        // so a position that is not one cannot be a match.
+        if !input.is_char_boundary(i) {
+            i += 1;
+            continue;
+        }
         let hit = secret_at(input, i);
         match hit {
             Some((keep, end)) => {
@@ -805,6 +814,23 @@ mod tests {
     #[test]
     fn clean_strings_are_borrowed_not_copied() {
         assert!(matches!(redact("nothing to see here"), Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn text_that_is_not_ascii_passes_through_rather_than_panicking() {
+        // Every message and hint on its way to a caller goes through here, and
+        // this server's own prose contains em dashes. Scanning by byte index
+        // meant a slice could land inside one, and a panic in a tool handler
+        // takes the session down rather than failing the call.
+        let prose = "`provider` is one of falcon, intune — none of them is `wizardry`";
+        assert_eq!(redact(prose), prose);
+
+        // The same string with a secret in it still loses the secret.
+        let with_key = format!("{prose}, and the key tskey-auth-example1CNTRL-secret is stale");
+        let cleaned = redact(&with_key);
+        assert!(cleaned.contains("tskey-auth-[redacted]"), "{cleaned}");
+        assert!(!cleaned.contains("secret is stale"), "{cleaned}");
+        assert!(cleaned.contains("—"), "the prose survives: {cleaned}");
     }
 
     #[test]

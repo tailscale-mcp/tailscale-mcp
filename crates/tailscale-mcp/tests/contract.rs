@@ -34,10 +34,6 @@ impl Arrangement {
         self
     }
 
-    #[expect(
-        dead_code,
-        reason = "used by the tailnet tools, which land in ticket 17"
-    )]
     fn api(mut self, method: &'static str, path: &'static str, response: Response) -> Self {
         self.api.push((method, path, response));
         self
@@ -76,6 +72,38 @@ fn contracts() -> Vec<Contract> {
                     json!($err_args),
                     Arrangement::default().cli(&$err_argv, $err_reply),
                     $code,
+                ),
+            }
+        };
+    }
+
+    /// The same row for a tool on the tailnet surface, where the arrangement
+    /// is a route on the fake control plane rather than an argument list.
+    ///
+    /// The failure case is a 404 throughout: it is the one status every
+    /// endpoint here can produce, it maps to a code of its own rather than to
+    /// the catch-all, and arranging it needs no knowledge of what each
+    /// endpoint validates.
+    macro_rules! api_contract {
+        (
+            $tool:literal,
+            ok: $ok_args:tt on $method:literal $path:literal => $answer:expr,
+            err: $err_args:tt
+        ) => {
+            Contract {
+                tool: $tool,
+                success: (
+                    json!($ok_args),
+                    Arrangement::default().api($method, $path, $answer),
+                ),
+                failure: (
+                    json!($err_args),
+                    Arrangement::default().api(
+                        $method,
+                        $path,
+                        Response::status(404, json!({"message": "not found"})),
+                    ),
+                    "not_found",
                 ),
             }
         };
@@ -705,6 +733,133 @@ fn contracts() -> Vec<Contract> {
             "tailscale_run",
             ok: {"args": ["version"]} on ["version"] => printed!("tailscale-version.txt"),
             err: {"args": ["down"]} on ["down"] => Reply::ok(""), "not_permitted"
+        ),
+        // ---- tailnet: devices -------------------------------------------
+        api_contract!(
+            "tailnet_device_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/devices" =>
+                Response::json(json!({"devices": []})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_device_get",
+            ok: {"device_id": "n1111111CNTRL"} on "GET" "/api/v2/device/n1111111CNTRL" =>
+                Response::json(json!({"nodeId": "n1111111CNTRL", "name": "example-node"})),
+            err: {"device_id": "n1111111CNTRL"}
+        ),
+        api_contract!(
+            "tailnet_device_delete",
+            ok: {"device_id": "n1111111CNTRL"} on "DELETE" "/api/v2/device/n1111111CNTRL" =>
+                Response::empty(),
+            err: {"device_id": "n1111111CNTRL"}
+        ),
+        api_contract!(
+            "tailnet_device_expire",
+            ok: {"device_id": "n1111111CNTRL"} on "POST" "/api/v2/device/n1111111CNTRL/expire" =>
+                Response::empty(),
+            err: {"device_id": "n1111111CNTRL"}
+        ),
+        api_contract!(
+            "tailnet_device_authorize",
+            ok: {"device_id": "n1111111CNTRL", "authorized": true}
+                on "POST" "/api/v2/device/n1111111CNTRL/authorized" => Response::empty(),
+            err: {"device_id": "n1111111CNTRL", "authorized": true}
+        ),
+        api_contract!(
+            "tailnet_device_rename",
+            ok: {"device_id": "n1111111CNTRL", "name": "example-node"}
+                on "POST" "/api/v2/device/n1111111CNTRL/name" => Response::empty(),
+            err: {"device_id": "n1111111CNTRL", "name": "example-node"}
+        ),
+        api_contract!(
+            "tailnet_device_tags_set",
+            ok: {"device_id": "n1111111CNTRL", "tags": ["tag:example"]}
+                on "POST" "/api/v2/device/n1111111CNTRL/tags" => Response::empty(),
+            err: {"device_id": "n1111111CNTRL", "tags": ["tag:example"]}
+        ),
+        api_contract!(
+            "tailnet_device_key_expiry_set",
+            ok: {"device_id": "n1111111CNTRL", "key_expiry_disabled": true}
+                on "POST" "/api/v2/device/n1111111CNTRL/key" => Response::empty(),
+            err: {"device_id": "n1111111CNTRL", "key_expiry_disabled": true}
+        ),
+        api_contract!(
+            "tailnet_device_ip_set",
+            ok: {"device_id": "n1111111CNTRL", "ipv4": "100.64.0.9"}
+                on "POST" "/api/v2/device/n1111111CNTRL/ip" => Response::empty(),
+            err: {"device_id": "n1111111CNTRL", "ipv4": "100.64.0.9"}
+        ),
+        api_contract!(
+            "tailnet_device_routes_get",
+            ok: {"device_id": "n1111111CNTRL"} on "GET" "/api/v2/device/n1111111CNTRL/routes" =>
+                Response::json(json!({"advertisedRoutes": [], "enabledRoutes": []})),
+            err: {"device_id": "n1111111CNTRL"}
+        ),
+        api_contract!(
+            "tailnet_device_routes_set",
+            ok: {"device_id": "n1111111CNTRL", "routes": ["10.0.0.0/24"]}
+                on "POST" "/api/v2/device/n1111111CNTRL/routes" =>
+                Response::json(json!({"advertisedRoutes": ["10.0.0.0/24"],
+                                      "enabledRoutes": ["10.0.0.0/24"]})),
+            err: {"device_id": "n1111111CNTRL", "routes": ["10.0.0.0/24"]}
+        ),
+        api_contract!(
+            "tailnet_device_attributes_get",
+            ok: {"device_id": "n1111111CNTRL"} on "GET" "/api/v2/device/n1111111CNTRL/attributes" =>
+                Response::json(json!({"attributes": {}, "expiries": {}})),
+            err: {"device_id": "n1111111CNTRL"}
+        ),
+        api_contract!(
+            "tailnet_device_attribute_set",
+            ok: {"device_id": "n1111111CNTRL", "attribute_key": "custom:example", "value": true}
+                on "POST" "/api/v2/device/n1111111CNTRL/attributes/custom:example" => Response::empty(),
+            err: {"device_id": "n1111111CNTRL", "attribute_key": "custom:example", "value": true}
+        ),
+        api_contract!(
+            "tailnet_device_attribute_delete",
+            ok: {"device_id": "n1111111CNTRL", "attribute_key": "custom:example"}
+                on "DELETE" "/api/v2/device/n1111111CNTRL/attributes/custom:example" => Response::empty(),
+            err: {"device_id": "n1111111CNTRL", "attribute_key": "custom:example"}
+        ),
+        api_contract!(
+            "tailnet_device_attributes_update",
+            ok: {"nodes": {"n1111111CNTRL": {"custom:example": true}}}
+                on "PATCH" "/api/v2/tailnet/-/device-attributes" => Response::empty(),
+            err: {"nodes": {"n1111111CNTRL": {"custom:example": true}}}
+        ),
+        // ---- tailnet: posture -------------------------------------------
+        api_contract!(
+            "tailnet_posture_integration_list",
+            ok: {} on "GET" "/api/v2/tailnet/-/posture/integrations" =>
+                Response::json(json!({"integrations": []})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_posture_integration_get",
+            ok: {"integration_id": "pi-example"}
+                on "GET" "/api/v2/posture/integrations/pi-example" =>
+                Response::json(json!({"id": "pi-example", "provider": "falcon"})),
+            err: {"integration_id": "pi-example"}
+        ),
+        api_contract!(
+            "tailnet_posture_integration_create",
+            ok: {"provider": "falcon", "client_secret": "example-secret"}
+                on "POST" "/api/v2/tailnet/-/posture/integrations" =>
+                Response::json(json!({"id": "pi-example", "provider": "falcon"})),
+            err: {"provider": "falcon", "client_secret": "example-secret"}
+        ),
+        api_contract!(
+            "tailnet_posture_integration_update",
+            ok: {"integration_id": "pi-example", "client_id": "example-client"}
+                on "PATCH" "/api/v2/posture/integrations/pi-example" =>
+                Response::json(json!({"id": "pi-example", "provider": "falcon"})),
+            err: {"integration_id": "pi-example", "client_id": "example-client"}
+        ),
+        api_contract!(
+            "tailnet_posture_integration_delete",
+            ok: {"integration_id": "pi-example"}
+                on "DELETE" "/api/v2/posture/integrations/pi-example" => Response::empty(),
+            err: {"integration_id": "pi-example"}
         ),
     ]
 }
@@ -1520,6 +1675,13 @@ async fn the_covered_table_follows_the_tools_it_claims_to_follow() {
     for meta in table() {
         if meta.name == "tailscale_run" {
             // The tool doing the judging; it has no fixed command to judge.
+            continue;
+        }
+        if meta.surface() == tailscale_mcp::meta::Surface::Tailnet {
+            // `COVERED` is about `tailscale` subcommands, and the tailnet
+            // surface runs none: it reaches the control plane over HTTP. A
+            // tool with no command to read cannot contribute a row, and asking
+            // it for one is what this loop would otherwise do.
             continue;
         }
         let tool = harness

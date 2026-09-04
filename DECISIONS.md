@@ -701,3 +701,79 @@ Widening also found what the narrow walk was hiding: ten enumerations with no co
 Recorded rather than fixed quietly because the journal is append-only and a number in it that the code contradicts is worse than a number that is merely wrong: a later reader checking the models against Q60 would find eleven enumerations unaccounted for and no way to tell whether they were an oversight or a deliberate exclusion.
 **Outcome:** applied
 **Ref:** `crates/tailscale-rest/src/models/mod.rs`, `crates/tailscale-rest/tests/schema_drift.rs`
+
+## Q66 — build/ticket-17 — interpretation
+
+**Question:** `spec.md` says tailnet tools are named `tailnet_<resource>_<verb>` "with a fixed verb vocabulary" and nowhere says what the vocabulary is. Ticket 17 names the first twenty. What is it, and where does the verb go?
+**Options considered:** verb first, `tailnet_device_set_tags` / verb last, `tailnet_device_tags_set` / no fixed list, each toolset naming its own operations
+**Chosen:** Verb last, from a closed list of nineteen declared whole in `meta::TAILNET_VERBS` and enforced over the whole table.
+**Decided-by:** agent
+**Justification:** Verb last is what the spec's own `<resource>_<verb>` says, and it sorts usefully: `tailnet_device_routes_get` and `tailnet_device_routes_set` are adjacent in a listing, where verb-first would put them at opposite ends of the device tools. A model scanning an alphabetical tool list sees a sub-resource and everything that can be done to it.
+
+The list is declared whole rather than grown as tools land, which is the part worth recording because it looks like speculative generality and is the opposite. Ninety-three tools arrive across five tickets; a vocabulary that gains a word whenever a name does not fit is not a vocabulary, and the failure it prevents is the same operation being `delete` in one toolset and `remove` in the next, which a caller then has to learn twice. The entries with no tool yet are the constraint on tickets 18 through 20, not dead weight.
+
+No fixed list was rejected for the same reason: it is the state the spec asked not to be in.
+
+The verbs that are not CRUD are the API's own words — `authorize`, `expire`, `approve`, `resend` — rather than translations of them, because a caller reading Tailscale's documentation and a caller reading this tool list should not have to map between two vocabularies.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/meta.rs`, `crates/tailscale-mcp/src/tools/mod.rs`
+
+## Q67 — build/ticket-17 — deviation
+
+**Question:** Eight of the twenty endpoints answer with an empty body. ADR-0004 says Tailscale's bodies come back in Tailscale's shape, and an empty body's shape is `null`. Does the tool answer `null`?
+**Options considered:** answer `null`, verbatim / answer a small report saying what was done / answer the resource as it now stands, by reading it back
+**Chosen:** A small report — `{"done": "deleted", "device_id": "…"}` — on the eight that answer with nothing.
+**Decided-by:** agent
+**Justification:** ADR-0004 is about not renaming or reshaping what the control plane sends, and nothing is being reshaped here: there is no body to keep faithful to. What `null` costs is real — a caller cannot tell it from a tool that lost its answer, and an agent that cannot tell success from breakage will retry a deletion.
+
+Reading the resource back was rejected as a second call the caller did not ask for, which can fail on its own and would make a delete answer with a 404 it had itself caused.
+
+The report is deliberately not shaped like a resource: `done` is a phrase for a reader rather than a status code to branch on, and the only other fields are the identifiers the call was given, so nothing here can be mistaken for something the control plane said.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_devices.rs`
+
+## Q68 — build/ticket-17 — deviation
+
+**Question:** Two defects surfaced while building this ticket that belong to earlier ones: `redact` scanned by byte index and panicked on a multi-byte character, and `instructions::render` decided a surface was present from the toolsets selected rather than from whether the backend was there. Fix them here or ticket them?
+**Options considered:** fix both here / fix the panic here and ticket the instructions / ticket both
+**Chosen:** Fix both here, each with a test that fails without the fix.
+**Decided-by:** agent
+**Justification:** Neither was reachable before this ticket, which is why neither was found earlier. The panic needs a message carrying a character outside ASCII, and this server's own prose only started carrying em dashes into error hints with the refusals written here. The instructions bug needs a session that selects a tailnet toolset while the tailnet surface is absent, which needs a tailnet toolset to exist.
+
+The panic is the more serious: `redact` is on the path of every message and hint a caller sees, and a panic in a handler takes the session down rather than failing the call — which is the thing `report`'s own documentation says it exists to avoid.
+
+The instructions bug is quieter and worse in one way. A session with no credential hid every tailnet tool and then told the model the tailnet surface was available, which is precisely the failure the module's own doc comment describes itself as preventing: "a model that has been told the tailnet surface is off will stop proposing tailnet tools". `Gate::offers` now asks both questions — selected, and present — and is the one place either is asked.
+
+Ticketing them was rejected because a found panic left in the tree is a panic somebody meets, and because both fixes are three lines and a test each.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/error.rs`, `crates/tailscale-mcp/src/instructions.rs`, `crates/tailscale-mcp/src/gating.rs`
+
+## Q69 — build/ticket-17 — deviation
+
+**Question:** Ticket 17's AC2 asks that `limit`/`offset` slice the listing "without changing the response shape". A slice with nothing said about it is indistinguishable from a short tailnet. Does the windowed answer stay exactly `{"devices": [...]}`?
+**Options considered:** the same shape, silently sliced / add a `window` object beside `devices` / return the slice only when it is the whole list, and refuse otherwise
+**Chosen:** An unwindowed call answers the control plane's own body, byte for byte. A call that gives `limit` or `offset` gets `{"devices": [...], "window": {total, returned, offset, limit}}`.
+**Decided-by:** agent
+**Justification:** The criterion's purpose is that `devices` still means what it meant — a caller that reads `answer["devices"]` and expects a list of devices is not broken by asking for a window. That holds. What the criterion cannot have meant is that the server may drop 900 of 950 devices and say nothing, because the endpoint has no pagination and sends no counts: without `total` there is no signal anywhere that the answer is partial, and an agent reading a 50-device answer from a 950-device tailnet would conclude the tailnet has 50 devices.
+
+The shape is only added when it is earned. `(None, 0)` — no limit, no offset — takes the untouched body straight through, so ADR-0004's "returned verbatim" is unweakened for every caller that did not ask for a window, which is the default and the common case.
+
+`limit` is echoed alongside the counts because `returned: 0` is otherwise ambiguous: a limit of zero and an offset past the end are different mistakes and a caller should be able to tell which they made.
+
+Refusing an over-large window was rejected as inventing a failure the caller can already see from `total`.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_devices.rs`, `crates/tailscale-mcp/tests/tailnet_surface.rs`
+
+## Q70 — build/ticket-17 — interpretation
+
+**Question:** Ticket 17 says "device deletion, key expiry and de-authorisation are destructive", but the tool inventory classifies `tailnet_device_authorize` as WRITE. One tool, two tiers, and the difference is an argument: `authorized: true` connects a device, `authorized: false` disconnects it.
+**Options considered:** register it as Destructive / register it as Write and let the argument through / split it into two tools, one per direction
+**Chosen:** Registered as Write with `varying: true`, and the handler refuses `authorized: false` unless the session's tier is at least Destructive.
+**Decided-by:** agent
+**Justification:** Both source documents are right about the case they describe, and the tier a tool is registered at is a single value applied before the handler runs — so a tool whose danger is in its arguments cannot be classified honestly by registration alone. Registering it Destructive would put authorising a device, which is how a tailnet with device approval admits a new machine at all, behind `--allow-destructive`, and a routine admission would need the flag that also permits deleting the tailnet's devices. Registering it Write and letting `false` through would make the ticket's sentence false.
+
+So the row carries the floor and the handler makes the same decision the gate would have. This is not a new mechanism: the passthrough already does exactly this, for exactly this reason, and `varying: true` is the existing flag that marks a row whose tier is a floor rather than the whole truth.
+
+Splitting into `_authorize` and `_deauthorize` was rejected because the API is one endpoint with one boolean, and two tools would be this server inventing a distinction a caller would then have to learn.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_devices.rs`, `.scratch/tailscale-mcp-v1/issues/17-devices-posture.md`

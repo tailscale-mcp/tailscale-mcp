@@ -58,24 +58,195 @@ struct Contract {
 /// A tool with no row here fails [`every_tool_has_a_contract`], which is the
 /// mechanism that keeps this list complete as the table grows.
 fn contracts() -> Vec<Contract> {
-    vec![Contract {
-        tool: "tailscale_version",
-        success: (
-            json!({}),
-            Arrangement::default().cli(
-                &["version"],
-                Reply::ok(harness::fixture("tailscale-version.txt")),
-            ),
+    /// One row, written the way it reads: the tool, the call, the answer
+    /// arranged for it, and the code the same tool gives when it goes wrong.
+    macro_rules! contract {
+        (
+            $tool:literal,
+            ok: $ok_args:tt on $ok_argv:expr => $ok_reply:expr,
+            err: $err_args:tt on $err_argv:expr => $err_reply:expr, $code:literal
+        ) => {
+            Contract {
+                tool: $tool,
+                success: (
+                    json!($ok_args),
+                    Arrangement::default().cli(&$ok_argv, $ok_reply),
+                ),
+                failure: (
+                    json!($err_args),
+                    Arrangement::default().cli(&$err_argv, $err_reply),
+                    $code,
+                ),
+            }
+        };
+    }
+
+    /// A recorded answer from `tests/fixtures`.
+    macro_rules! printed {
+        ($name:literal) => {
+            Reply::ok(harness::fixture($name))
+        };
+    }
+
+    vec![
+        contract!(
+            "tailscale_status",
+            ok: {} on ["status"] => printed!("status.json"),
+            err: {} on ["status"] => Reply::Unavailable, "backend_unavailable"
         ),
-        failure: (
-            json!({}),
-            Arrangement::default().cli(
-                &["version"],
-                Reply::failed(1, "failed to connect to local tailscaled"),
-            ),
-            "cli_failed",
+        contract!(
+            "tailscale_ip",
+            ok: {} on ["ip"] => printed!("ip.txt"),
+            err: {"target": "missing"} on ["ip"] =>
+                Reply::failed(1, "no such host: missing"), "not_found"
         ),
-    }]
+        contract!(
+            "tailscale_netcheck",
+            ok: {} on ["netcheck"] => printed!("netcheck.json"),
+            err: {} on ["netcheck"] =>
+                Reply::failed(1, "netcheck: the probe could not be run"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_ping",
+            ok: {"target": "laptop"} on ["ping"] => printed!("ping.txt"),
+            err: {"target": "missing"} on ["ping"] =>
+                Reply::failed(1, "ping \"missing\": unknown peer"), "not_found"
+        ),
+        contract!(
+            "tailscale_whois",
+            ok: {"address": "100.64.0.2"} on ["whois"] => printed!("whois.json"),
+            err: {"address": "203.0.113.9"} on ["whois"] =>
+                Reply::failed(1, "whois: 203.0.113.9 is outside the tailnet"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_whoami",
+            ok: {} on ["whoami"] => printed!("whoami.json"),
+            // A command added after our floor: an old binary refuses it by not
+            // knowing it, and the caller is told which release added it.
+            err: {} on ["whoami"] =>
+                Reply::failed(1, "tailscale: unknown subcommand \"whoami\""), "unsupported_version"
+        ),
+        contract!(
+            "tailscale_version",
+            ok: {} on ["version"] => printed!("tailscale-version.txt"),
+            err: {} on ["version"] =>
+                Reply::failed(1, "failed to connect to local tailscaled"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_licenses",
+            ok: {} on ["licenses"] => printed!("licenses.txt"),
+            err: {} on ["licenses"] =>
+                Reply::failed(1, "licenses: this build carries no licence index"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_bugreport",
+            ok: {"note": "slow handshake"} on ["bugreport"] => printed!("bugreport.txt"),
+            err: {} on ["bugreport"] =>
+                Reply::failed(1, "bugreport: the log service could not be reached"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_appc_routes",
+            ok: {"all": true} on ["appc-routes"] => printed!("appc-routes.txt"),
+            err: {} on ["appc-routes"] =>
+                Reply::failed(1, "appc-routes: the daemon refused the request"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_routecheck",
+            ok: {} on ["routecheck"] => printed!("routecheck.json"),
+            err: {} on ["routecheck"] =>
+                Reply::failed(1, "tailscale: unknown subcommand \"routecheck\""),
+                "unsupported_version"
+        ),
+        contract!(
+            "tailscale_wait",
+            ok: {"timeout_seconds": 1} on ["wait"] => Reply::ok(""),
+            err: {"timeout_seconds": 1} on ["wait"] => Reply::Unavailable, "backend_unavailable"
+        ),
+        contract!(
+            "tailscale_dns_status",
+            ok: {} on ["dns", "status"] => printed!("dns-status.json"),
+            err: {} on ["dns", "status"] =>
+                Reply::failed(1, "dns status: the resolver configuration could not be read"),
+                "cli_failed"
+        ),
+        contract!(
+            "tailscale_dns_query",
+            ok: {"name": "laptop.example-tailnet.ts.net"} on ["dns", "query"] =>
+                printed!("dns-query.json"),
+            err: {"name": "absent.example-tailnet.ts.net"} on ["dns", "query"] =>
+                Reply::failed(1, "dns query: the resolver answered NXDOMAIN"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_exit_node_list",
+            ok: {} on ["exit-node", "list"] => printed!("exit-node-list.txt"),
+            // Having no exit nodes is an answer, so the failure this tool can
+            // still have is being refused outright.
+            err: {} on ["exit-node", "list"] =>
+                Reply::failed(1, "Access denied: this operation requires the operator"),
+                "needs_operator"
+        ),
+        contract!(
+            "tailscale_exit_node_suggest",
+            ok: {} on ["exit-node", "suggest"] => printed!("exit-node-suggest.txt"),
+            err: {} on ["exit-node", "suggest"] => Reply::Unavailable, "backend_unavailable"
+        ),
+        contract!(
+            "tailscale_metrics_print",
+            ok: {} on ["metrics", "print"] => printed!("metrics.txt"),
+            err: {} on ["metrics", "print"] =>
+                Reply::failed(1, "metrics: the daemon refused the request"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_service_list",
+            ok: {} on ["service", "list"] => printed!("service-list.json"),
+            err: {} on ["service", "list"] =>
+                Reply::failed(1, "tailscale service: unknown subcommand \"list\""),
+                "unsupported_version"
+        ),
+        contract!(
+            "tailscale_syspolicy_list",
+            ok: {} on ["syspolicy", "list"] => printed!("syspolicy-list.json"),
+            err: {} on ["syspolicy", "list"] =>
+                Reply::failed(1, "syspolicy: the policy store could not be read"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_status",
+            ok: {} on ["lock", "status"] => printed!("lock-status.json"),
+            err: {} on ["lock", "status"] =>
+                Reply::failed(1, "lock: the daemon refused the request"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_lock_log",
+            ok: {} on ["lock", "log"] => printed!("lock-log.json"),
+            err: {} on ["lock", "log"] =>
+                Reply::failed(1, "lock log: the key authority is unreachable"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_serve_status",
+            ok: {} on ["serve", "status"] => printed!("serve-status.json"),
+            err: {} on ["serve", "status"] =>
+                Reply::failed(1, "serve: the daemon refused the request"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_funnel_status",
+            ok: {} on ["funnel", "status"] => printed!("funnel-status.json"),
+            err: {} on ["funnel", "status"] =>
+                Reply::failed(1, "funnel: the daemon refused the request"), "cli_failed"
+        ),
+        contract!(
+            "tailscale_configure_sysext_status",
+            ok: {} on ["configure", "sysext", "status"] => printed!("sysext-status.txt"),
+            err: {} on ["configure", "sysext", "status"] =>
+                Reply::failed(1, "configure sysext: the extension could not be queried"),
+                "cli_failed"
+        ),
+        contract!(
+            "tailscale_switch_list",
+            ok: {} on ["switch"] => printed!("switch-list.json"),
+            err: {} on ["switch"] =>
+                Reply::failed(1, "switch: the profile store could not be read"), "cli_failed"
+        ),
+    ]
 }
 
 /// Build a session in which `meta`'s tool is on offer, arranged as the case says.
@@ -203,6 +374,22 @@ async fn every_tool_answers_its_success_case() {
         let (args, arrangement) = contract.success;
         let harness = session(&meta, &arrangement).await;
 
+        if !meta.runs_here() {
+            // The table is the same on every platform, so a tool whose command
+            // only exists elsewhere is still listed and still has a contract.
+            // What it owes a caller here is the reason, not the answer.
+            let error = harness.call_err(meta.name, arguments(&meta, &args)).await;
+            assert_eq!(
+                error["code"],
+                "unsupported_platform",
+                "`{}` does not exist on {} and should say so: {error:#}",
+                meta.name,
+                std::env::consts::OS
+            );
+            harness.shutdown().await;
+            continue;
+        }
+
         let answer = harness.call_ok(meta.name, arguments(&meta, &args)).await;
         assert!(
             answer.is_object(),
@@ -219,6 +406,11 @@ async fn every_tool_answers_its_failure_case_with_the_code_it_promised() {
     for meta in table() {
         let contract = contract_for(meta.name);
         let (args, arrangement, code) = contract.failure;
+        let code = if meta.runs_here() {
+            code
+        } else {
+            "unsupported_platform"
+        };
         let harness = session(&meta, &arrangement).await;
 
         let error = harness.call_err(meta.name, arguments(&meta, &args)).await;

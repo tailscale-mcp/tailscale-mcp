@@ -1,0 +1,23 @@
+{
+  "Node": {
+    "ID": 1,
+    "StableID": "n1111111CNTRL",
+    "Name": "workstation.example-tailnet.ts.net.",
+    "User": 1,
+    "Key": "nodekey:1111111111111111111111111111111111111111111111111111111111111111",
+    "DiscoKey": "discokey:1111111111111111111111111111111111111111111111111111111111111111",
+    "Addresses": ["100.64.0.1/32", "fd7a:115c:a1e0::1/128"],
+    "AllowedIPs": ["100.64.0.1/32", "fd7a:115c:a1e0::1/128"],
+    "Hostinfo": {"Hostname": "workstation", "OS": "macOS"},
+    "MachineAuthorized": true,
+    "ComputedName": "workstation",
+    "ComputedNameWithHost": "workstation"
+  },
+  "UserProfile": {
+    "ID": 1,
+    "LoginName": "operator@example.com",
+    "DisplayName": "Operator",
+    "ProfilePicURL": ""
+  },
+  "CapMap": {}
+}

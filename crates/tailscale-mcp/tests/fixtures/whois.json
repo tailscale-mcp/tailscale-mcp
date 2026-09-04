@@ -1,0 +1,23 @@
+{
+  "Node": {
+    "ID": 2,
+    "StableID": "n2222222CNTRL",
+    "Name": "laptop.example-tailnet.ts.net.",
+    "User": 1,
+    "Key": "nodekey:2222222222222222222222222222222222222222222222222222222222222222",
+    "DiscoKey": "discokey:2222222222222222222222222222222222222222222222222222222222222222",
+    "Addresses": ["100.64.0.2/32", "fd7a:115c:a1e0::2/128"],
+    "AllowedIPs": ["100.64.0.2/32", "fd7a:115c:a1e0::2/128"],
+    "Hostinfo": {"Hostname": "laptop", "OS": "linux"},
+    "MachineAuthorized": true,
+    "ComputedName": "laptop",
+    "ComputedNameWithHost": "laptop"
+  },
+  "UserProfile": {
+    "ID": 1,
+    "LoginName": "operator@example.com",
+    "DisplayName": "Operator",
+    "ProfilePicURL": ""
+  },
+  "CapMap": {}
+}

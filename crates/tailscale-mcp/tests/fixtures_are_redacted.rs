@@ -16,6 +16,10 @@ use std::path::{Path, PathBuf};
 const TAILNET: &str = "example-tailnet";
 /// The only mail domain a fixture may mention.
 const MAIL_DOMAIN: &str = "example.com";
+/// The MagicDNS resolver, which has this address on every tailnet and so
+/// names nobody. A `dns query` answer that did not mention it would be a
+/// misleading fixture.
+const RESOLVER: &str = "100.100.100.100";
 /// This file, which the check exempts from itself.
 const THIS_FILE: &str = "fixtures_are_redacted.rs";
 
@@ -43,14 +47,18 @@ fn leaks(text: &str) -> Vec<Leak> {
         }
 
         // A Tailscale address: 100.64.0.0/10, of which only the first
-        // hundred of 100.64.0.x are placeholders.
-        if is_tailscale_v4(&word) && !is_placeholder_v4(&word) {
+        // hundred of 100.64.0.x are placeholders. A prefix length identifies
+        // nobody, so it is set aside before the address is judged; leaving it
+        // on would both reject `fd7a:115c:a1e0::1/128` and let
+        // `100.101.102.103/32` through.
+        let address = word.split('/').next().unwrap_or(&word);
+        if is_tailscale_v4(address) && !is_placeholder_v4(address) && address != RESOLVER {
             found.push(Leak {
                 what: "Tailscale IPv4 address",
                 value: word.clone(),
             });
         }
-        if word.starts_with("fd7a:115c:a1e0") && !is_placeholder_v6(&word) {
+        if address.starts_with("fd7a:115c:a1e0") && !is_placeholder_v6(address) {
             found.push(Leak {
                 what: "Tailscale IPv6 address",
                 value: word.clone(),
@@ -221,6 +229,7 @@ fn the_check_catches_what_a_recorded_response_looks_like() {
             "an address outside the placeholder block",
             "100.101.102.103",
         ),
+        ("the same, written as a route", "100.101.102.103/32"),
         ("an IPv6 address", "fd7a:115c:a1e0:ab12:4843:cd96:6265:1234"),
         ("an account", "someone@theircompany.io"),
         ("an auth key", "tskey-auth-kZ8Qc1CNTRL-3n2yP8dQx"),
@@ -239,7 +248,10 @@ fn the_check_passes_what_a_placeholder_looks_like() {
     for text in [
         "workstation.example-tailnet.ts.net.",
         "100.64.0.1",
+        "100.64.0.1/32",
         "fd7a:115c:a1e0::1",
+        "fd7a:115c:a1e0::1/128",
+        "100.100.100.100",
         "someone@example.com",
         "tskey-api-redacted-example",
         "nodekey:1111111111111111111111111111111111111111111111111111111111111111",

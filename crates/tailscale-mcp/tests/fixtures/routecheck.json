@@ -1,0 +1,6 @@
+{
+  "GeneratedAt": "2026-09-04T12:00:00Z",
+  "Routes": [
+    {"Prefix": "192.0.2.0/24", "Via": "n2222222CNTRL", "Reachable": true}
+  ]
+}

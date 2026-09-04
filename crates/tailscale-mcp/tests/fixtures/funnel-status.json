@@ -1,0 +1,9 @@
+{
+  "TCP": {"443": {"HTTPS": true}},
+  "Web": {
+    "workstation.example-tailnet.ts.net:443": {
+      "Handlers": {"/": {"Proxy": "http://127.0.0.1:3000"}}
+    }
+  },
+  "AllowFunnel": {"workstation.example-tailnet.ts.net:443": true}
+}

@@ -1,0 +1,9 @@
+{
+  "Name": "laptop.example-tailnet.ts.net.",
+  "QueryType": "A",
+  "Resolvers": [{"Addr": "100.100.100.100"}],
+  "ResponseCode": "NOERROR",
+  "Answers": [
+    {"Name": "laptop.example-tailnet.ts.net.", "TTL": 600, "Class": "IN", "Type": "A", "Body": "100.64.0.2"}
+  ]
+}

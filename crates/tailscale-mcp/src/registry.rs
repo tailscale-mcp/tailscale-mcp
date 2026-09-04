@@ -287,6 +287,7 @@ macro_rules! tools {
                 $(, confirm: $confirm:literal)?
                 $(, severing: $severing:literal)?
                 $(, since: $since:literal)?
+                $(, platforms: [$($platform:literal),+ $(,)?])?
                 $(,)?
             ;
         )*
@@ -314,6 +315,10 @@ macro_rules! tools {
                     let mut since: ::std::option::Option<&'static str> =
                         ::std::option::Option::None;
                     $( since = ::std::option::Option::Some($since); )?
+                    #[allow(unused_mut, unused_assignments)]
+                    let mut platforms: ::std::option::Option<&'static [&'static str]> =
+                        ::std::option::Option::None;
+                    $( platforms = ::std::option::Option::Some(&[$($platform),+]); )?
 
                     $crate::meta::ToolMeta {
                         name: ::std::stringify!($name),
@@ -324,6 +329,7 @@ macro_rules! tools {
                         requires_confirmation: confirm,
                         idempotent,
                         min_version: since,
+                        platforms,
                     }
                 };
             )*

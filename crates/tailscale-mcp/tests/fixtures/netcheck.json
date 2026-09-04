@@ -1,0 +1,21 @@
+{
+  "Now": 1789000000.0,
+  "UDP": true,
+  "IPv6": false,
+  "IPv4": true,
+  "IPv6CanSend": false,
+  "IPv4CanSend": true,
+  "OSHasIPv6": true,
+  "ICMPv4": false,
+  "MappingVariesByDestIP": false,
+  "UPnP": false,
+  "PMP": false,
+  "PCP": false,
+  "PreferredDERP": 12,
+  "RegionLatency": {"12": 22000000, "13": 51000000},
+  "RegionV4Latency": {"12": 22000000},
+  "RegionV6Latency": {},
+  "GlobalV4": "203.0.113.9:41641",
+  "GlobalV6": "",
+  "CaptivePortal": false
+}

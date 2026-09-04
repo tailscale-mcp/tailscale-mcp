@@ -232,11 +232,26 @@ pub struct ToolMeta {
     /// The lowest `tailscale` version that accepts this command, where the
     /// command is newer than our supported floor.
     pub min_version: Option<&'static str>,
+    /// The operating systems the command exists on, when it does not exist on
+    /// all of them. Values are [`std::env::consts::OS`] spellings.
+    ///
+    /// A restricted tool is still listed everywhere. The table is the same on
+    /// every platform so that the documentation, the contract tests and the
+    /// `tools` subcommand agree wherever they run, and so that a caller asking
+    /// for something macOS-only on Linux is told *why* rather than finding a
+    /// tool that does not exist.
+    pub platforms: Option<&'static [&'static str]>,
 }
 
 impl ToolMeta {
     pub const fn surface(&self) -> Surface {
         self.toolset.surface()
+    }
+
+    /// Whether the command behind this tool exists on the machine we are on.
+    pub fn runs_here(&self) -> bool {
+        self.platforms
+            .is_none_or(|allowed| allowed.contains(&std::env::consts::OS))
     }
 
     /// Annotations are derived, not stored, so that a tool cannot claim to be
@@ -304,6 +319,7 @@ mod tests {
             requires_confirmation: false,
             idempotent: true,
             min_version: None,
+            platforms: None,
         };
         assert!(read.annotations().read_only);
         assert!(!read.annotations().destructive);

@@ -1,0 +1,2 @@
+pong from laptop (100.64.0.2) via DERP(sfo) in 41ms
+pong from laptop (100.64.0.2) via 203.0.113.9:41641 in 12ms

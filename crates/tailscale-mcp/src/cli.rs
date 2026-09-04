@@ -27,6 +27,44 @@ pub async fn run(ctx: &ToolContext, meta: &ToolMeta, invocation: Invocation) -> 
     Err(command_failure(ctx, meta, &display, &output))
 }
 
+/// Run a command whose refusal may be an ordinary answer.
+///
+/// Several `tailscale` commands report an unremarkable fact about the tailnet
+/// through a non-zero exit: `exit-node list` when there are no exit nodes,
+/// `routecheck` when no report has been produced yet, `wait` when the timeout
+/// passed, `status` when the backend is not running. Reporting those as tool
+/// failures would tell a caller that its call went wrong when what it learnt is
+/// exactly what it asked for.
+///
+/// What stays a failure is everything that is not an answer about the tailnet:
+/// a binary that is not there, a subcommand it does not know, a refusal to talk
+/// to us at all. The caller reads [`Output::success`] for the rest.
+pub async fn run_tolerant(
+    ctx: &ToolContext,
+    meta: &ToolMeta,
+    invocation: Invocation,
+) -> ToolResult<Output> {
+    let display = invocation.display();
+    let output = ctx
+        .local
+        .run(invocation)
+        .await
+        .map_err(|e| exec_error(&display, e))?;
+    if output.success() {
+        return Ok(output);
+    }
+    let stderr = ctx.redactor.apply(&output.stderr);
+    if is_unrecognised(&stderr) {
+        return Err(version_error(ctx, meta));
+    }
+    if needs_operator(&stderr) {
+        return Err(ToolError::needs_operator(&stderr));
+    }
+    // Deliberately not `is_not_found`: "no exit nodes found" is the answer
+    // these commands exist to give.
+    Ok(output)
+}
+
 /// Run a command and hand back its standard output as text, failures aside.
 pub async fn run_text(
     ctx: &ToolContext,
@@ -54,7 +92,7 @@ fn exec_error(display: &str, error: ExecError) -> ToolError {
 }
 
 /// The command ran and refused. Work out what kind of refusal it was.
-fn command_failure(
+pub fn command_failure(
     ctx: &ToolContext,
     meta: &ToolMeta,
     display: &str,
@@ -209,6 +247,7 @@ mod tests {
             requires_confirmation: false,
             idempotent: true,
             min_version,
+            platforms: None,
         }
     }
 

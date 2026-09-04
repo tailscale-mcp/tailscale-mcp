@@ -1,0 +1,61 @@
+{
+  "Version": "1.102.2",
+  "TUN": true,
+  "BackendState": "Running",
+  "HaveNodeKey": true,
+  "AuthURL": "",
+  "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::1"],
+  "Self": {
+    "ID": "n1111111CNTRL",
+    "PublicKey": "nodekey:1111111111111111111111111111111111111111111111111111111111111111",
+    "HostName": "workstation",
+    "DNSName": "workstation.example-tailnet.ts.net.",
+    "OS": "macOS",
+    "UserID": 1,
+    "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::1"],
+    "Online": true,
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "Active": false,
+    "InNetworkMap": true,
+    "InMagicSock": true,
+    "InEngine": true
+  },
+  "Health": [],
+  "MagicDNSSuffix": "example-tailnet.ts.net",
+  "CurrentTailnet": {
+    "Name": "example-tailnet.ts.net",
+    "MagicDNSSuffix": "example-tailnet.ts.net",
+    "MagicDNSEnabled": true
+  },
+  "CertDomains": ["workstation.example-tailnet.ts.net"],
+  "Peer": {
+    "nodekey:2222222222222222222222222222222222222222222222222222222222222222": {
+      "ID": "n2222222CNTRL",
+      "PublicKey": "nodekey:2222222222222222222222222222222222222222222222222222222222222222",
+      "HostName": "laptop",
+      "DNSName": "laptop.example-tailnet.ts.net.",
+      "OS": "linux",
+      "UserID": 1,
+      "TailscaleIPs": ["100.64.0.2", "fd7a:115c:a1e0::2"],
+      "Relay": "sfo",
+      "RxBytes": 1024,
+      "TxBytes": 2048,
+      "Online": true,
+      "ExitNodeOption": true,
+      "Active": true,
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": true
+    }
+  },
+  "User": {
+    "1": {
+      "ID": 1,
+      "LoginName": "operator@example.com",
+      "DisplayName": "Operator",
+      "ProfilePicURL": ""
+    }
+  },
+  "ClientVersion": {"runningLatest": true}
+}

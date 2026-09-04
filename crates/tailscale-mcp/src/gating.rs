@@ -273,6 +273,7 @@ mod tests {
             requires_confirmation: false,
             idempotent: true,
             min_version: None,
+            platforms: None,
         }
     }
 

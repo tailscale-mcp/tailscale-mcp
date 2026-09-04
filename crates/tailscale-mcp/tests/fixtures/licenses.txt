@@ -1,0 +1,5 @@
+Tailscale wouldn't be possible without the contributions of thousands of open
+source developers. To see the open source packages included in Tailscale and
+their respective license information, visit:
+
+https://tailscale.com/licenses/apple

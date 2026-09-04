@@ -1,0 +1,14 @@
+{
+  "Version": "1.102.2",
+  "TUN": false,
+  "BackendState": "Stopped",
+  "HaveNodeKey": true,
+  "AuthURL": "",
+  "TailscaleIPs": null,
+  "Self": null,
+  "Health": ["state=Stopped, wantRunning=false"],
+  "MagicDNSSuffix": "",
+  "CurrentTailnet": null,
+  "Peer": null,
+  "User": null
+}

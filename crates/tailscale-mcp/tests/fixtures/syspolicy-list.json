@@ -1,0 +1,7 @@
+{
+  "Summary": {"Scope": "device", "Origin": {"Name": "MDM", "Scope": "device"}},
+  "Settings": {
+    "Tailnet": {"Value": "example-tailnet.ts.net", "Origin": {"Name": "MDM", "Scope": "device"}},
+    "ExitNodeID": {"Value": "", "Origin": {"Name": "MDM", "Scope": "device"}}
+  }
+}

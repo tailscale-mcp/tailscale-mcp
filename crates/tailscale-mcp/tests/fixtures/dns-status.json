@@ -1,0 +1,17 @@
+{
+  "TailscaleDNS": true,
+  "CurrentTailnet": {
+    "MagicDNSEnabled": true,
+    "MagicDNSSuffix": "example-tailnet.ts.net",
+    "SelfDNSName": "workstation.example-tailnet.ts.net."
+  },
+  "SplitDNSRoutes": {},
+  "SearchDomains": ["example-tailnet.ts.net"],
+  "CertDomains": ["workstation.example-tailnet.ts.net"],
+  "ExitNodeFilteredSet": null,
+  "SystemDNS": {
+    "Nameservers": ["192.0.2.53"],
+    "SearchDomains": [],
+    "MatchDomains": []
+  }
+}

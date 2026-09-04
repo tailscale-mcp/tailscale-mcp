@@ -1,0 +1,9 @@
+[
+  {
+    "id": "1",
+    "nickname": "operator",
+    "tailnet": "example-tailnet.ts.net",
+    "account": "operator@example.com",
+    "selected": true
+  }
+]

@@ -240,6 +240,12 @@ impl TailscaleMcpServer {
             .registry
             .resolve(&request.name, arguments, &self.gate)?;
         if entry.meta.surface() == Surface::Local {
+            if !entry.meta.runs_here() {
+                return Err(ToolError::unsupported_platform(
+                    entry.meta.name,
+                    std::env::consts::OS,
+                ));
+            }
             cli::version_permits(&self.ctx, &entry.meta)?;
         }
         let invoke = entry.invoke;

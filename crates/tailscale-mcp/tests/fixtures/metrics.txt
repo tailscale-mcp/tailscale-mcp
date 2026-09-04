@@ -1,0 +1,10 @@
+# TYPE tailscaled_advertised_routes gauge
+# HELP tailscaled_advertised_routes Number of subnet routes advertised by this node
+tailscaled_advertised_routes 0
+# TYPE tailscaled_health_messages gauge
+tailscaled_health_messages{type="warning"} 0
+# TYPE tailscaled_inbound_bytes_total counter
+tailscaled_inbound_bytes_total{path="derp"} 4096
+tailscaled_inbound_bytes_total{path="direct_ipv4"} 8192
+# TYPE tailscaled_outbound_bytes_total counter
+tailscaled_outbound_bytes_total{path="derp"} 2048

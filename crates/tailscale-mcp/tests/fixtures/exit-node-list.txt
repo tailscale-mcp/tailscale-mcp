@@ -1,0 +1,6 @@
+IP              HOSTNAME                              COUNTRY         CITY            STATUS
+100.64.0.2      laptop.example-tailnet.ts.net         -               -               -
+100.64.0.3      se-sto-wg-001.example-tailnet.ts.net          Sweden          Stockholm       selected
+
+# To use an exit node, run:
+#   tailscale set --exit-node=<IP>

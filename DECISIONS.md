@@ -1028,3 +1028,27 @@ Gates kept, each for a stated reason: `FORMATS`, because this server builds an `
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/tools/tailnet_logging.rs`, `crates/tailscale-mcp/src/tools/tailnet_webhooks.rs`, `crates/tailscale-mcp/src/tools/tailnet_posture.rs`
+
+## Q85 — build/ticket-22 — interpretation
+
+**Question:** `spec.md` says "Nine resources and three prompts" and ticket 22 says they are "across the two schemes, including one template addressed by device identifier and the policy resource served with its document media type". Neither says which nine, which three, or what the two schemes are.
+
+**Options considered:** one scheme, `tailscale://`, with the surface in the path / two schemes, one per surface / mirror the reference implementations' four resources and grow them to nine
+
+**Chosen:** `tailscale://` for the local node and `tailnet://` for the control plane. Four local resources, five tailnet ones, of which the device is the template; three prompts.
+
+**Decided-by:** agent
+
+**Justification:** Two schemes because there are two backends, and which one answers a URI is the thing a caller most needs to know about it: `tailscale://status` fails when there is no binary and `tailnet://devices` fails when there is no credential, and those are different problems with different fixes. A single scheme with the surface buried in a path would have hidden the distinction behind a convention nobody reads. It also matches the tool names, which have carried the same split since ticket 09.
+
+The nine are the readings an agent would otherwise spend a tool call on, one per thing it consults repeatedly: `status`, `prefs`, `netcheck` and `lock` locally; `policy`, `devices`, `device/{device_id}`, `dns` and `settings` on the tailnet. That is a superset of the four the reference implementations offer — a tailnet summary, a device listing, a device template and the current ACL — which is what the superset rule requires.
+
+The three prompts are `diagnose_connectivity`, `review_policy_change` and `audit_tailnet_access`, a superset of the references' `diagnose_tailnet_connectivity`, `review_acl_change` and `network_status`. Each takes exactly one optional argument, so each has something to expand differently with and without, which is what the criterion asks to observe.
+
+None of the three names a tool above the read tier except `tailnet_policy_set`, which the policy prompt names as the thing *not* to do and hands back to the operator. A test walks the tool table and holds every prompt to that.
+
+**Resources carry no tier of their own.** Each is something a Read-tier tool could also fetch, so a resource is offered whenever its surface is and never otherwise, and a client asking for one whose surface is missing is told which surface rather than given an empty answer.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/resources.rs`

@@ -10,8 +10,10 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, InitializeResult,
-    ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
+    CallToolRequestParams, CallToolResponse, CallToolResult, GetPromptRequestParams,
+    GetPromptResponse, GetPromptResult, Implementation, InitializeResult, ListPromptsResult,
+    ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+    ReadResourceRequestParams, ReadResourceResponse, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
@@ -26,7 +28,7 @@ use crate::gating::{ConfigError, Gate};
 use crate::meta::Surface;
 use crate::registry::{Registry, RegistryError, ToolEntry};
 use crate::version::SUPPORTED_FLOOR;
-use crate::{cli, instructions};
+use crate::{cli, instructions, resources};
 
 /// The server could not be built.
 #[derive(Debug, thiserror::Error)]
@@ -299,7 +301,16 @@ impl TailscaleMcpServer {
 
 impl ServerHandler for TailscaleMcpServer {
     fn get_info(&self) -> ServerInfo {
-        let mut info = InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
+        let mut info = InitializeResult::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                // Resources and prompts, but not `enable_resources_subscribe`:
+                // `spec.md` puts subscriptions out of scope, and advertising
+                // one this server does not serve is a lie a client acts on.
+                .enable_resources()
+                .enable_prompts()
+                .build(),
+        )
             .with_instructions(instructions::render(&self.gate, &self.ctx));
         // Not `from_build_env`: that reads the *SDK*'s package metadata.
         info.server_info = Implementation::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
@@ -327,6 +338,90 @@ impl ServerHandler for TailscaleMcpServer {
             .into_iter()
             .find(|entry| entry.meta.name == name)
             .and_then(|entry| entry.describe().ok())
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        // A resource whose surface is not offered is absent, not listed and
+        // refused — the same rule the tool listing follows, for the same
+        // reason: a client should not be shown something it cannot have.
+        Ok(ListResourcesResult::with_all_items(
+            resources::all()
+                .iter()
+                .filter(|entry| !entry.templated && self.gate.offers(entry.surface))
+                .map(resources::ResourceEntry::describe)
+                .collect(),
+        ))
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, McpError> {
+        Ok(ListResourceTemplatesResult::with_all_items(
+            resources::all()
+                .iter()
+                .filter(|entry| entry.templated && self.gate.offers(entry.surface))
+                .map(resources::ResourceEntry::describe_template)
+                .collect(),
+        ))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, McpError> {
+        let read = resources::read(&self.ctx, |surface| self.gate.offers(surface), &request.uri);
+        match read.await {
+            Ok(result) => Ok(ReadResourceResponse::Complete(result)),
+            // Unlike a tool call, a resource read has no result shape to carry
+            // a failure in, so this one really is a protocol error.
+            Err(error) => Err(McpError::resource_not_found(
+                error.message.clone(),
+                Some(serde_json::json!({"uri": request.uri, "error": error.to_value()})),
+            )),
+        }
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        Ok(ListPromptsResult::with_all_items(
+            resources::prompts()
+                .iter()
+                .map(resources::PromptEntry::describe)
+                .collect(),
+        ))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, McpError> {
+        let prompts = resources::prompts();
+        let prompt = prompts
+            .iter()
+            .find(|prompt| prompt.name == request.name)
+            .ok_or_else(|| {
+                McpError::invalid_params(format!("`{}` is not a prompt", request.name), None)
+            })?;
+        let (argument, _) = prompt.argument;
+        let given = request
+            .arguments
+            .as_ref()
+            .and_then(|arguments| arguments.get(argument))
+            .and_then(Value::as_str);
+        Ok(GetPromptResponse::Complete(
+            GetPromptResult::new(prompt.expand(given)).with_description(prompt.description),
+        ))
     }
 
     async fn call_tool(

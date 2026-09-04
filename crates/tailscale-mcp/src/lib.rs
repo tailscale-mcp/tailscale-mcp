@@ -21,6 +21,7 @@ pub mod gating;
 pub mod instructions;
 pub mod meta;
 pub mod registry;
+pub mod resources;
 pub mod server;
 pub mod tools;
 pub mod version;

@@ -323,6 +323,63 @@ impl Harness {
             .expect("tools are listed")
     }
 
+    /// Every resource on offer, and every template.
+    ///
+    /// # Panics
+    /// If a listing fails.
+    pub async fn resources(&self) -> Vec<rmcp::model::Resource> {
+        self.client
+            .list_all_resources()
+            .await
+            .expect("resources are listed")
+    }
+
+    pub async fn resource_templates(&self) -> Vec<rmcp::model::ResourceTemplate> {
+        self.client
+            .list_all_resource_templates()
+            .await
+            .expect("templates are listed")
+    }
+
+    /// Read one resource, or the protocol error saying why not.
+    pub async fn read_resource(
+        &self,
+        uri: &str,
+    ) -> Result<rmcp::model::ReadResourceResult, String> {
+        self.client
+            .read_resource(rmcp::model::ReadResourceRequestParams::new(uri))
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    /// Every prompt on offer.
+    ///
+    /// # Panics
+    /// If the listing fails.
+    pub async fn prompts(&self) -> Vec<rmcp::model::Prompt> {
+        self.client
+            .list_all_prompts()
+            .await
+            .expect("prompts are listed")
+    }
+
+    /// Expand one prompt, with or without its argument.
+    ///
+    /// # Panics
+    /// If the prompt could not be got at all.
+    pub async fn prompt(&self, name: &str, arguments: Value) -> rmcp::model::GetPromptResult {
+        let mut request = rmcp::model::GetPromptRequestParams::new(name.to_owned());
+        if let Some(object) = arguments.as_object()
+            && !object.is_empty()
+        {
+            request = request.with_arguments(object.clone());
+        }
+        self.client
+            .get_prompt(request)
+            .await
+            .unwrap_or_else(|e| panic!("`{name}` could not be got: {e}"))
+    }
+
     /// The names of every tool on offer.
     pub async fn tool_names(&self) -> Vec<String> {
         self.tools()

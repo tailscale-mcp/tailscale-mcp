@@ -495,6 +495,20 @@ fn secret_at(input: &str, i: usize) -> Option<(usize, usize)> {
         }
     }
 
+    // Private key material, which `status --json` and `debug prefs` print.
+    // The public halves — `nodekey:`, `tlpub:`, `discokey:` — are identifiers a
+    // caller legitimately reads, and are deliberately not here; only the
+    // halves that are secret are removed.
+    for prefix in ["privkey:", "nlpriv:"] {
+        if let Some(tail) = rest.strip_prefix(prefix) {
+            let len = token_len(tail);
+            if len == 0 {
+                continue;
+            }
+            return Some((prefix.len(), i + prefix.len() + len));
+        }
+    }
+
     // `Authorization: Bearer <token>` in a captured header dump.
     for prefix in ["Bearer ", "bearer "] {
         if let Some(tail) = rest.strip_prefix(prefix) {
@@ -865,5 +879,23 @@ mod tests {
             r.apply("abc is a common substring"),
             "abc is a common substring"
         );
+    }
+
+    #[test]
+    fn private_key_material_is_removed_and_the_public_halves_are_not() {
+        // `status --json` and `debug prefs` print both, and a caller reading a
+        // status needs the public ones to identify a node at all.
+        let printed = "nodekey:1111 privkey:aaaabbbbcccc tlpub:2222 nlpriv:ddddeeeeffff";
+        let left = redact(printed);
+        assert!(left.contains("nodekey:1111"), "{left}");
+        assert!(left.contains("tlpub:2222"), "{left}");
+        assert!(!left.contains("aaaabbbbcccc"), "{left}");
+        assert!(!left.contains("ddddeeeeffff"), "{left}");
+        // The prefix stays, so a reader can tell what was removed.
+        assert!(left.contains("privkey:[redacted]"), "{left}");
+        assert!(left.contains("nlpriv:[redacted]"), "{left}");
+
+        // A bare prefix with nothing after it is not key material.
+        assert_eq!(redact("privkey: is a field name"), "privkey: is a field name");
     }
 }

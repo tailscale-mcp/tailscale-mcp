@@ -777,3 +777,49 @@ So the row carries the floor and the handler makes the same decision the gate wo
 Splitting into `_authorize` and `_deauthorize` was rejected because the API is one endpoint with one boolean, and two tools would be this server inventing a distinction a caller would then have to learn.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/tailnet_devices.rs`, `.scratch/tailscale-mcp-v1/issues/17-devices-posture.md`
+
+## Q71 — build/ticket-18 — deviation
+
+**Question:** The drift walk read one media type per request body and per response — whichever the parsed map yielded first. The policy endpoints describe the same body twice, under `application/json` and `application/hujson`. Widen the walk again, or leave it?
+**Options considered:** leave it / walk every media type at one path each / walk every media type, naming the path when there is more than one
+**Chosen:** Every media type is walked. One media type keeps the plain path; several are named `… body (application/json)`.
+**Decided-by:** agent
+**Justification:** The same failure as Q64, one level down. `acl/validate` carries its real request shape under `application/json` and a bare string under `application/hujson`, and the map yielded the string first — so the walk read the string, recorded nothing, and a five-property test case sat unmodelled while the test stayed green. A tripwire that reads part of its input and passes is worse than no tripwire, because it is believed.
+
+Naming only the ambiguous paths is what keeps the widening from churning the whole table: nearly every body in the description carries one media type, and a suffix on all of them would add noise to sixty paths to disambiguate four. The names that do appear say exactly which schema failed, which is what a failure here is for.
+
+`a_body_carrying_two_media_types_is_read_at_both` asserts both halves — that `acl/validate` yields two schemas and that `POST /keys` still yields one at the plain path — so a later simplification back to `find_map` fails rather than silently under-reading again.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/tests/schema_drift.rs`
+
+## Q72 — build/ticket-18 — interpretation
+
+**Question:** Six of the eleven DNS endpoints overwrite a whole list or document and one merges. The API calls them all `set…`. What are the tools called?
+**Options considered:** follow the API's `set` throughout / `_replace` for a full overwrite, `_update` for a merge, `_set` for a single value / one tool per resource with a `mode` parameter
+**Chosen:** `_replace` overwrites, `_update` merges, `_set` carries a single value. `tailnet_dns_split_update` is the only `_update` here.
+**Decided-by:** agent
+**Justification:** The verbs come from the closed list Q66 fixed, and all three are in it, so this is a choice about which of them each endpoint gets rather than about growing the vocabulary.
+
+An agent calling `tailnet_dns_nameservers_set` with the one nameserver it wants to add would remove every other nameserver in the tailnet. That is the most expensive mistake this toolset can produce, it is silent, and the name is the only place a caller sees the difference before making the call. `split-dns` makes the case plainest: `PATCH` and `PUT` are the same resource and differ only in this, so two names that differ only in this is the honest mapping.
+
+Following the API's own `set` was rejected because the API distinguishes the two by HTTP verb, which a tool call does not show; ADR-0004 is about not renaming Tailscale's *data*, and a tool name is this server's.
+
+A `mode` parameter was rejected as a defaulted argument deciding whether a tailnet keeps its DNS.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_dns.rs`
+
+## Q73 — build/ticket-18 — deviation
+
+**Question:** `POST /tailnet/{tailnet}/acl` accepts a write with no `If-Match` header and replaces whatever is there. Ticket 18 asks that a write "must carry the version identifier or an explicit statement that it is writing over the default". Refuse before sending, or send and let the control plane decide?
+**Options considered:** send whatever the caller gave / refuse before sending when neither guard is present / always read the policy first and use the version that read returned
+**Chosen:** Refused before the request is built. `etag` or `over_default: true`, exactly one of them; neither is an `invalid_args` refusal that names both, and both together is refused rather than ranked.
+**Decided-by:** agent
+**Justification:** The control plane cannot make this decision, because to it an absent `If-Match` is a valid request meaning "replace whatever is there" — the failure mode is a success. The policy file decides who may reach what across the whole tailnet, and the loss is somebody else's change, made between the read and the write, that the caller never saw and cannot recover.
+
+Reading the policy inside the write and using that version was rejected as the same overwrite wearing a seatbelt: it would quote a version the caller never looked at, which defeats the header's entire purpose.
+
+Both guards together is refused rather than resolved because they say different things — one writes over the version you read, the other only over an untouched default — and picking one would be this server deciding which of two contradictory instructions a caller meant.
+
+A stale version comes back as `conflict` with a hint naming `tailnet_policy_get`, which is the whole remedy. The mapping is in `From<ApiError>` rather than in the tool because 412 belongs to no other endpoint in the description, so a general mapping is a true one.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_policy.rs`, `crates/tailscale-mcp/src/error.rs`

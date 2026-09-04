@@ -23,6 +23,28 @@ pub const KNOWN_VALUES: &[KnownValues] = &[];
 pub type SplitDns = BTreeMap<String, Option<Vec<String>>>;
 
 model! {
+    /// The tailnet's global nameservers.
+    ///
+    /// Sent to set them and returned when reading them; the same shape both
+    /// ways, which is why one struct serves three of the description's places.
+    DnsNameservers as "GET /tailnet/{tailnet}/dns/nameservers 200" {
+        /// Addresses, not URLs. Replacing this with an empty list removes
+        /// every global nameserver, which also turns MagicDNS off.
+        dns: "dns" => Vec<String>,
+    }
+
+    /// The same list, as the request that replaces it.
+    DnsNameserversRequest as "POST /tailnet/{tailnet}/dns/nameservers body" is DnsNameservers;
+
+    /// What replacing the nameservers answers with: the new list, and the
+    /// state MagicDNS was left in.
+    DnsNameserversSet as "POST /tailnet/{tailnet}/dns/nameservers 200" {
+        dns: "dns" => Vec<String>,
+        /// Turns itself off when the last nameserver goes, which is why the
+        /// answer says so rather than leaving a caller to read it back.
+        magic_dns: "magicDNS" => bool,
+    }
+
     /// Whether MagicDNS is on.
     DnsPreferences {
         /// Turning this on requires at least one global nameserver.

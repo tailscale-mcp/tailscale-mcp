@@ -98,12 +98,12 @@ fn read(document: &Value) -> (Objects, Enums) {
                     record(schema, at);
                 }
             }
-            if let Some(schema) = body_schema(&operation["requestBody"]) {
-                record(schema, format!("{prefix} body"));
+            for (at, schema) in body_schemas(&operation["requestBody"], &format!("{prefix} body")) {
+                record(schema, at);
             }
             for (code, response) in operation["responses"].as_object().into_iter().flatten() {
-                if let Some(schema) = body_schema(response) {
-                    record(schema, format!("{prefix} {code}"));
+                for (at, schema) in body_schemas(response, &format!("{prefix} {code}")) {
+                    record(schema, at);
                 }
             }
         }
@@ -126,14 +126,35 @@ fn shared_parameters(document: &Value) -> &Map<String, Value> {
         .expect("the description has shared parameters")
 }
 
-/// The schema under a request body or a response, whichever media type carries
-/// it. Endpoints that answer with no body have no schema and no properties.
-fn body_schema(carrier: &Value) -> Option<&Value> {
-    carrier
-        .get("content")?
-        .as_object()?
-        .values()
-        .find_map(|media| media.get("schema"))
+/// Every schema under a request body or a response, one per media type.
+///
+/// Every one, not the first one, which is the second thing this walk got wrong.
+/// The policy endpoints carry the same body twice — `application/json` holding
+/// the real shape and `application/hujson` holding a bare string — and reading
+/// whichever the map happened to yield first meant reading the string and never
+/// seeing the object beside it, so a five-property test case went unmodelled
+/// while the test stayed green (Q71).
+///
+/// One media type keeps the plain path, because that is nearly every body here
+/// and a suffix on all of them would say nothing. Where there are several, each
+/// is named, so the path still says exactly which schema failed. Endpoints that
+/// answer with no body have no content and yield nothing.
+fn body_schemas<'a>(carrier: &'a Value, at: &str) -> Vec<(String, &'a Value)> {
+    let Some(content) = carrier.get("content").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let carrying: Vec<_> = content
+        .iter()
+        .filter_map(|(media, body)| Some((media, body.get("schema")?)))
+        .collect();
+    let name = |media: &String| match carrying.len() {
+        1 => at.to_owned(),
+        _ => format!("{at} ({media})"),
+    };
+    carrying
+        .iter()
+        .map(|(media, schema)| (name(media), *schema))
+        .collect()
 }
 
 /// Where a parameter's schema is, and what to call it.
@@ -296,31 +317,7 @@ fn resolve<'a>(reference: &str, all: &'a Map<String, Value>) -> &'a Value {
 /// a ticket landing rather than by anyone editing this table.
 const DEFERRED: &[(&str, &str)] = &[
     // Ticket 17 — devices and posture.
-    // Ticket 18 — DNS and policy.
-    (
-        "GET /tailnet/{tailnet}/dns/nameservers 200",
-        "the `{dns: […]}` envelope",
-    ),
-    (
-        "POST /tailnet/{tailnet}/dns/nameservers body",
-        "built from `tailnet_dns_set_nameservers`",
-    ),
-    (
-        "POST /tailnet/{tailnet}/dns/nameservers 200",
-        "what setting nameservers answers",
-    ),
-    (
-        "POST /tailnet/{tailnet}/acl/validate 200",
-        "what validating a policy answers",
-    ),
-    (
-        "POST /tailnet/{tailnet}/acl/preview 200",
-        "what previewing a policy answers",
-    ),
-    (
-        "POST /tailnet/{tailnet}/acl/preview 200.matches[]",
-        "one rule inside that preview",
-    ),
+    // Ticket 18 — DNS and policy: modelled, and the rows gone.
     // Ticket 19 — keys, users and invites.
     (
         "POST /device/{deviceId}/device-invites body[]",
@@ -632,6 +629,39 @@ fn a_value_the_description_adds_is_a_failure() {
     );
 }
 
+#[test]
+fn a_body_carrying_two_media_types_is_read_at_both() {
+    // The walk's second under-read (Q71). The policy endpoints describe the
+    // same body twice — the real shape under `application/json` and a bare
+    // string under `application/hujson` — and reading whichever the map
+    // yielded first meant reading the string, so `acl/validate`'s test case
+    // was invisible while the test stayed green.
+    let document = description();
+    let validate = &document["paths"]["/tailnet/{tailnet}/acl/validate"]["post"];
+    let found = body_schemas(&validate["requestBody"], "body");
+    assert_eq!(found.len(), 2, "both media types carry a schema: {found:?}");
+
+    let (objects, _) = read(&document);
+    let test_case = objects
+        .get("POST /tailnet/{tailnet}/acl/validate body (application/json)|oneOf[0][]")
+        .expect("the test case the JSON branch describes");
+    assert!(
+        test_case.contains("srcPostureAttrs"),
+        "and it is read whole: {test_case:?}"
+    );
+
+    // One media type keeps the plain path, so the widening did not rename
+    // every body in the document.
+    let keys = &document["paths"]["/tailnet/{tailnet}/keys"]["post"];
+    assert_eq!(
+        body_schemas(&keys["requestBody"], "body")
+            .into_iter()
+            .map(|(at, _)| at)
+            .collect::<Vec<_>>(),
+        ["body"]
+    );
+}
+
 /// Where the document is known to be wrong, or to disagree with itself.
 ///
 /// Each is asserted rather than written down somewhere and left to rot: a
@@ -824,10 +854,10 @@ fn the_walk_reaches_the_whole_document() {
     let document = description();
     let (objects, enums) = read(&document);
     assert_eq!(schemas(&document).len(), 43, "named schemas");
-    assert_eq!(objects.len(), 90, "objects walked: {:?}", objects.keys());
+    assert_eq!(objects.len(), 91, "objects walked: {:?}", objects.keys());
     assert_eq!(enums.len(), 33, "enumerations walked: {:?}", enums.keys());
-    assert_eq!(models().len(), 56, "models");
-    assert_eq!(DEFERRED.len(), 34, "deferrals");
+    assert_eq!(models().len(), 63, "models");
+    assert_eq!(DEFERRED.len(), 28, "deferrals");
 }
 
 /// The deferral table cannot outlive what it defers.

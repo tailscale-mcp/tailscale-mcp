@@ -381,6 +381,242 @@ async fn a_batched_attribute_update_refuses_a_key_the_api_would_reject() {
     harness.shutdown().await;
 }
 
+// ---------------------------------------------------------------------------
+// DNS and policy
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn the_split_dns_update_and_replace_forms_are_different_calls() {
+    // The API's own distinction, and the one this toolset's naming exists to
+    // keep visible: `PATCH` merges, `PUT` overwrites. A tool that sent one
+    // where the caller meant the other would silently drop every domain it was
+    // not told about.
+    let path = "/api/v2/tailnet/-/dns/split-dns";
+    let domains = json!({"domains": {"example.com": ["10.0.0.1"]}});
+    let harness = Setup::new()
+        .toolsets("tailnet-dns")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .api_answers(
+            "PATCH",
+            path,
+            Response::json(json!({"example.com": ["10.0.0.1"]})),
+        )
+        .await
+        .api_answers(
+            "PUT",
+            path,
+            Response::json(json!({"example.com": ["10.0.0.1"]})),
+        )
+        .await
+        .start()
+        .await;
+
+    harness
+        .call_ok("tailnet_dns_split_update", domains.clone())
+        .await;
+    harness.call_ok("tailnet_dns_split_replace", domains).await;
+
+    let sent = harness.control_plane().recorded();
+    assert_eq!(
+        sent.iter().map(|r| r.method.as_str()).collect::<Vec<_>>(),
+        ["PATCH", "PUT"],
+        "the merge and the replace reach different verbs: {sent:#?}"
+    );
+    // Both send the map itself, not a wrapper: `domains` is this server's
+    // parameter name and the body is Tailscale's shape (ADR-0004).
+    for request in &sent {
+        assert_eq!(request.json(), json!({"example.com": ["10.0.0.1"]}));
+    }
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn reading_the_policy_answers_with_its_version_and_the_document_as_written() {
+    // `spec.md`'s one documented exception to answering with the body alone:
+    // the version is a header, so it cannot travel in a body that has no room
+    // for one.
+    let hujson = "{\n  // a comment, which JSON does not have\n  \"acls\": [],\n}";
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/acl",
+            Response::text("application/hujson", hujson).with_header("etag", "\"e0b2816b418\""),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness.call_ok("tailnet_policy_get", json!({})).await;
+
+    assert_eq!(answer["format"], json!("hujson"));
+    assert_eq!(answer["etag"], json!("\"e0b2816b418\""));
+    assert_eq!(
+        answer["policy"],
+        json!(hujson),
+        "the comments are the part a person wrote, so the document comes back as written"
+    );
+    assert_eq!(
+        harness.control_plane().only_request().header("accept"),
+        Some("application/hujson"),
+        "and that is what was asked for"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_policy_write_without_a_guard_never_reaches_the_control_plane() {
+    // An answer is arranged that the call must not reach: without the check
+    // the write would land, and a write with no `If-Match` overwrites whatever
+    // is there — including a change the caller never saw.
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers(
+            "POST",
+            "/api/v2/tailnet/-/acl",
+            Response::text("application/hujson", "{}"),
+        )
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err("tailnet_policy_set", json!({"policy": "{\"acls\": []}"}))
+        .await;
+    assert_eq!(error["code"], json!("invalid_args"));
+    assert_eq!(
+        harness.control_plane().request_count(),
+        0,
+        "nothing should have been sent"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_stale_version_is_a_conflict_that_says_to_read_it_again() {
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers(
+            "POST",
+            "/api/v2/tailnet/-/acl",
+            Response::status(
+                412,
+                json!({"message": "precondition failed, invalid old hash"}),
+            ),
+        )
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err(
+            "tailnet_policy_set",
+            json!({"policy": "{\"acls\": []}", "etag": "\"stale\""}),
+        )
+        .await;
+
+    assert_eq!(error["code"], json!("conflict"));
+    assert_eq!(error["status"], json!(412));
+    assert!(
+        error["hint"]
+            .as_str()
+            .is_some_and(|h| h.contains("tailnet_policy_get")),
+        "the remedy is to read it again: {error:#?}"
+    );
+    assert_eq!(
+        harness.control_plane().only_request().header("if-match"),
+        Some("\"stale\""),
+        "and the version the caller gave is what was on the wire"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn writing_over_the_default_is_the_other_way_to_pass_the_guard() {
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers(
+            "POST",
+            "/api/v2/tailnet/-/acl",
+            Response::text("application/hujson", "{}"),
+        )
+        .await
+        .start()
+        .await;
+
+    harness
+        .call_ok(
+            "tailnet_policy_set",
+            json!({"policy": "{\n  // written by hand\n  \"acls\": [],\n}",
+                   "over_default": true}),
+        )
+        .await;
+
+    let request = harness.control_plane().only_request();
+    assert_eq!(request.header("if-match"), Some("\"ts-default\""));
+    assert_eq!(
+        request.header("content-type"),
+        Some("application/hujson"),
+        "a document given as a string is sent as HuJSON, comments and all"
+    );
+    assert!(
+        request.body.contains("// written by hand"),
+        "and unescaped: {:?}",
+        request.body
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_two_validation_modes_are_told_apart_by_what_was_given() {
+    // One endpoint, two meanings: an array of tests runs against the policy in
+    // force, an object is a hypothetical document. The API reads the body's
+    // own JSON type, so sending the wrong one runs the wrong check.
+    let path = "/api/v2/tailnet/-/acl/validate";
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .api_answers("POST", path, Response::empty())
+        .await
+        .api_answers("POST", path, Response::empty())
+        .await
+        .start()
+        .await;
+
+    let tests = json!([{"src": "someone@example.com", "accept": ["10.0.0.1:80"]}]);
+    let passed = harness
+        .call_ok("tailnet_policy_validate", json!({"tests": tests}))
+        .await;
+    assert_eq!(
+        passed["passed"],
+        json!(true),
+        "an empty answer is a pass, and says so rather than answering nothing"
+    );
+
+    harness
+        .call_ok("tailnet_policy_validate", json!({"policy": {"acls": []}}))
+        .await;
+
+    let sent = harness.control_plane().recorded();
+    assert!(
+        sent[0].json().is_array(),
+        "the tests go as an array: {sent:#?}"
+    );
+    assert!(
+        sent[1].json().is_object(),
+        "the policy goes as an object: {sent:#?}"
+    );
+
+    harness.shutdown().await;
+}
+
 #[tokio::test]
 async fn a_posture_integration_secret_is_sent_and_never_answered_with() {
     let harness = Setup::new()

@@ -861,6 +861,107 @@ fn contracts() -> Vec<Contract> {
                 on "DELETE" "/api/v2/posture/integrations/pi-example" => Response::empty(),
             err: {"integration_id": "pi-example"}
         ),
+        // ---- tailnet: DNS ------------------------------------------------
+        api_contract!(
+            "tailnet_dns_nameservers_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/dns/nameservers" =>
+                Response::json(json!({"dns": ["8.8.8.8"]})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_dns_nameservers_replace",
+            ok: {"dns": ["8.8.8.8"]} on "POST" "/api/v2/tailnet/-/dns/nameservers" =>
+                Response::json(json!({"dns": ["8.8.8.8"], "magicDNS": true})),
+            err: {"dns": ["8.8.8.8"]}
+        ),
+        api_contract!(
+            "tailnet_dns_preferences_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/dns/preferences" =>
+                Response::json(json!({"magicDNS": true})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_dns_preferences_set",
+            ok: {"magic_dns": true} on "POST" "/api/v2/tailnet/-/dns/preferences" =>
+                Response::json(json!({"magicDNS": true})),
+            err: {"magic_dns": true}
+        ),
+        api_contract!(
+            "tailnet_dns_search_paths_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/dns/searchpaths" =>
+                Response::json(json!({"searchPaths": ["example.com"]})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_dns_search_paths_replace",
+            ok: {"search_paths": ["example.com"]}
+                on "POST" "/api/v2/tailnet/-/dns/searchpaths" =>
+                Response::json(json!({"searchPaths": ["example.com"]})),
+            err: {"search_paths": ["example.com"]}
+        ),
+        api_contract!(
+            "tailnet_dns_split_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/dns/split-dns" =>
+                Response::json(json!({"example.com": ["10.0.0.1"]})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_dns_split_update",
+            ok: {"domains": {"example.com": ["10.0.0.1"]}}
+                on "PATCH" "/api/v2/tailnet/-/dns/split-dns" =>
+                Response::json(json!({"example.com": ["10.0.0.1"]})),
+            err: {"domains": {"example.com": ["10.0.0.1"]}}
+        ),
+        api_contract!(
+            "tailnet_dns_split_replace",
+            ok: {"domains": {"example.com": ["10.0.0.1"]}}
+                on "PUT" "/api/v2/tailnet/-/dns/split-dns" =>
+                Response::json(json!({"example.com": ["10.0.0.1"]})),
+            err: {"domains": {"example.com": ["10.0.0.1"]}}
+        ),
+        api_contract!(
+            "tailnet_dns_configuration_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/dns/configuration" =>
+                Response::json(json!({"nameservers": [], "searchPaths": []})),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_dns_configuration_replace",
+            ok: {"configuration": {"nameservers": [], "searchPaths": []}}
+                on "POST" "/api/v2/tailnet/-/dns/configuration" =>
+                Response::json(json!({"nameservers": [], "searchPaths": []})),
+            err: {"configuration": {"nameservers": [], "searchPaths": []}}
+        ),
+        // ---- tailnet: policy ---------------------------------------------
+        api_contract!(
+            "tailnet_policy_get",
+            ok: {} on "GET" "/api/v2/tailnet/-/acl" =>
+                Response::text("application/hujson", "{\n  // a policy\n  \"acls\": [],\n}"),
+            err: {}
+        ),
+        api_contract!(
+            "tailnet_policy_set",
+            ok: {"policy": "{\"acls\": []}", "etag": "\"e0b2816b418\""}
+                on "POST" "/api/v2/tailnet/-/acl" =>
+                Response::text("application/hujson", "{\"acls\": []}"),
+            err: {"policy": "{\"acls\": []}", "etag": "\"e0b2816b418\""}
+        ),
+        api_contract!(
+            "tailnet_policy_preview",
+            ok: {"policy": {"acls": []}, "subject_type": "user",
+                 "preview_for": "someone@example.com"}
+                on "POST" "/api/v2/tailnet/-/acl/preview" =>
+                Response::json(json!({"matches": [], "type": "user",
+                                      "previewFor": "someone@example.com"})),
+            err: {"policy": {"acls": []}, "subject_type": "user",
+                  "preview_for": "someone@example.com"}
+        ),
+        api_contract!(
+            "tailnet_policy_validate",
+            ok: {"tests": [{"src": "someone@example.com", "accept": ["10.0.0.1:80"]}]}
+                on "POST" "/api/v2/tailnet/-/acl/validate" => Response::empty(),
+            err: {"tests": [{"src": "someone@example.com", "accept": ["10.0.0.1:80"]}]}
+        ),
     ]
 }
 

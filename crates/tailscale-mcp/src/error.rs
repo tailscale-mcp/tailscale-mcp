@@ -343,6 +343,21 @@ impl From<tailscale_rest::ApiError> for ToolError {
             Api::Status {
                 status, message, ..
             } if *status == 409 => Self::conflict(message.clone()),
+
+            // 412 is a conflict too, and the description gives it to exactly
+            // one call: a policy write whose `If-Match` no longer matches,
+            // which means somebody else changed the policy since it was read.
+            // The hint is the whole remedy, and it is not the remedy for a
+            // 409, so it is given here rather than folded into `conflict`.
+            Api::Status {
+                status, message, ..
+            } if *status == 412 => Self::new(ErrorCode::Conflict, message.clone())
+                .with_status(412)
+                .with_hint(
+                    "The document changed since it was read. Read it again with \
+                 `tailnet_policy_get`, re-apply the change to what came back, and \
+                 write it with the new `etag`.",
+                ),
             Api::Status {
                 status,
                 retry_after,

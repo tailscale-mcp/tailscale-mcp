@@ -102,7 +102,7 @@ pub type KnownValues = (&'static str, &'static [&'static str]);
 ///     }
 ///
 ///     /// The same six fields, so the same struct.
-///     "VIPServiceInfoPut" is VipServiceInfo;
+///     VipServiceInfoPut as "VIPServiceInfoPut" is VipServiceInfo;
 /// }
 /// ```
 ///

@@ -37,6 +37,11 @@ impl Recorded {
     pub fn authorization(&self) -> Option<&str> {
         self.headers.get("authorization").map(String::as_str)
     }
+
+    /// One header by name, which the caller gives lowercased.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.get(name).map(String::as_str)
+    }
 }
 
 /// What the fake sends back.
@@ -69,6 +74,20 @@ impl Response {
         Self {
             status,
             ..Self::json(body)
+        }
+    }
+
+    /// A body that is not JSON, under a content type of its own.
+    ///
+    /// The policy file is why: it is HuJSON, and a fake that could only send
+    /// JSON could not stand in for the one endpoint whose document is not.
+    pub fn text(content_type: &str, body: impl Into<String>) -> Self {
+        Self {
+            status: 200,
+            headers: vec![("content-type".to_owned(), content_type.to_owned())],
+            body: body.into(),
+            delay: std::time::Duration::ZERO,
+            chunked: false,
         }
     }
 

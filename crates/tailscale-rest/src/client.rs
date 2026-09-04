@@ -205,11 +205,21 @@ pub struct RequestBuilder<'a> {
     path: String,
     query: Vec<(String, String)>,
     headers: Vec<(String, String)>,
-    body: Option<Value>,
+    body: Option<Body>,
     budget: Duration,
     /// A failure that happened while the call was being built, kept until
     /// there is somewhere to return it from.
     broken: Option<ApiError>,
+}
+
+/// What a request carries, and how it is spelled on the wire.
+///
+/// Two shapes rather than one, because the policy endpoints take a document
+/// this server did not author and must not reformat.
+#[derive(Debug, Clone)]
+enum Body {
+    Json(Value),
+    Text { content_type: String, text: String },
 }
 
 impl RequestBuilder<'_> {
@@ -241,13 +251,28 @@ impl RequestBuilder<'_> {
     #[must_use]
     pub fn json(mut self, body: &impl Serialize) -> Self {
         match serde_json::to_value(body) {
-            Ok(value) => self.body = Some(value),
+            Ok(value) => self.body = Some(Body::Json(value)),
             Err(source) => {
                 self.broken.get_or_insert(ApiError::Config(format!(
                     "the request body could not be built: {source}"
                 )));
             }
         }
+        self
+    }
+
+    /// A body that is text rather than JSON, under a content type of its own.
+    ///
+    /// The policy file is the reason: it is HuJSON — JSON with comments and
+    /// trailing commas — and a caller who wrote one wants it sent as written,
+    /// comments included. Sending it as a JSON string would send the document
+    /// quoted and escaped, which is a different document.
+    #[must_use]
+    pub fn text(mut self, content_type: &str, body: impl Into<String>) -> Self {
+        self.body = Some(Body::Text {
+            content_type: content_type.to_owned(),
+            text: body.into(),
+        });
         self
     }
 
@@ -429,8 +454,14 @@ impl RequestBuilder<'_> {
         for (name, value) in &self.headers {
             sending = sending.header(name, value);
         }
-        if let Some(body) = &self.body {
-            sending = sending.json(body);
+        match &self.body {
+            Some(Body::Json(value)) => sending = sending.json(value),
+            Some(Body::Text { content_type, text }) => {
+                sending = sending
+                    .header(reqwest::header::CONTENT_TYPE, content_type)
+                    .body(text.clone());
+            }
+            None => {}
         }
 
         let response = sending.send().await.map_err(|source| {

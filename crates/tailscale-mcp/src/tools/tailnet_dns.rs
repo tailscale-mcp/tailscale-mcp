@@ -20,11 +20,12 @@
 //! because an agent that reads them will not have to learn it from a failure.
 
 use rmcp::schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
+use crate::tools::common::each_present;
 
 crate::tools! {
     /// Read the tailnet's global DNS nameservers. Answers `{"dns": [...]}`.
@@ -126,43 +127,17 @@ pub struct NameserversParams {
     pub dns: Vec<String>,
 }
 
-/// The body the nameserver endpoint takes, which is its answer's shape too.
-#[derive(Debug, Serialize)]
-struct Nameservers {
-    dns: Vec<String>,
-}
-
 async fn nameservers_replace(ctx: &ToolContext, params: NameserversParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let body = Nameservers {
-        dns: addresses(params.dns)?,
+    let body = tailscale_rest::models::dns::DnsNameserversRequest {
+        dns: Some(each_present("dns", params.dns)?),
+        unknown: Default::default(),
     };
     Ok(client
         .post(dns_path(client, "/nameservers"))
         .json(&body)
         .send_as::<Value>()
         .await?)
-}
-
-/// Nameserver addresses, trimmed, with nothing empty among them.
-///
-/// An empty string in the list is not the same as an empty list: the empty
-/// list is how a caller removes every nameserver, which is documented and
-/// deliberate, while a blank entry is a mistake the control plane would answer
-/// with a 400 that does not say which entry.
-fn addresses(given: Vec<String>) -> ToolResult<Vec<String>> {
-    given
-        .into_iter()
-        .map(|address| {
-            let trimmed = address.trim();
-            if trimmed.is_empty() {
-                return Err(ToolError::invalid_args(
-                    "`dns` has an empty entry; send `[]` to remove every nameserver",
-                ));
-            }
-            Ok(trimmed.to_owned())
-        })
-        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +193,7 @@ pub struct SearchPathsParams {
 async fn search_paths_replace(ctx: &ToolContext, params: SearchPathsParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let body = tailscale_rest::models::dns::DnsSearchPaths {
-        search_paths: Some(addresses(params.search_paths)?),
+        search_paths: Some(each_present("search_paths", params.search_paths)?),
         unknown: Default::default(),
     };
     Ok(client
@@ -301,7 +276,8 @@ async fn configuration_replace(
     // find that out.
     if !params.configuration.is_object() {
         return Err(ToolError::invalid_args(
-            "`configuration` is the DNS configuration document, an object with `nameservers`,              `splitDNS`, `searchPaths` and `preferences`",
+            "`configuration` is the DNS configuration document, an object with `nameservers`, \
+             `splitDNS`, `searchPaths` and `preferences`",
         )
         .with_hint("Call `tailnet_dns_configuration_get` and send back what it answered."));
     }
@@ -317,18 +293,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_blank_nameserver_is_refused_but_an_empty_list_is_not() {
-        // `[]` is documented: it is how every nameserver is removed. `[""]`
-        // is a caller that meant `[]` and got it wrong, and the control plane
-        // would answer that with a 400 naming nothing.
+    fn a_blank_entry_is_refused_naming_the_parameter_it_came_from() {
+        // Two tools share one check, and a refusal that named the wrong
+        // parameter would send a caller looking at an argument they did not
+        // pass. `[]` itself is documented and stays allowed: it is how a list
+        // is emptied.
         assert_eq!(
-            addresses(Vec::new()).expect("an empty list"),
+            each_present("dns", Vec::new()).expect("an empty list"),
             Vec::<String>::new()
         );
         assert_eq!(
-            addresses(vec![" 8.8.8.8 ".to_owned()]).expect("one address"),
+            each_present("dns", vec![" 8.8.8.8 ".to_owned()]).expect("one address"),
             ["8.8.8.8"]
         );
-        assert!(addresses(vec!["8.8.8.8".to_owned(), "  ".to_owned()]).is_err());
+        for what in ["dns", "search_paths"] {
+            let error = each_present(what, vec![String::new()]).expect_err("a blank entry");
+            let reported = serde_json::to_value(&error).expect("reportable");
+            assert!(
+                reported["message"]
+                    .as_str()
+                    .is_some_and(|m| m.contains(what)),
+                "{reported:#?}"
+            );
+        }
     }
 }

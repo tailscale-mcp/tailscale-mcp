@@ -26,7 +26,7 @@ use tailscale_rest::models::device::POSTURE_PROVIDERS;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{Done, path_segment, report};
+use crate::tools::common::{Done, one_of, path_segment, report};
 
 crate::tools! {
     /// List the posture integrations configured for the tailnet, with the
@@ -66,23 +66,16 @@ fn integration_path(id: &str) -> ToolResult<String> {
 
 /// The provider names the description knows, quoted into the refusal.
 ///
-/// Checked here rather than left to the control plane because the value is a
-/// documented string (Q60) whose list the drift test holds to the description:
-/// a name this accepts is a name the description knows. A provider Tailscale
-/// adds later is a refusal that names the list, which is a better failure than
-/// a 400 with no vocabulary in it.
+/// The refusal carries a hint the shared check does not: the passthrough is
+/// not a way round a provider Tailscale has added since this build, because
+/// there is no local command for it.
 fn checked_provider(provider: &str) -> ToolResult<String> {
-    if POSTURE_PROVIDERS.contains(&provider) {
-        return Ok(provider.to_owned());
-    }
-    Err(ToolError::invalid_args(format!(
-        "`provider` is one of {}; `{provider}` is none of them",
-        POSTURE_PROVIDERS.join(", ")
-    ))
-    .with_hint(
-        "If Tailscale has added a provider since this server was built, the passthrough is not \
-         a way round this — the integration has to be created in the admin console.",
-    ))
+    one_of("provider", provider, POSTURE_PROVIDERS).map_err(|error| {
+        error.with_hint(
+            "If Tailscale has added a provider since this server was built, the integration has \
+             to be created in the admin console.",
+        )
+    })
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

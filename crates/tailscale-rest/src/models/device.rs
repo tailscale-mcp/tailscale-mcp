@@ -175,6 +175,59 @@ model! {
         profile_pic_url: "profilePicUrl" => String,
     }
 
+    /// One share to create, as the request's array carries them.
+    CreateDeviceInvite as "POST /device/{deviceId}/device-invites body[]" {
+        /// Whether more than one person may accept this invite.
+        multi_use: "multiUse" => bool,
+        /// Whether the invited user may use the device as an exit node, where
+        /// it advertises as one.
+        allow_exit_node: "allowExitNode" => bool,
+        /// Omit to create an invite nobody is mailed, whose `inviteUrl` is
+        /// then shared by hand.
+        email: "email" => String,
+    }
+
+    /// What accepting a share sends: the invite, as a URL or as its bare id.
+    AcceptDeviceInvite as "POST /device-invites/-/accept body" {
+        invite: "invite" => String,
+    }
+
+    /// What accepting a share answers with.
+    ///
+    /// Three flat objects rather than the [`Device`] and [`User`] models
+    /// beside them: the description gives each its own small shape here, and a
+    /// caller reading `device.ipv4` would not find it on a `Device`.
+    AcceptedDeviceInvite as "POST /device-invites/-/accept 200" {
+        device: "device" => SharedDevice,
+        /// Whose device it is.
+        sharer: "sharer" => SharePartner,
+        /// Who now has it, which is the credential that made this call.
+        accepted_by: "acceptedBy" => SharePartner,
+    }
+
+    /// The device a share hands over, as the acceptance describes it.
+    SharedDevice as "POST /device-invites/-/accept 200.device" {
+        id: "id" => String,
+        os: "os" => String,
+        name: "name" => String,
+        fqdn: "fqdn" => String,
+        ipv4: "ipv4" => String,
+        ipv6: "ipv6" => String,
+        /// Whether this share carries the device's exit node.
+        include_exit_node: "includeExitNode" => bool,
+    }
+
+    /// One side of a share: whoever offered it, or whoever took it.
+    SharePartner as "POST /device-invites/-/accept 200.sharer" {
+        id: "id" => String,
+        display_name: "displayName" => String,
+        login_name: "loginName" => String,
+        profile_pic_url: "profilePicURL" => String,
+    }
+
+    /// The other side, which the description gives the same shape.
+    SharePartnerAcceptor as "POST /device-invites/-/accept 200.acceptedBy" is SharePartner;
+
     /// A configured link to a device posture provider.
     PostureIntegration {
         /// One of [`POSTURE_PROVIDERS`]. Required when creating, ignored when

@@ -318,75 +318,8 @@ fn resolve<'a>(reference: &str, all: &'a Map<String, Value>) -> &'a Value {
 const DEFERRED: &[(&str, &str)] = &[
     // Ticket 17 — devices and posture.
     // Ticket 18 — DNS and policy: modelled, and the rows gone.
-    // Ticket 19 — keys, users and invites.
-    (
-        "POST /device/{deviceId}/device-invites body[]",
-        "built from the invite parameters",
-    ),
-    (
-        "POST /device-invites/-/accept body",
-        "the `{invite}` wrapper",
-    ),
-    (
-        "POST /device-invites/-/accept 200",
-        "what accepting an invite answers",
-    ),
-    (
-        "POST /device-invites/-/accept 200.device",
-        "the device inside that answer",
-    ),
-    (
-        "POST /device-invites/-/accept 200.sharer",
-        "the sharer inside that answer",
-    ),
-    (
-        "POST /device-invites/-/accept 200.acceptedBy",
-        "the acceptor inside that answer",
-    ),
-    (
-        "GET /tailnet/{tailnet}/keys 200",
-        "the `{keys: […]}` envelope",
-    ),
-    (
-        "POST /tailnet/{tailnet}/keys body",
-        "built from `tailnet_key_create`",
-    ),
-    (
-        "PUT /tailnet/{tailnet}/keys/{keyId} body",
-        "built from `tailnet_key_update`",
-    ),
-    (
-        "GET /tailnet/{tailnet}/users 200",
-        "the `{users: […]}` envelope",
-    ),
-    (
-        "POST /users/{userId}/role body",
-        "built from `tailnet_user_set_role`",
-    ),
-    (
-        "POST /tailnet/{tailnet}/user-invites body[]",
-        "built from the invite parameters",
-    ),
-    (
-        "GET /tailnet/{tailnet}/contacts 200",
-        "the three contacts, keyed by kind",
-    ),
-    (
-        "PATCH /tailnet/{tailnet}/contacts/{contactType} body",
-        "built from `tailnet_contact_update`",
-    ),
-    (
-        "GET /tailnet/{tailnet}/oauth-apps 200",
-        "the `{oauthApps: […]}` envelope",
-    ),
-    (
-        "POST /tailnet/{tailnet}/oauth-apps body",
-        "built from `tailnet_oauth_app_create`",
-    ),
-    (
-        "PUT /tailnet/{tailnet}/oauth-apps/{appId} body",
-        "built from `tailnet_oauth_app_update`",
-    ),
+    // Ticket 19 — keys, users, invites and contacts: modelled, and the rows
+    // gone.
     // Ticket 20 — webhooks, services and logging.
     (
         "GET /tailnet/{tailnet}/webhooks 200",
@@ -856,8 +789,8 @@ fn the_walk_reaches_the_whole_document() {
     assert_eq!(schemas(&document).len(), 43, "named schemas");
     assert_eq!(objects.len(), 91, "objects walked: {:?}", objects.keys());
     assert_eq!(enums.len(), 33, "enumerations walked: {:?}", enums.keys());
-    assert_eq!(models().len(), 63, "models");
-    assert_eq!(DEFERRED.len(), 28, "deferrals");
+    assert_eq!(models().len(), 80, "models");
+    assert_eq!(DEFERRED.len(), 11, "deferrals");
 }
 
 /// The deferral table cannot outlive what it defers.

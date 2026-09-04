@@ -39,10 +39,14 @@ plane owns them and states them better than a guess would; both are in the tool
 descriptions, so an agent that reads them will not have to learn them from a
 failure.
 
-The one thing checked before sending is a blank entry in a list. `[]` is
-documented and deliberate: it is how every nameserver is removed. `[""]` is a
-caller that meant `[]`, and the control plane answers that with a 400 that
-names no entry.
+The one thing checked before sending is a blank entry in a list, by
+`common::each_present`, which names the parameter it was called for. `[]` is
+documented and deliberate: it is how a list is emptied. `[""]` is a caller that
+meant `[]`, and the control plane answers that with a 400 that names no entry.
+
+Three list checks that had grown three spellings — `fields`, the posture
+providers, and the policy formats — now go through one `common::one_of`, which
+quotes the constant the drift test holds to the description.
 
 `tailnet_dns_configuration_replace` takes the document as a `Value` rather than
 as `DnsConfiguration`, because the models live in `tailscale-rest` and do not
@@ -63,9 +67,19 @@ in for the one endpoint whose document is not.
 **The read carries a version.** `spec.md` names this as the one documented
 exception to answering with the control plane's body and nothing else, and the
 reason is mechanical: the version is an `ETag` header, and a header has nowhere
-to go in a body. So the read answers `{etag, format, policy}`. `details: true`
-asks for the control plane's own report instead, and is refused alongside
-`format` because the description says not to send an `Accept` with it.
+to go in a body. So the read answers `{etag, format, policy}`. The write
+answers the same shape for the same reason — its body is HuJSON too, and the
+new `etag` is what the next write quotes — which is a second exception, and is
+recorded as one (Q75).
+
+`details: true` asks for the control plane's own report instead. It is refused
+alongside `format`, because the description says not to send an `Accept` with
+it, and it answers `{etag, details}` rather than reusing `policy`: the report
+is not the policy, and a `format` of `"details"` would be a value that `format`
+does not accept back.
+
+The write is not declared idempotent, unusually for a replace: the guard makes
+the second call fail.
 
 **The write is guarded.** A write with no `If-Match` is a valid request to the
 control plane meaning "replace whatever is there", so the failure mode is a

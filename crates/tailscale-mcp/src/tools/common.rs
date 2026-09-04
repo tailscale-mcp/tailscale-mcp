@@ -267,6 +267,48 @@ impl Done {
     }
 }
 
+/// Hold a value to a documented string's known values, or refuse quoting them.
+///
+/// Q60 keeps the description's enumerations as `&[&str]` constants beside the
+/// models rather than as Rust enums, and the drift test holds each constant to
+/// the description — so a value this accepts is a value the description knows,
+/// and a refusal names today's whole list. Checked here rather than left to the
+/// control plane because a 400 with no vocabulary in it tells a caller nothing
+/// about what to send instead.
+///
+/// `what` is the caller's own parameter name, so a refusal points at the
+/// argument they wrote rather than at whatever the description calls it.
+pub fn one_of(what: &str, value: &str, allowed: &[&str]) -> ToolResult<String> {
+    if allowed.contains(&value) {
+        return Ok(value.to_owned());
+    }
+    Err(ToolError::invalid_args(format!(
+        "`{what}` is one of {}; `{value}` is none of them",
+        allowed.join(", ")
+    )))
+}
+
+/// Every entry of a list, trimmed, with nothing blank among them.
+///
+/// A blank entry is not an empty list: several endpoints here take an empty
+/// list as a documented instruction to remove everything, while `[""]` is a
+/// caller that meant that and got it wrong — and the control plane answers it
+/// with a 400 naming no entry.
+pub fn each_present(what: &str, given: Vec<String>) -> ToolResult<Vec<String>> {
+    given
+        .into_iter()
+        .map(|entry| {
+            let trimmed = entry.trim();
+            if trimmed.is_empty() {
+                return Err(ToolError::invalid_args(format!(
+                    "`{what}` has an empty entry; send `[]` to remove everything"
+                )));
+            }
+            Ok(trimmed.to_owned())
+        })
+        .collect()
+}
+
 /// Forward what the control plane answered, or say what was done if it said
 /// nothing.
 ///

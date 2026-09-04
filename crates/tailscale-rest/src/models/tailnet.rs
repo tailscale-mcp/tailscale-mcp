@@ -77,6 +77,33 @@ model! {
         updated: "updated" => String,
     }
 
+    /// Every OAuth app the tailnet has.
+    OAuthAppList as "GET /tailnet/{tailnet}/oauth-apps 200" {
+        oauth_apps: "oauthApps" => Vec<OAuthApp>,
+    }
+
+    /// What creating an OAuth app sends.
+    ///
+    /// The same five fields an update sends, and the description declares them
+    /// through the same shared schemas, so one struct covers both.
+    CreateOAuthAppRequest as "POST /tailnet/{tailnet}/oauth-apps body" {
+        /// 3 to 50 characters of `[A-Za-z0-9._-]`. Required.
+        name: "name" => String,
+        /// At most 300 characters.
+        description: "description" => String,
+        /// Required, at least one, each `https` — or `http` on localhost.
+        redirect_uris: "redirectURIs" => Vec<String>,
+        /// Required and non-empty, as `auth_keys:create` and the like.
+        scopes: "scopes" => Vec<String>,
+        /// Device attributes this app may set, each beginning `custom:`.
+        allowed_node_attributes: "allowedNodeAttributes" => Vec<String>,
+    }
+
+    /// What reconfiguring one sends, which is the same body. The secret is
+    /// neither regenerated nor returned.
+    UpdateOAuthAppRequest as "PUT /tailnet/{tailnet}/oauth-apps/{appId} body"
+        is CreateOAuthAppRequest;
+
     /// One tailnet belonging to an organization.
     OrganizationTailnet {
         id: "id" => String,

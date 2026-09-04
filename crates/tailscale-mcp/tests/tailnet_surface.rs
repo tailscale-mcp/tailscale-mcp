@@ -467,6 +467,115 @@ async fn reading_the_policy_answers_with_its_version_and_the_document_as_written
 }
 
 #[tokio::test]
+async fn the_json_spelling_is_asked_for_and_comes_back_parsed() {
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/acl",
+            Response::text("application/json", "{\"acls\": [{\"action\": \"accept\"}]}"),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok("tailnet_policy_get", json!({"format": "json"}))
+        .await;
+
+    assert_eq!(answer["format"], json!("json"));
+    assert_eq!(
+        answer["policy"],
+        json!({"acls": [{"action": "accept"}]}),
+        "asked for as JSON, so handed back parsed rather than as a string"
+    );
+    assert_eq!(
+        harness.control_plane().only_request().header("accept"),
+        Some("application/json")
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_detailed_report_is_asked_for_without_an_accept_and_is_its_own_shape() {
+    // Two rules in one call. The description: "If using this, do not supply an
+    // `Accept` parameter in the header." And the report is not the policy, so
+    // it does not arrive under `policy` — a `format` of `"details"` would be a
+    // value `format` does not accept back.
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/acl",
+            Response::json(json!({
+                "acl": "eyJhY2xzIjogW119",
+                "warnings": ["a group is not syncing"],
+                "errors": [],
+            })),
+        )
+        .await
+        .start()
+        .await;
+
+    let answer = harness
+        .call_ok("tailnet_policy_get", json!({"details": true}))
+        .await;
+
+    assert_eq!(
+        answer["details"]["warnings"][0],
+        json!("a group is not syncing")
+    );
+    assert_eq!(answer["details"]["acl"], json!("eyJhY2xzIjogW119"));
+    assert!(answer.get("policy").is_none(), "{answer:#?}");
+    assert!(answer.get("format").is_none(), "{answer:#?}");
+
+    let request = harness.control_plane().only_request();
+    assert_eq!(
+        request.query.get("details").map(String::as_str),
+        Some("true")
+    );
+    // "If using this, do not supply an `Accept` parameter in the header."
+    // What reaches the wire is the HTTP client's own `*/*`, which every client
+    // sends and which asks for nothing in particular. What matters is that
+    // this server named neither format: `application/hujson` alongside
+    // `details` is the combination the description warns about.
+    assert_eq!(
+        request.header("accept"),
+        Some("*/*"),
+        "no format should have been asked for: {:?}",
+        request.headers
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn asking_for_a_format_and_the_report_at_once_is_refused() {
+    let harness = Setup::new()
+        .toolsets("tailnet-policy")
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/acl",
+            Response::json(json!({"acl": "", "warnings": [], "errors": []})),
+        )
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err(
+            "tailnet_policy_get",
+            json!({"details": true, "format": "json"}),
+        )
+        .await;
+    assert_eq!(error["code"], json!("invalid_args"));
+    assert_eq!(harness.control_plane().request_count(), 0);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn a_policy_write_without_a_guard_never_reaches_the_control_plane() {
     // An answer is arranged that the call must not reach: without the check
     // the write would land, and a write with no `If-Match` overwrites whatever

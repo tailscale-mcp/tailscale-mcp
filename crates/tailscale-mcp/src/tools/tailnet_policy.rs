@@ -29,7 +29,7 @@ use tailscale_rest::models::policy::PREVIEW_SUBJECTS;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::report;
+use crate::tools::common::{one_of, report};
 
 crate::tools! {
     /// Read the tailnet policy file, with the version identifier a write has
@@ -55,8 +55,12 @@ crate::tools! {
     /// changed the policy since you read it.
     ///
     /// Validate first with `tailnet_policy_validate`, which changes nothing.
+    ///
+    /// Not idempotent, unusually for a replace: the guard makes the second
+    /// call fail. Once the write lands, the `etag` it was made with is stale
+    /// and the policy is no longer the untouched default.
     tailnet_policy_set => PolicySetParams, policy_set,
-        toolset: TailnetPolicy, tier: Destructive, idempotent: true;
+        toolset: TailnetPolicy, tier: Destructive;
 
     /// Show which rules of a candidate policy would match a user or an
     /// address, without saving anything.
@@ -88,19 +92,57 @@ const FORMATS: &[&str] = &["hujson", "json"];
 const HUJSON: &str = "application/hujson";
 const JSON: &str = "application/json";
 
-fn acl_path(client: &tailscale_rest::Client) -> String {
-    client.tailnet_path(None, "/acl")
+/// Which spelling a call is asking for.
+///
+/// A type rather than a string carried around, because the answer is decided
+/// three times over — which `Accept` to send, whether to parse what comes
+/// back, what to call the format in the report — and three separate matches on
+/// a string would be three places for `"hujson"` to be spelled wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Format {
+    HuJson,
+    Json,
 }
 
-/// The `Accept` a format asks for.
-fn accept(format: Option<&str>) -> ToolResult<&'static str> {
-    match format.unwrap_or("hujson") {
-        "hujson" => Ok(HUJSON),
-        "json" => Ok(JSON),
-        other => Err(ToolError::invalid_args(format!(
-            "`format` is one of {}; `{other}` is neither",
-            FORMATS.join(" or ")
-        ))),
+impl Format {
+    /// HuJSON is the default because it is the endpoint's: without an `Accept`
+    /// the control plane answers HuJSON.
+    fn parse(given: Option<&str>) -> ToolResult<Self> {
+        match given {
+            None => Ok(Self::HuJson),
+            Some(value) => match one_of("format", value, FORMATS)?.as_str() {
+                "json" => Ok(Self::Json),
+                _ => Ok(Self::HuJson),
+            },
+        }
+    }
+
+    fn accept(self) -> &'static str {
+        match self {
+            Self::HuJson => HUJSON,
+            Self::Json => JSON,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::HuJson => "hujson",
+            Self::Json => "json",
+        }
+    }
+
+    /// Read a body in this format. HuJSON is not JSON to parse, so it stays a
+    /// string; JSON was asked for as JSON and is handed back parsed.
+    fn read(self, text: String) -> ToolResult<Value> {
+        match self {
+            Self::HuJson => Ok(Value::String(text)),
+            Self::Json => serde_json::from_str(&text).map_err(|source| {
+                ToolError::new(
+                    crate::error::ErrorCode::ApiError,
+                    format!("the policy was asked for as JSON and did not parse as JSON: {source}"),
+                )
+            }),
+        }
     }
 }
 
@@ -122,71 +164,71 @@ pub struct PolicyGetParams {
     pub details: Option<bool>,
 }
 
-/// What a read answers with.
+/// What a read or a write answers with.
 ///
 /// The version is why this is a report rather than the body: a caller needs it
-/// to write, and it arrives as a header.
+/// to write, and it arrives as a header (Q75).
 #[derive(Debug, Serialize)]
 struct PolicyDocument {
     /// The version identifier, to be quoted back by a write. Absent if the
     /// control plane sent no `ETag`, which makes a guarded write impossible.
     #[serde(skip_serializing_if = "Option::is_none")]
     etag: Option<String>,
-    /// Which spelling `policy` is in: `hujson`, `json`, or `details` for the
-    /// control plane's report.
+    /// Which spelling `policy` is in, as `format` would be given back.
     format: &'static str,
-    /// The document itself: a string for `hujson`, an object for the other
-    /// two.
+    /// The document itself: a string for `hujson`, an object for `json`.
     policy: Value,
+}
+
+/// What `details: true` answers with instead.
+///
+/// A separate shape because it is a different thing — the control plane's
+/// report *about* the policy, not the policy — and because a `format` field
+/// saying `"details"` would be a value that `format` does not accept back.
+#[derive(Debug, Serialize)]
+struct PolicyReport {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    etag: Option<String>,
+    /// The control plane's own report: `acl` base64-encoded, beside the
+    /// `warnings` and `errors` it found.
+    details: Value,
 }
 
 async fn policy_get(ctx: &ToolContext, params: PolicyGetParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let detailed = params.details.unwrap_or(false);
-    if detailed && params.format.is_some() {
-        return Err(ToolError::invalid_args(
-            "`details` and `format` cannot be given together: the detailed report is always \
-             JSON, and the control plane refuses an `Accept` alongside `details`",
-        ));
-    }
-
-    let request = client.get(acl_path(client));
-    if detailed {
+    let acl = client.tailnet_path(None, "/acl");
+    if params.details.unwrap_or(false) {
+        if params.format.is_some() {
+            return Err(ToolError::invalid_args(
+                "`details` and `format` cannot be given together: the detailed report is always \
+                 JSON, and the control plane refuses an `Accept` alongside `details`",
+            ));
+        }
         // Deliberately no `Accept`: the description says not to send one with
         // `details`, and the report is JSON whatever a caller would ask for.
-        let answer = request
+        let answer = client
+            .get(acl)
             .query("details", true)
             .send_answer::<Value>()
             .await?;
-        return report(PolicyDocument {
+        return report(PolicyReport {
             etag: answer.etag,
-            format: "details",
-            policy: answer.raw,
+            details: answer.value,
         });
     }
 
     // Text, not JSON, because HuJSON is not JSON to parse — and the same call
-    // serves `json`, whose body happens to parse, because parsing it here and
-    // handing back an object would drop nothing but would need a second path
-    // through this function for no gain.
-    let format = params.format.as_deref().unwrap_or("hujson");
-    let body = request
-        .header("Accept", accept(Some(format))?)
+    // serves `json`, whose body happens to parse.
+    let format = Format::parse(params.format.as_deref())?;
+    let body = client
+        .get(acl)
+        .header("Accept", format.accept())
         .send_text()
         .await?;
-    let policy = match format {
-        "json" => serde_json::from_str(&body.text).map_err(|source| {
-            ToolError::new(
-                crate::error::ErrorCode::ApiError,
-                format!("the policy was asked for as JSON and did not parse as JSON: {source}"),
-            )
-        })?,
-        _ => Value::String(body.text),
-    };
     report(PolicyDocument {
         etag: body.etag,
-        format: if format == "json" { "json" } else { "hujson" },
-        policy,
+        format: format.as_str(),
+        policy: format.read(body.text)?,
     })
 }
 
@@ -250,19 +292,12 @@ fn quoted(value: &str) -> String {
 async fn policy_set(ctx: &ToolContext, params: PolicySetParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let guard = if_match(params.etag.as_deref(), params.over_default.unwrap_or(false))?;
-    let request = client.post(acl_path(client)).header("If-Match", guard);
-    // The document's spelling decides the content type, and nothing here
-    // converts one to the other: a HuJSON string sent as JSON would arrive
-    // quoted and escaped, which is a different document.
-    let request = match &params.policy {
-        Value::String(text) => request.text(HUJSON, text.clone()),
-        object @ Value::Object(_) => request.json(object),
-        _ => {
-            return Err(ToolError::invalid_args(
-                "`policy` is a HuJSON document as a string or a policy object; it is neither",
-            ));
-        }
-    };
+    let request = with_policy(
+        client
+            .post(client.tailnet_path(None, "/acl"))
+            .header("If-Match", guard),
+        &params.policy,
+    )?;
     // No `Accept`, so the answer is HuJSON whichever spelling the body was in
     // — the endpoint's own default, and the format the next write will want to
     // start from. The new `etag` is the reason to answer at all: without it a
@@ -270,7 +305,7 @@ async fn policy_set(ctx: &ToolContext, params: PolicySetParams) -> ToolResult<Va
     let body = request.send_text().await?;
     report(PolicyDocument {
         etag: body.etag,
-        format: "hujson",
+        format: Format::HuJson.as_str(),
         policy: Value::String(body.text),
     })
 }
@@ -293,18 +328,12 @@ pub struct PolicyPreviewParams {
 
 async fn policy_preview(ctx: &ToolContext, params: PolicyPreviewParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    if !PREVIEW_SUBJECTS.contains(&params.subject_type.as_str()) {
-        return Err(ToolError::invalid_args(format!(
-            "`subject_type` is one of {}; `{}` is neither",
-            PREVIEW_SUBJECTS.join(" or "),
-            params.subject_type
-        )));
-    }
+    let subject_type = one_of("subject_type", &params.subject_type, PREVIEW_SUBJECTS)?;
     let request = client
         .post(client.tailnet_path(None, "/acl/preview"))
         // The API's own spelling of both, which ADR-0004 keeps: our parameters
         // are snake_case and the query is Tailscale's.
-        .query("type", &params.subject_type)
+        .query("type", &subject_type)
         .query("previewFor", &params.preview_for);
     Ok(with_policy(request, &params.policy)?
         .send_as::<Value>()
@@ -447,9 +476,12 @@ mod tests {
 
     #[test]
     fn a_format_the_endpoint_does_not_have_is_refused_with_the_two_it_does() {
-        assert_eq!(accept(None).expect("the default"), HUJSON);
-        assert_eq!(accept(Some("json")).expect("json"), JSON);
-        let error = accept(Some("yaml")).expect_err("not a format");
+        assert_eq!(Format::parse(None).expect("the default"), Format::HuJson);
+        assert_eq!(Format::parse(Some("json")).expect("json"), Format::Json);
+        assert_eq!(Format::Json.accept(), JSON);
+        assert_eq!(Format::HuJson.accept(), HUJSON);
+
+        let error = Format::parse(Some("yaml")).expect_err("not a format");
         let reported = serde_json::to_value(&error).expect("reportable");
         for format in FORMATS {
             assert!(
@@ -459,5 +491,25 @@ mod tests {
                 "{reported:#?}"
             );
         }
+    }
+
+    #[test]
+    fn a_hujson_document_is_never_parsed_and_a_json_one_always_is() {
+        let commented = "{\n  // kept\n  \"acls\": [],\n}".to_owned();
+        assert_eq!(
+            Format::HuJson.read(commented.clone()).expect("text"),
+            json!(commented),
+            "parsing it would fail, and reformatting it would lose the comment"
+        );
+        assert_eq!(
+            Format::Json
+                .read("{\"acls\": []}".to_owned())
+                .expect("json"),
+            json!({"acls": []})
+        );
+        assert!(
+            Format::Json.read(commented).is_err(),
+            "JSON was asked for and something else arrived"
+        );
     }
 }

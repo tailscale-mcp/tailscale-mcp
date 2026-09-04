@@ -28,7 +28,7 @@ use tailscale_rest::models::device::DEVICE_FIELDS;
 
 use crate::context::ToolContext;
 use crate::error::{ToolError, ToolResult};
-use crate::tools::common::{Done, answered_or, path_segment, report};
+use crate::tools::common::{Done, answered_or, one_of, path_segment, report};
 
 crate::tools! {
     /// List the devices in the tailnet. Answers with the control plane's own
@@ -311,18 +311,11 @@ fn window(answer: Value, limit: Option<usize>, offset: usize) -> ToolResult<Valu
 }
 
 /// `fields` is a documented string, so the value is checked against the list
-/// beside the model rather than sent onward to be rejected. The list is the
-/// one the drift test holds to the description, so a value this accepts is a
-/// value the description knows.
-fn checked_fields(fields: Option<&str>) -> ToolResult<Option<&str>> {
-    match fields {
-        None => Ok(None),
-        Some(value) if DEVICE_FIELDS.contains(&value) => Ok(Some(value)),
-        Some(value) => Err(ToolError::invalid_args(format!(
-            "`fields` is one of {}; `{value}` is neither",
-            DEVICE_FIELDS.join(" or ")
-        ))),
-    }
+/// beside the model rather than sent onward to be rejected.
+fn checked_fields(fields: Option<&str>) -> ToolResult<Option<String>> {
+    fields
+        .map(|value| one_of("fields", value, DEVICE_FIELDS))
+        .transpose()
 }
 
 // ---------------------------------------------------------------------------
@@ -724,14 +717,16 @@ mod tests {
     fn the_field_selection_is_checked_against_the_list_beside_the_model() {
         assert_eq!(checked_fields(None).expect("absent is fine"), None);
         assert_eq!(
-            checked_fields(Some("all")).expect("a known value"),
+            checked_fields(Some("all"))
+                .expect("a known value")
+                .as_deref(),
             Some("all")
         );
         let error = checked_fields(Some("everything")).expect_err("not a known value");
         assert!(
             serde_json::to_value(&error).expect("reportable")["message"]
                 .as_str()
-                .is_some_and(|m| m.contains("all or default")),
+                .is_some_and(|m| m.contains("all") && m.contains("default")),
             "the refusal should quote the values: {error:?}"
         );
     }

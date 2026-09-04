@@ -90,4 +90,55 @@ model! {
         /// The tags every device registered with this key is given.
         tags: "tags" => Vec<String>,
     }
+
+    // -----------------------------------------------------------------------
+    // The shapes the routes carry, which the description spells out where they
+    // are used rather than naming in `components/schemas`.
+    // -----------------------------------------------------------------------
+
+    /// Every key the credential may see.
+    KeyList as "GET /tailnet/{tailnet}/keys 200" {
+        keys: "keys" => Vec<Key>,
+    }
+
+    /// What creating a key sends.
+    ///
+    /// Not [`Key`] with the read-only fields dropped: the two disagree about
+    /// `keyType`, which narrows to [`CREATE_KEY_TYPES`] here, and about
+    /// `capabilities`, which a create must send and a listing never returns.
+    CreateKeyRequest as "POST /tailnet/{tailnet}/keys body" {
+        /// One of [`CREATE_KEY_TYPES`]. An `api` token cannot be minted here.
+        key_type: "keyType" => String,
+        /// Up to 50 characters of letters, digits, hyphens and spaces.
+        description: "description" => String,
+        capabilities: "capabilities" => KeyCapabilities,
+        /// Auth keys only; how long the key stays usable.
+        expiry_seconds: "expirySeconds" => i64,
+        /// OAuth clients and federated identities: what their tokens may do.
+        scopes: "scopes" => Vec<String>,
+        /// Required when `scopes` includes `devices:core` or `auth_keys`.
+        tags: "tags" => Vec<String>,
+        /// Federated identities only, all four of these.
+        issuer: "issuer" => String,
+        subject: "subject" => String,
+        audience: "audience" => String,
+        custom_claim_rules: "customClaimRules" => BTreeMap<String, String>,
+    }
+
+    /// What reconfiguring an OAuth client or a federated identity sends.
+    ///
+    /// The same fields as a create minus the three an existing key cannot
+    /// change: its capabilities, its expiry, and being an auth key at all.
+    UpdateKeyRequest as "PUT /tailnet/{tailnet}/keys/{keyId} body" {
+        /// One of [`UPDATE_KEY_TYPES`]: an auth key or an API token cannot be
+        /// reconfigured here.
+        key_type: "keyType" => String,
+        description: "description" => String,
+        scopes: "scopes" => Vec<String>,
+        tags: "tags" => Vec<String>,
+        issuer: "issuer" => String,
+        subject: "subject" => String,
+        audience: "audience" => String,
+        custom_claim_rules: "customClaimRules" => BTreeMap<String, String>,
+    }
 }

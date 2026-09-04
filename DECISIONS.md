@@ -823,3 +823,21 @@ Both guards together is refused rather than resolved because they say different 
 A stale version comes back as `conflict` with a hint naming `tailnet_policy_get`, which is the whole remedy. The mapping is in `From<ApiError>` rather than in the tool because 412 belongs to no other endpoint in the description, so a general mapping is a true one.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/tailnet_policy.rs`, `crates/tailscale-mcp/src/error.rs`
+
+## Q75 — build/ticket-18 — deviation
+
+**Question:** `spec.md` and ticket 18 both call the policy *read* "the single documented exception to forwarding the response verbatim, because the identifier is a header". `tailnet_policy_set` answers with the same `{etag, format, policy}` report. Is that a second exception, and is it allowed?
+**Options considered:** answer the body alone / answer the report, and record the exception / answer nothing but a `Done`, as the empty-body writes do
+**Chosen:** The report, and this entry.
+**Decided-by:** agent
+**Justification:** The write cannot forward its body verbatim for the same mechanical reason the read cannot. `POST /acl` answers with the policy file, which is HuJSON — text, not JSON — so there is no body to forward into structured content. It has to be put somewhere and named, and naming it `policy` beside the format it is in is the same shape the read already gives. Two shapes for one document would be the worse outcome.
+
+The `ETag` is the second half. The control plane sends a new one with the write, and it is what a caller's *next* write has to quote; dropped, a caller making two edits has to read in between for a value it was already handed.
+
+Answering a `Done` was rejected because the write does return the document, and Q67's reasoning is about endpoints that return nothing.
+
+So the exception is not new in kind — it is the same exception, on the second endpoint that carries the same document. `spec.md`'s sentence is left as written, because it accurately describes the one case it was written about; this entry is where the second is recorded.
+
+Separately, and found by the same review: the write is no longer declared idempotent. A guarded replace cannot be repeated — the second call fails, because the `etag` it quoted is now stale and the policy is no longer the untouched default — and `idempotent: true` was a claim the tool could not keep.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_policy.rs`

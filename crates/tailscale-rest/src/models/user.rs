@@ -114,4 +114,50 @@ model! {
         fallback_email: "fallbackEmail" => String,
         needs_verification: "needsVerification" => bool,
     }
+
+    // -----------------------------------------------------------------------
+    // The shapes the routes carry.
+    // -----------------------------------------------------------------------
+
+    /// The tailnet's users, filtered by whatever the query asked for.
+    UserList as "GET /tailnet/{tailnet}/users 200" {
+        users: "users" => Vec<User>,
+    }
+
+    /// What changing somebody's role sends.
+    UserRole as "POST /users/{userId}/role body" {
+        /// One of [`USER_ROLES`]. A user-owned credential cannot change its
+        /// own holder's role.
+        role: "role" => String,
+    }
+
+    /// One invitation to create, as the request's array carries them.
+    ///
+    /// A create takes a list of these, so several people can be invited in one
+    /// call and each gets its own role.
+    CreateUserInvite as "POST /tailnet/{tailnet}/user-invites body[]" {
+        /// One of [`INVITE_ROLES`], which has no `owner` in it.
+        role: "role" => String,
+        /// Omit to create an invite nobody is mailed, whose `inviteUrl` is
+        /// then shared by hand.
+        email: "email" => String,
+    }
+
+    /// All three contacts at once, keyed by kind.
+    ///
+    /// Not a map, because the kinds are fixed: an answer with a fourth key
+    /// would be the description having changed rather than a tailnet having
+    /// more contacts.
+    Contacts as "GET /tailnet/{tailnet}/contacts 200" {
+        account: "account" => Contact,
+        support: "support" => Contact,
+        security: "security" => Contact,
+    }
+
+    /// What changing one contact sends. The kind is in the path.
+    UpdateContact as "PATCH /tailnet/{tailnet}/contacts/{contactType} body" {
+        /// Setting this mails a verification link; until it is followed the
+        /// old address stays in use and this one is the `fallbackEmail`.
+        email: "email" => String,
+    }
 }

@@ -1464,3 +1464,118 @@ Recorded because it means one row of `COVERED` — `configure sysext status` —
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/tests/contract.rs`, `crates/tailscale-mcp/src/tools/local_status.rs`
+
+## Q106 — build/ticket-28 — tradeoff
+
+**Question:** Rust has two tools that do most of this ticket on their own: `cargo-dist` builds and uploads release binaries, and `release-plz` bumps versions, writes changelogs and publishes. Both work by generating GitHub Actions workflows that lean on third-party actions.
+
+**Options considered:** `cargo-dist` and `release-plz` / one of them and hand-write the rest / hand-written workflows using only what is already trusted
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** Q100 already refused third-party actions in CI, for a server that holds a control-plane credential. A release workflow is the *worse* place to relax that: it is the job with a registry token and the power to publish under this project's name, so anything running in it can put code on other people's machines. Generated workflows also mean the thing that ships is not the thing anybody read.
+
+What is left after removing them turns out to be small, because the pieces already exist:
+
+- `cargo publish --workspace` uploads all three crates in dependency order and refuses to start if any of them would fail. It is one command, it is cargo's own, and it answers two of this ticket's four criteria by itself. Verified here: it packages and would upload `tailscale-cli`, then `tailscale-rest`, then `tailscale-mcp`.
+- `cargo publish --workspace --dry-run` reports exactly that and uploads nothing, which is the third criterion.
+- `git-cliff` reads the commit messages and both renders the changelog and works out the next version. It is a Rust binary installed with `cargo install --locked`, not an action — and it is a developer tool, not a release-time one: the release notes are the changelog's newest section, taken out of the committed file. Generating them again at tag time would date the release differently from the file the repository ships, so the release page and the changelog would disagree about the same release.
+- `gh` is already on every runner.
+
+The version bump lives in `scripts/prepare-release.sh` rather than in a workflow, because it is the step whose output a person has to read before it goes anywhere: it edits the manifest and the changelog and then stops, leaving the commit and the tag to a human. It can also be run and tested locally, which a workflow-only step cannot. Pushing the tag is what starts the release.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/release.yml`, `scripts/prepare-release.sh`, `cliff.toml`
+
+## Q107 — build/ticket-28 — deviation
+
+**Question:** The ticket asks for version and changelog management "driven by commit messages in the conventional form". None of the twenty-five commits in this repository is in that form: they read "End-to-end tests against a real node and tailnet (ticket 26)", not "feat: …".
+
+**Options considered:** rewrite the history into the conventional form / drop unconventional commits from the changelog / keep them, and adopt the convention from here on
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** Rewriting history to satisfy a tool is the wrong way round, and it would invalidate every commit hash this journal and the tickets refer to.
+
+Dropping them is worse than it sounds: the first release's changelog would be empty, or nearly, because the entire 1.0.0 changelog *is* the pre-convention history. A release whose notes silently omit the work that built it is a worse artefact than an untidy one.
+
+So `cliff.toml` sets `filter_unconventional = false` and ends its parsers with a catch-all that groups everything else under "Changes", which is what the 1.0.0 section reads as: the list of what was built, in order. Commits from here on are conventional, and from the second release the grouping is the usual one.
+
+The bump rules are checked rather than assumed. Against a clone tagged `v1.0.0`: `fix:` gives 1.0.1, `feat:` 1.1.0, `feat!:` 2.0.0, `docs:` and `chore:` 1.0.1, and a feature and a fix together give 1.1.0. `[bump] initial_tag = "v1.0.0"` is what makes the first release 1.0.0 rather than git-cliff's default 0.1.0, which is the number ADR-0005 exists to argue against.
+
+**Outcome:** applied
+
+**Ref:** `cliff.toml`
+
+## Q108 — build/ticket-28 — interpretation
+
+**Question:** "A dry run publishes nothing and reports what it would publish" needs a way to ask for one. The obvious shape is a boolean input on the workflow, defaulting to true.
+
+**Options considered:** a `dry_run` input on the workflow / a separate rehearsal workflow / the trigger decides — a tag releases, a run started by hand rehearses
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** A boolean that defaults to safe is a boolean somebody will get wrong in the direction that is not safe, and it puts the most consequential choice in this repository behind a dropdown. A tag is already the deliberate act — it is signed by a person, it names the version, and a fork cannot push one here. Letting it be the whole signal means there is no way to publish by accident and no way to rehearse by accident either.
+
+So: a tag builds, rehearses, releases and publishes; a run started by hand builds and rehearses and stops. The rehearsal is not optional on the tag path either — `cargo publish --workspace --dry-run` runs first every time, so the real upload is never the first time anything has been packaged.
+
+The rehearsal also runs the suite, because nothing else would. `ci.yml` triggers on a push to main and on a pull request, and a tag is neither, so a tag pointing at a commit that was never tested would otherwise sail through. One platform is enough there: the matrix has already had both on main, and what this catches is a tag pointing somewhere unexpected. It also checks the registry token exists, so a tag missing it fails before a release has been created rather than after.
+
+The jobs are ordered by what can be taken back. A crates.io upload cannot be; a GitHub release can be deleted and a tag can be moved. So the order is build, rehearse, create the release, and only then publish — everything reversible has already succeeded before the one irreversible step runs.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/release.yml`
+
+## Q109 — build/ticket-28 — tradeoff
+
+**Question:** "The supported platforms" for a binary. CI tests on Linux and macOS and builds on Windows, but a binary also has an architecture, and the archive has a format that is conventionally different on Windows.
+
+**Options considered:** the three CI platforms at x86_64 only / add the two Arm targets / add a static musl build as well
+
+**Chosen:** the middle one: five targets — Linux and macOS at both x86_64 and aarch64, Windows at x86_64 — each on its own native runner.
+
+**Decided-by:** agent
+
+**Justification:** Apple Silicon is the common Mac and Arm servers are no longer unusual, so shipping x86_64 only would mean most macOS users run an emulated binary. GitHub has native runners for all five, so nothing is cross-compiled and no cross toolchain has to be trusted or debugged — which matters here because `ring` builds C and cross-compiling it needs a sysroot for the other side.
+
+A static musl build is left to ticket 29, where the container image is: it is a distribution question, not a release-artefact one, and nothing yet needs it.
+
+One archive shape for all five, `tar.gz`, rather than `zip` for Windows. `tar` is on every runner and Windows has been able to extract this since Windows 10; a second archiver written in another shell is a second thing to get wrong on the platform that is best-effort anyway.
+
+One `SHA256SUMS` rather than a `.sha256` beside each archive: it is the format `sha256sum -c` reads, and ticket 29's launcher then has one file to fetch and one line to find.
+
+Two things this leaves for ticket 29. The Linux binaries are linked against the runner's glibc, so they will not run on a musl base — the container image has to build its own binary rather than unpack a release archive, which is where the musl question belongs anyway. And `macos-13`, the obvious label for the Intel Mac, was retired in December 2025; `macos-15-intel` is the replacement and the last x86_64 macOS image GitHub will offer, going away itself in August 2027, at which point that target goes with it.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/release.yml`
+
+## Q110 — build/ticket-28 — gate-resolution
+
+**Question:** Q107 says commits from here on are in the conventional form, and everything about the next version follows from that. Nothing made it so: `cliff.toml`'s catch-all — the parser that keeps the pre-1.0.0 history in the changelog — absorbs any subject at all, so a feature written as prose becomes a patch release and says nothing about it.
+
+**Options considered:** leave it to discipline / have `scripts/prepare-release.sh` warn when it finds unconventional commits / check the subjects in continuous integration
+
+**Chosen:** the third.
+
+**Decided-by:** agent
+
+**Justification:** Discipline is what the catch-all silently forgives, and forgives in the direction that loses information: an unconventional subject is not rejected, it is quietly filed under "Changes" and contributes nothing to the version. A warning at release time comes too late — the message is already pushed, and fixing it means rewriting history.
+
+So `scripts/check-commit-messages.sh` holds every commit after a named baseline to `type(scope)!: subject`, with the types `cliff.toml` gives a group to, and `ci.yml` runs it. The baseline is the commit this convention starts at, written down in the script, because the twenty-six commits before it cannot pass and should not have to: they were written before the convention existed. Merge commits are exempt — the subject is git's, not an author's.
+
+It is a script rather than steps in the workflow so that it can be run and tested from a shell, which is how its first version was found to be broken: the pattern was anchored with `^` and then interpolated after a space, so it matched nothing and the job passed on everything.
+
+**A third credential the maintainer has to supply.** The spec's further notes name two — a read-only control-plane credential for the end-to-end tests, and an npm token for the packaging milestone. Publishing to crates.io needs a third, `CARGO_REGISTRY_TOKEN`, and nothing said so. Rather than leave it to be discovered when the first tag fails at the last job, the rehearsal checks for it on a tag and fails before anything has been created.
+
+**Outcome:** applied
+
+**Ref:** `scripts/check-commit-messages.sh`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`

@@ -1,9 +1,10 @@
 //! Where the repository is.
 //!
-//! Two of the checks in this directory are about the repository rather than
-//! about a crate — that no fixture carries a real identity, and that no
-//! workflow needs a credential — and both have to walk up out of the crate
-//! they are compiled into to find it. This is that walk, in one place.
+//! Some of the checks in this directory are about the repository rather than
+//! about a crate — that no fixture carries a real identity, that no workflow
+//! needs a credential, that the release is at one version — and each has to
+//! walk up out of the crate it is compiled into to find it. This is that walk,
+//! in one place.
 
 use std::path::{Path, PathBuf};
 

@@ -2,8 +2,9 @@
 #
 # Linux and macOS are the first-class platforms and run the whole suite;
 # Windows is best-effort, so it builds and is not tested (spec, "out of
-# scope"). The minimum supported toolchain, linting, formatting and the
-# dependency licence policy each get their own job, so a failure names itself.
+# scope"). The minimum supported toolchain, linting, formatting, commit-message
+# form and the dependency licence policy each get their own job, so a failure
+# names itself.
 #
 # Nothing here reads a secret and nothing here has write access. That is what
 # makes a pull request from a fork — which GitHub gives no secrets and a
@@ -136,6 +137,22 @@ jobs:
         run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+
+  commits:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history: the check walks from the commit where the
+          # convention was adopted to here.
+          fetch-depth: 0
+      # The next version and the changelog are both read out of these subjects,
+      # so a subject that does not say what kind of change it is becomes a patch
+      # release with an entry nobody can act on.
+      - name: Check the commit messages
+        run: scripts/check-commit-messages.sh
 
   format:
     name: Format

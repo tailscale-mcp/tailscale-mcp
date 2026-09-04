@@ -1,0 +1,216 @@
+# Release.
+#
+# A tag is a release; a run started by hand is a rehearsal. Both build a binary
+# for every supported platform and both report what would be published; only
+# the tag creates the GitHub release and uploads the crates.
+#
+# This workflow is not reachable from a pull request — a fork cannot push a tag
+# to this repository — which is why it may hold what `ci.yml` may not: a token,
+# and one that can write. `ci_needs_no_credential` draws that line by asking
+# what a fork's pull request can reach, not by asking what file it is in.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          # `macos-13` was retired in December 2025. `macos-15-intel` is the
+          # replacement and the last x86_64 macOS image GitHub will offer; it
+          # goes away in August 2027, and this target goes with it.
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      # A tag names the version; a rehearsal takes it from the manifest. On a
+      # tag the two have to agree, because a release whose archives are named
+      # for one version and whose crates carry another is worse than no
+      # release.
+      - name: Settle the version
+        shell: bash
+        run: |
+          manifest=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [ "$version" != "$manifest" ]; then
+              echo "tag $GITHUB_REF_NAME does not match the manifest's $manifest" >&2
+              exit 1
+            fi
+          else
+            version="$manifest"
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Install the stable toolchain
+        shell: bash
+        run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }} --no-self-update --default
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # Only the server ships. `tailscale-stub` belongs to the tests and is
+      # excluded from the published package as well.
+      - name: Build
+        shell: bash
+        run: cargo build --release --locked --target ${{ matrix.target }} -p tailscale-mcp
+      # One archive shape for all five, because `tar` is on every runner and a
+      # second archiver written in another shell is a second thing to get
+      # wrong. Windows can extract this since Windows 10.
+      - name: Archive
+        shell: bash
+        run: |
+          staging="tailscale-mcp-$VERSION-${{ matrix.target }}"
+          mkdir "$staging"
+          binary="target/${{ matrix.target }}/release/tailscale-mcp"
+          [ -f "$binary.exe" ] && binary="$binary.exe"
+          cp "$binary" README.md LICENSE "$staging/"
+          tar czf "$staging.tar.gz" "$staging"
+          echo "ARCHIVE=$staging.tar.gz" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+  rehearse:
+    name: Test and rehearse the publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update --default
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # `ci.yml` runs on a push to main and on a pull request, and a tag is
+      # neither, so without this a tag on a commit nobody tested would be
+      # released. One platform: the matrix has already had both on main, and
+      # what this catches is a tag pointing somewhere unexpected.
+      - name: Test
+        run: cargo test --workspace --all-targets --locked
+      # A tag that reached `publish` without a registry token would leave a
+      # GitHub release with no crates behind it. Fail here instead, while
+      # nothing has been created yet.
+      - name: Check the registry token is there
+        if: github.event_name == 'push'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "CARGO_REGISTRY_TOKEN is not set on this repository." >&2
+            echo "Add a crates.io token that may publish tailscale-cli," >&2
+            echo "tailscale-rest and tailscale-mcp as a repository secret." >&2
+            exit 1
+          fi
+      # Always, on a tag as well as by hand: it packages all three crates,
+      # builds each from its package rather than from the working tree, and
+      # names what it would upload — so the real thing is never the first time
+      # any of that is tried. A run started by hand stops here.
+      - name: Report what would be published
+        run: cargo publish --workspace --dry-run --locked
+
+  release:
+    name: GitHub release
+    needs: [build, rehearse]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # The one job here that writes anything to this repository.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      # One `SHA256SUMS`, in the format `sha256sum -c` reads, so that anything
+      # downloading a binary — the npm launcher included — has one file to
+      # fetch and one line to check.
+      - name: Checksum
+        working-directory: artifacts
+        run: sha256sum *.tar.gz > SHA256SUMS
+      # The notes are the changelog's newest section, taken out of the file
+      # rather than generated again: a second generator run on a different day
+      # would date the release differently from the file the repository ships,
+      # and the release page and the changelog would disagree about the same
+      # release. `scripts/prepare-release.sh` wrote that section, and
+      # `release_is_one_version.rs` — which the job before this one ran —
+      # checks it names the version going out.
+      - name: Write the release notes
+        run: |
+          newest=$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')
+          if [ "$newest" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "the changelog's newest release is $newest, not $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          awk '/^## /{n++; if (n>1) exit; next} n==1' CHANGELOG.md > NOTES.md
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file NOTES.md \
+            --verify-tag \
+            artifacts/*
+
+  publish:
+    name: Publish to crates.io
+    # Last, and only after the release exists: a crates.io upload cannot be
+    # taken back, and a GitHub release can. Everything that can be undone
+    # happens first.
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update --default
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # `--workspace` uploads the three in dependency order and refuses to
+      # start if any of them would fail, which is what keeps them at one
+      # version.
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --workspace --locked

@@ -1,0 +1,70 @@
+# Changelog generation. The changelog and the version bump both come from the
+# commit messages, so the rules for reading them live here and nowhere else.
+#
+# Conventional commits from the first release onwards (DECISIONS Q106): the
+# history before 1.0.0 was written before this file existed and is not in that
+# form, so unconventional commits are kept rather than dropped — a first
+# release whose changelog silently omitted the work that built it would be
+# worse than an untidy one.
+
+[changelog]
+header = """
+# Changelog
+
+Every release of `tailscale-mcp`, newest first. Generated from the commit
+history by [git-cliff](https://git-cliff.org); do not edit by hand.
+
+"""
+body = """
+{% if version %}\
+## {{ version | trim_start_matches(pat="v") }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## Unreleased
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first | split(pat="\n") | first | trim }}\
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+# The pre-1.0.0 history predates the convention; dropping it would leave the
+# first release with an empty changelog.
+filter_unconventional = false
+filter_commits = false
+split_commits = false
+sort_commits = "oldest"
+tag_pattern = "v[0-9]*"
+# The `<!-- n -->` prefixes are how git-cliff is told what order to render the
+# groups in: `group_by` sorts by the raw string, and the template strips the
+# comment before printing. Without them the sections come out alphabetical,
+# which would put the catch-all in the middle rather than at the end.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Added" },
+  { message = "^fix", group = "<!-- 1 -->Fixed" },
+  { message = "^refactor", group = "<!-- 2 -->Changed" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
+  { message = "^docs", group = "<!-- 4 -->Documentation" },
+  { message = "^test", group = "<!-- 5 -->Tests" },
+  { message = "^ci|^build", group = "<!-- 6 -->Build and CI" },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore", group = "<!-- 7 -->Housekeeping" },
+  { message = "^revert", group = "<!-- 8 -->Reverted" },
+  # Everything before the convention was adopted (Q107). One group, last, so
+  # the 1.0.0 changelog reads as the list of what was built.
+  { message = ".*", group = "<!-- 9 -->Changes" },
+]
+[bump]
+# A breaking change is a major release, a feature a minor one, anything else a
+# patch — the semver rules ADR-0005 commits this project to now that the first
+# release is 1.0.0.
+features_always_bump_minor = true
+breaking_always_bump_major = true
+# ADR-0005: the first release is 1.0.0, not 0.1.0. Without this the bump would
+# start where git-cliff starts, which is the number that ADR argues against.
+initial_tag = "v1.0.0"

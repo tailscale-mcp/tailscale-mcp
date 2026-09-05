@@ -102,6 +102,51 @@ fn the_whole_table_is_the_one_the_spec_counted() {
     );
 }
 
+/// `tools` honours the switches it accepts.
+///
+/// It takes `--no-local` and `--no-tailnet` and documents what they do, and it
+/// deliberately ignores what this machine has — no CLI, no credential — so its
+/// answer is the same everywhere. A switch is not that: it is the selection,
+/// like the preset. Ignoring it reported 57 tools for a server that would have
+/// served 29, which is the one number somebody runs this to find out.
+#[test]
+fn tools_leaves_out_a_surface_the_operator_switched_off() {
+    let count = |args: &[&str]| -> (u64, Vec<String>) {
+        let report = subcommands::tools(&config(args), true);
+        assert!(report.ok);
+        let parsed: Value = serde_json::from_str(&report.text).expect("JSON");
+        let surfaces = parsed["tools"]
+            .as_array()
+            .expect("an array")
+            .iter()
+            .map(|tool| tool["surface"].as_str().expect("a surface").to_owned())
+            .collect();
+        (parsed["count"].as_u64().expect("a count"), surfaces)
+    };
+
+    let (both, _) = count(&["tailscale-mcp"]);
+    let (without_tailnet, local_only) = count(&["tailscale-mcp", "--no-tailnet"]);
+    let (without_local, tailnet_only) = count(&["tailscale-mcp", "--no-local"]);
+
+    assert!(
+        without_tailnet < both && without_local < both,
+        "switching a surface off should offer fewer tools, not the same {both}"
+    );
+    assert_eq!(
+        without_tailnet + without_local,
+        both,
+        "the two surfaces partition the selection, so the halves should sum to it"
+    );
+    assert!(
+        local_only.iter().all(|surface| surface == "local"),
+        "--no-tailnet left a tailnet tool in the listing"
+    );
+    assert!(
+        tailnet_only.iter().all(|surface| surface == "tailnet"),
+        "--no-local left a local tool in the listing"
+    );
+}
+
 #[test]
 fn a_listing_says_which_toolset_and_surface_each_tool_belongs_to() {
     let report = subcommands::tools(&config(&["tailscale-mcp"]), true);

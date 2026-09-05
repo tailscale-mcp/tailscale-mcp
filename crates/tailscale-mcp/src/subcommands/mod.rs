@@ -309,9 +309,20 @@ pub fn tools(config: &Config, json: bool) -> Report {
         .iter()
         .map(|entry| entry.meta)
         .collect();
-    // Nothing is unavailable: this asks what the selection offers, not what
-    // this machine happens to have, so that the answer is the same everywhere.
-    let gate = Gate::unchecked(config.toolsets.clone(), config.max_tier, BTreeSet::new());
+    // Nothing *discovered* is unavailable: this asks what the selection
+    // offers, not what this machine happens to have, so that the answer is the
+    // same everywhere. A surface the operator switched off is not that — it is
+    // part of the selection, like the preset and the toolsets, and this
+    // subcommand accepts `--no-local` and `--no-tailnet` and documents what
+    // they do. Leaving them out reported 57 tools where the server it is
+    // describing would have served 29, which `server::build` warns about in
+    // as many words: the check is not only in `discover` so that a caller
+    // assembling the surfaces itself cannot bypass the flag.
+    let switched_off: BTreeSet<Surface> = [Surface::Local, Surface::Tailnet]
+        .into_iter()
+        .filter(|surface| config.is_disabled(*surface))
+        .collect();
+    let gate = Gate::unchecked(config.toolsets.clone(), config.max_tier, switched_off);
     let mut shown: Vec<&ToolMeta> = metas.iter().filter(|meta| gate.permits(meta)).collect();
     shown.sort_by_key(|meta| (meta.toolset.as_str(), meta.name));
 

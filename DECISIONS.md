@@ -1959,3 +1959,21 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Outcome:** applied
 
 **Ref:** `crates/tailscale-mcp/src/server.rs`
+
+## Q128 — interactive/tools-subcommand — deviation
+
+**Question:** `tools` accepts `--no-local` and `--no-tailnet`, documents what each does, and ignored both: it reported 57 tools for a configuration the server answers with 29. Should the switches apply, given the subcommand deliberately ignores what the machine has?
+
+**Options considered:** honour the switches / keep ignoring them and stop accepting them
+
+**Chosen:** Honour them. `Gate::unchecked` is now seeded from `Config::is_disabled` rather than an empty set.
+
+**Decided-by:** agent
+
+**Justification:** The comment defending the old behaviour argues that `tools` should answer "the same everywhere", and that is worth keeping — it is why discovery is still ignored, so a machine with no `tailscale` binary and no credential still reports what the selection would offer. A switch is not discovery. `--no-local` is the operator's choice in exactly the way `--preset` is, and the subcommand already honours that one. `server::build` makes the same point in as many words, and its reason applies here: the check is not only in `discover` "so that a caller assembling `Backends` itself cannot bypass the flag" — and this was such a caller.
+
+**Not the other way.** Removing the switches would have made the flags honest but the subcommand less useful: "what would this command line offer" is the question somebody runs it to answer, and a command line contains its switches.
+
+**Ref:** `crates/tailscale-mcp/src/subcommands/mod.rs`, `crates/tailscale-mcp/tests/subcommands.rs`
+
+**Outcome:** applied

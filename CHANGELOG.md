@@ -3,6 +3,16 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.0.2 — 2026-09-05
+
+### Documentation
+
+- Record the three calls the 1.0.0 bootstrap forced
+
+### Build and CI
+
+- Publish by trusted publishing, not by token (ticket 31)
+
 ## 1.0.1 — 2026-09-05
 
 ### Fixed

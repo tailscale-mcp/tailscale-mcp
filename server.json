@@ -3,7 +3,7 @@
   "name": "io.github.tailscale-mcp/tailscale-mcp",
   "title": "Tailscale",
   "description": "Drive a Tailscale node and its tailnet through the CLI and the control-plane API",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "websiteUrl": "https://github.com/tailscale-mcp/tailscale-mcp",
   "repository": {
     "url": "https://github.com/tailscale-mcp/tailscale-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "@tailscale-mcp/tailscale-mcp",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "transport": {
         "type": "stdio"
       },
@@ -75,7 +75,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/tailscale-mcp/tailscale-mcp:1.0.1",
+      "identifier": "ghcr.io/tailscale-mcp/tailscale-mcp:1.0.2",
       "transport": {
         "type": "stdio"
       },

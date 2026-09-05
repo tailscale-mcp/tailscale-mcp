@@ -45,6 +45,20 @@ says nothing until somebody opens the gate, which is why the ticket counted the
 run as outstanding rather than the code as written.
 
 The write gate covers one test, which sets a custom posture attribute on a
-device and deletes it again, reading back both times. It is the smallest thing
+device and deletes it again, reading back both times.
+
+**Attempted on 2026-09-05 and still unproven**, for a reason no credential
+fixes: custom posture attributes are a paid Tailscale feature, and the control
+plane answers a write with 403 "feature not available on current billing plan".
+Getting that far took two corrections the test had carried since it was written
+— the attribute tools take `attribute_key` rather than `key`, and the device has
+to be one the tailnet owns rather than whichever the listing puts first, since a
+device shared in from elsewhere is `isExternal`: listed, readable, and refused
+on write as "no manageable device matching this ID found".
+
+So the argument shapes and the device selection are now right, and everything up
+to the control plane's billing check is exercised. The write itself has never
+succeeded against a real tailnet and should not be described as though it has.
+Proving it needs a tailnet on a plan that includes device posture. It is the smallest thing
 that can be written and removed without affecting anything, and the test asserts
 the tailnet gate is open too, so the write gate cannot be a way round it.

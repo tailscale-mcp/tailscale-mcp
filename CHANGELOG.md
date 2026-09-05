@@ -3,6 +3,39 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.0.3 — 2026-09-05
+
+### Fixed
+
+- The startup note named toolsets the session offers nothing from
+- The public-bind refusal did not parse as a sentence
+- Version said it also speaks the protocol it just named
+- Tools ignored the surface switches it accepts and documents
+- The result cap did not cover resources
+- The instructions named toolsets the session had just said were hidden
+- Two more places named a toolset the session does not offer
+
+### Documentation
+
+- Ticket 26's tailnet run is no longer outstanding
+- Ticket 26's write path is blocked by the billing plan
+- The Homebrew channel was documented but never published (ticket 29)
+- The tap follows the release rather than being pushed to (Q124)
+- Record that the tap now follows the release by itself
+- A private channel for reporting a vulnerability
+
+### Tests
+
+- Call the DNS tool that exists (ticket 26)
+- The write path, as far as a real tailnet will take it (ticket 26)
+
+### Build and CI
+
+- Poke the tap when a release publishes (Q125)
+- Let the tap poke be run by hand, and say when its token is missing
+- Keep asking about advisories after the pushes stop (Q126)
+- Move off the actions that still target Node 20
+
 ## 1.0.2 — 2026-09-05
 
 ### Documentation

@@ -1807,3 +1807,63 @@ The MCP registry is not preflighted. Its trust is the repository's own identity 
 **Outcome:** applied
 
 **Ref:** `.github/workflows/release.yml`, `packaging/registry/trusted-publishers.toml`, `crates/tailscale-mcp/tests/trusted_publishing_matches.rs`, `RELEASING.md`
+
+## Q121 — build/release-1.0.0 — deviation
+
+**Question:** crates.io refused `tailscale-mcp` for a 22-character keyword and the MCP registry refused the OCI package's `version` field — both after `tailscale-rest@1.0.0` and `tailscale-cli@1.0.0` had uploaded permanently and the npm package, the GitHub release and the container image had all shipped. Should the fixes go out by re-pointing the `v1.0.0` tag, or as a new version?
+
+**Options considered:** move the `v1.0.0` tag onto the fixed commit and re-run / yank the two published crates and re-release 1.0.0 / cut 1.0.1
+
+**Chosen:** cut 1.0.1.
+
+**Decided-by:** user
+
+**Justification:** Re-pointing the tag cannot work, for a reason that is structural rather than incidental: every publishing job `needs: release`, and `release` runs `gh release create` without `--clobber`, so it fails against the `v1.0.0` release that already exists and nothing behind it starts. Independently, npm will not accept a second 1.0.0, and a crate version on crates.io can be yanked but never replaced. There is therefore no version at which the whole set can be made consistent except a new one.
+
+Yanking was refused because it buys nothing 1.0.1 does not: the two crates' 1.0.0 stays permanently listed and unusable either way, and yanking adds a second confusing state for anyone reading the version history.
+
+The lasting cost is that 1.0.0 is a partial release — three crates' worth of artifacts exist at a version whose crate set is incomplete. That is the price of having discovered both rejections only at upload time, which is what Q122's sibling test work exists to stop repeating: both refusals are now checked locally.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/tests/crates_io_will_accept_the_manifests.rs`, `crates/tailscale-mcp/tests/registry_listing_is_valid.rs`, tag `v1.0.1`
+
+## Q122 — build/release-1.0.0 — tradeoff
+
+**Question:** The npm account requires an OTP to publish, which CI cannot supply. Q120 settled that 1.0.0 ships through the workflow on a token, but npm offers a CI-usable token only in a form it marks deprecated — a granular token with "Bypass two-factor authentication (2FA)", which npm's own UI steers away from in favour of trusted publishing and which GitHub is restricting for direct publishing in January 2027. Should the bootstrap use it?
+
+**Options considered:** mint the bypass-2FA token for the bootstrap and revoke it once trusted publishing is registered / publish the npm package by hand from a maintainer's machine / disable 2FA-for-publishing on the account for the duration
+
+**Chosen:** mint the bypass-2FA token, scoped to the one package with write access, and revoke it as soon as the trusted publisher is registered.
+
+**Decided-by:** user
+
+**Justification:** The deprecation notice and ticket 31 are the same argument, which is why trusted publishing is where this ends up. Using the deprecated route exactly once — to create the package that a trusted publisher cannot be registered against until it exists — spends the credential on the bootstrap problem Q120 identified and on nothing else. Publishing by hand was refused for Q120's reason: it produces no provenance attestation, and an unattested first release is a strange thing for this project to ship. Disabling account-wide 2FA-for-publishing is strictly worse, since it weakens every package on the account rather than one revocable token.
+
+The blast radius is bounded ahead of the revocation: scoped to this package, write only, and capped at 90 days by npm's own rule for write tokens.
+
+One operational note worth keeping: the first such token was pasted into a chat transcript and was therefore treated as disclosed, revoked, and replaced rather than reused. The replacement is the one to revoke.
+
+**Outcome:** applied
+
+**Ref:** `packaging/registry/trusted-publishers.toml`, Q120
+
+## Q123 — build/release-1.0.1 — tradeoff
+
+**Question:** `ghcr.io/tailscale-mcp/tailscale-mcp` published, but an anonymous pull failed with "authentication required" — the package was private, and per-package visibility could not be set to Public because the organization's package-creation policy disallowed public packages. That policy is web-UI only; the REST API does not expose it. Should it be changed?
+
+**Options considered:** enable public package creation for the organization and set the package Public / leave the image private and document that it needs authentication / move the image to another registry
+
+**Chosen:** enable public package creation for the `tailscale-mcp` organization, then set the package Public.
+
+**Decided-by:** user
+
+**Justification:** An image that cannot be pulled without credentials is not a distribution channel, and `server.json` lists the OCI package as an install route — a client following the MCP registry listing would have failed on it. The organization exists for this one public project, so a policy permitting public packages describes what it is for rather than exposing unrelated work. Another registry would need its own credentials and would lose the GitHub-native provenance the image is built with.
+
+The change permits a public package rather than making anything public: ghcr packages are still created private, and visibility stays per-package.
+
+The cost is that this is org-level state which no test and no file in this repository can assert, so it is invisible to the checks that guard everything else here. It is recorded here because the journal is the only place it can be recorded.
+
+**Outcome:** applied
+
+**Ref:** `server.json`, `ghcr.io/tailscale-mcp/tailscale-mcp`

@@ -534,9 +534,14 @@ fn checked_http(
         return Err(ConfigError::InvalidValue {
             setting: "--http".to_owned(),
             value: address.to_owned(),
-            expected: "a loopback address, or a token in TAILSCALE_MCP_HTTP_TOKEN, \
-                       or --http-no-auth to say the address really should answer \
-                       anyone who asks",
+            // The template this renders into reads "…which is not {expected}",
+            // so what follows has to be the one thing the address failed to
+            // be. The two ways past it are remedies rather than alternative
+            // things the address could have been, and reading as though they
+            // were made the sentence say an address is not a token.
+            expected: "a loopback address \u{2014} set a token in \
+                       TAILSCALE_MCP_HTTP_TOKEN, or pass --http-no-auth to say \
+                       the address really should answer anyone who asks",
         });
     }
     Ok(settings)
@@ -833,6 +838,54 @@ mod tests {
                     .iter()
                     .any(|bad| name.contains(bad)),
                 "`--{name}` would put a secret on the argument list"
+            );
+        }
+    }
+
+    /// Every `InvalidValue` reads as one sentence.
+    ///
+    /// `ConfigError::InvalidValue` renders as "… which is not {expected}", so
+    /// `expected` has to be the thing the value failed to be. The HTTP guard
+    /// listed its two remedies there instead — a token and a flag — and the
+    /// sentence came out saying an address was not an environment variable.
+    /// A remedy belongs after the clause ends, which is what the dash marks.
+    #[test]
+    fn an_invalid_value_says_what_the_value_should_have_been() {
+        let phrases = [
+            checked_http(
+                HttpConfig {
+                    bind: "0.0.0.0:8449".parse().expect("an address"),
+                    token: None,
+                    allow_hosts: Vec::new(),
+                    allow_origins: Vec::new(),
+                    stateful: true,
+                },
+                "0.0.0.0:8449",
+                false,
+            )
+            .expect_err("an unauthenticated public bind is refused"),
+            http_bind("not-an-address").expect_err("a bad address is refused"),
+        ];
+        for error in phrases {
+            let rendered = error.to_string();
+            let (_, expected) = rendered
+                .split_once("which is not ")
+                .unwrap_or_else(|| panic!("the template should be intact: {rendered}"));
+            // Where the clause ends, the remedies may begin; before that, the
+            // sentence is still saying what the value was not.
+            let clause = expected
+                .split(['\u{2014}', ';'])
+                .next()
+                .expect("a first clause");
+            assert!(
+                !clause.contains(" or "),
+                "`which is not {clause}` offers alternatives where it should name \
+                 one thing; put the remedies after a dash: {rendered}"
+            );
+            assert!(
+                !clause.contains("--") && !clause.contains("TAILSCALE_"),
+                "`which is not {clause}` says the value is not a flag or a variable, \
+                 which is not what failed: {rendered}"
             );
         }
     }

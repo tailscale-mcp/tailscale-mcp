@@ -1,7 +1,7 @@
 [package]
 name = "tailscale-mcp"
 description = "MCP server for Tailscale: the local node through the CLI, the tailnet through the control-plane API"
-keywords = ["tailscale", "mcp", "model-context-protocol", "agent", "tailnet"]
+keywords = ["tailscale", "mcp", "mcp-server", "agent", "tailnet"]
 categories = ["command-line-utilities", "network-programming"]
 default-run = "tailscale-mcp"
 version.workspace = true

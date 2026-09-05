@@ -76,7 +76,6 @@
     {
       "registryType": "oci",
       "identifier": "ghcr.io/tailscale-mcp/tailscale-mcp:1.0.0",
-      "version": "1.0.0",
       "transport": {
         "type": "stdio"
       },

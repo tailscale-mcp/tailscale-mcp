@@ -72,15 +72,31 @@ fn the_listing_is_at_the_version_being_released() {
     // The registry rejects a listing whose version has already been published,
     // so this is the field a release has to move — and each package carries it
     // again, because a listing can offer versions of itself that differ.
+    //
+    // An OCI package says it in its identifier instead: the registry refuses a
+    // `version` field there, because the tag already carries the version. The
+    // bundled schema does not know that rule and `mcp-publisher validate` does
+    // not catch it, so this stands in for a check only the server makes.
     let (_, listing) = schema_and_listing();
     let version = env!("CARGO_PKG_VERSION");
     assert_eq!(listing["version"], version);
     for package in listing["packages"].as_array().expect("packages") {
-        assert_eq!(
-            package["version"], version,
-            "`{}` is listed at another version",
-            package["identifier"]
-        );
+        let identifier = package["identifier"].as_str().expect("identifier");
+        if package["registryType"] == "oci" {
+            assert!(
+                package.get("version").is_none(),
+                "`{identifier}` carries the version field the registry refuses"
+            );
+            assert!(
+                identifier.ends_with(&format!(":{version}")),
+                "`{identifier}` is tagged at another version"
+            );
+        } else {
+            assert_eq!(
+                package["version"], version,
+                "`{identifier}` is listed at another version"
+            );
+        }
     }
 }
 

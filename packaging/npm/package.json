@@ -1,6 +1,6 @@
 {
   "name": "@tailscale-mcp/tailscale-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "mcpName": "io.github.tailscale-mcp/tailscale-mcp",
   "description": "MCP server for Tailscale: the local node through the CLI, the tailnet through the control-plane API",
   "keywords": ["tailscale", "mcp", "model-context-protocol", "agent", "tailnet"],

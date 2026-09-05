@@ -1588,7 +1588,7 @@ dependencies = [
 
 [[package]]
 name = "tailscale-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "nix",
  "serde",
@@ -1601,7 +1601,7 @@ dependencies = [
 
 [[package]]
 name = "tailscale-mcp"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1623,7 +1623,7 @@ dependencies = [
 
 [[package]]
 name = "tailscale-rest"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "reqwest",
  "serde",

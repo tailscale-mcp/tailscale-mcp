@@ -3,7 +3,13 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
-## 1.0.0 — 2026-09-04
+## 1.0.1 — 2026-09-05
+
+### Fixed
+
+- The two things crates.io and the MCP registry refused
+
+## 1.0.0 — 2026-09-05
 
 ### Added
 
@@ -16,6 +22,7 @@ history by [git-cliff](https://git-cliff.org); do not edit by hand.
 ### Build and CI
 
 - Build, checksum and publish a tagged release (ticket 28)
+- Set the default toolchain without --default
 
 ### Changes
 

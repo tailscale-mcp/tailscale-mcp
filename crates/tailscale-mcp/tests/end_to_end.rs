@@ -250,17 +250,26 @@ async fn a_write_cleans_up_after_itself() {
     ])
     .await;
 
+    // A device this tailnet owns, rather than simply the first one listed. A
+    // device shared in from another tailnet is `isExternal`, is listed and is
+    // readable, but cannot be written to: the control plane answers a write
+    // with "no manageable device matching this ID found". Which end of the
+    // listing those fall on is not something this test gets to assume.
     let devices = harness.call("tailnet_device_list", json!({})).await;
-    let device = devices["devices"][0]["nodeId"]
-        .as_str()
-        .expect("a node id")
+    let device = devices["devices"]
+        .as_array()
+        .expect("a device list")
+        .iter()
+        .find(|device| device["isExternal"] != json!(true))
+        .and_then(|device| device["nodeId"].as_str())
+        .expect("a device this tailnet owns, which a write needs")
         .to_owned();
     let attribute = "custom:tailscaleMcpEndToEnd";
 
     harness
         .call(
             "tailnet_device_attribute_set",
-            json!({"device_id": device, "key": attribute, "value": true}),
+            json!({"device_id": device, "attribute_key": attribute, "value": true}),
         )
         .await;
     let after = harness
@@ -278,7 +287,7 @@ async fn a_write_cleans_up_after_itself() {
     harness
         .call(
             "tailnet_device_attribute_delete",
-            json!({"device_id": device, "key": attribute}),
+            json!({"device_id": device, "attribute_key": attribute}),
         )
         .await;
     let cleaned = harness

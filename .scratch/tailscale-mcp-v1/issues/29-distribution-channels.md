@@ -71,8 +71,19 @@ tailscale-mcp/tap/tailscale-mcp` asked every user for GitHub credentials and
 failed. The check below is why it went unnoticed: a *local* tap exercises the
 formula and never the channel, so it passes whether or not the remote exists.
 The tap is now published and the command verified from it, with `brew test` and
-`brew audit --strict` both clean. Updating it after each release is still a
-manual step, which is the next thing here worth fixing (Q124).
+`brew audit --strict` both clean.
+
+**The tap updates itself** (Q124, Q125). It reads this repository's newest
+release rather than being pushed to, because `GITHUB_TOKEN` cannot reach
+another repository and `release.yml` holds no secret that could — a property
+`trusted_publishing_matches.rs` enforces. `notify-tap.yml` pokes it on
+`release: published` so the wait is seconds rather than the six hours its
+schedule alone would allow; the schedule stays as the net for when the poke
+does not arrive. Both halves are proven: the tap was deliberately regressed to
+the v1.0.1 formula and healed itself back to 1.0.2, and a dispatch on
+2026-09-05 woke the follower two seconds later. The one secret in this
+repository is the fine-grained token that poke uses, which can write the tap
+and nothing else.
 
 Checked by installing it: the rendered formula went into a local tap and
 `brew install` downloaded the archive, verified the checksum, installed the

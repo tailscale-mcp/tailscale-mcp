@@ -58,9 +58,24 @@ carry the settings:
 }
 ```
 
-An [OAuth client](docs/configuration.md#credentials) is the better credential for
-anything long-lived: it belongs to the tailnet rather than to a person, it is
-limited by its scopes, and the tokens it mints are short-lived.
+An [OAuth client](docs/configuration.md#credentials) is the better credential
+here, and the reason is what a client configuration *is*: a file somebody
+writes once and then forgets, holding a secret for as long as the tool is
+installed.
+
+An API access token suits that badly on three counts. It belongs to a person
+and carries everything that person can do, so what leaks with the file is their
+whole account rather than the tools you turned on. It expires — which in a file
+nobody has looked at since they wrote it does not present as an expired
+credential, but as a server that has stopped working for no reason. And it is
+itself the bearer token, so the thing at rest is the thing that opens the door.
+
+An OAuth client inverts each of those. It belongs to the tailnet, so it outlives
+whoever set it up and is revoked without touching that person's access. Its
+scopes narrow it to what the toolsets you enabled actually call. It does not
+expire on its own, and what sits in the file is not a key but the means of
+minting one — the token it hands this server lasts an hour, so a copy taken from
+a backup or a screen share is worth very little by the time it is used.
 
 ## Tiers and presets
 

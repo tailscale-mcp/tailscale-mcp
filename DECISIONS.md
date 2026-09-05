@@ -1886,6 +1886,14 @@ The published formula is the release asset rather than a hand-written copy, and 
 
 **The remaining fragility is deliberate and should not be left alone.** `release.yml` renders and attaches the formula but does not push it, on the reasoning recorded in its own comment: the tap is another repository. That makes updating the tap a step somebody has to remember after every release, and the failure mode when they forget is silent — `brew install` keeps working and keeps installing the previous version, which is worse than an error. This entry is not a claim that the manual step is right; it is a note that it is now the weakest part of the release, and a follow-up should make the release push the formula.
 
+**Resolved the same day, and in the other direction.** The obvious fix — have `release.yml` push to the tap — is not available: `trusted_publishing_matches.rs` asserts that workflow reads no repository secret but `GITHUB_TOKEN`, which is scoped to the main repository and cannot write to the tap. Giving the release a credential for a second repository would have failed that test and undone ticket 31 for the sake of a convenience.
+
+So the tap pulls instead. `follow-the-release.yml` there runs on a six-hour schedule and on demand, reads the main repository's `/releases/latest` (skipping drafts and pre-releases, which have no business becoming what `brew install` hands people), and commits the formula only when the version it serves differs. It authenticates with its own `GITHUB_TOKEN`, so no secret exists anywhere in the arrangement. The formula is checked against the release's own `SHA256SUMS` — the release appends the formula's hash there after rendering it — and against the tag it claims, before being committed.
+
+The cost is latency: up to six hours where `brew install` serves the previous version. That is the price of having no credential, and it replaces a window that was previously unbounded and silent. Running the workflow by hand after a release closes it in a minute.
+
+Both branches were proven rather than assumed: the no-op path against the current release, and the update path by regressing the tap to 1.0.1 and watching it restore itself to 1.0.2.
+
 **Outcome:** applied
 
 **Ref:** `https://github.com/tailscale-mcp/homebrew-tap`, `.github/workflows/release.yml`, `packaging/homebrew/tailscale-mcp.rb.in`

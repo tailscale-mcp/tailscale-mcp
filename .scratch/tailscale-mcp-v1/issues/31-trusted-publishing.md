@@ -1,6 +1,6 @@
 # 31 — Trusted publishing
 
-Status: in-progress — waiting on 1.0.0
+Status: in-progress — bootstrap steps 1-5 done, step 6 outstanding
 Milestone: 5 — Packaging
 Blocked by: 30
 
@@ -131,5 +131,37 @@ running the rules over the real workflow with a guard removed from it.
 what to do when it stops at each job, and the fact that renaming the repository
 or the workflow invalidates all four registrations at once.
 
-**Not done, and blocking.** Steps 1 to 6 of the bootstrap above. None of them
-can happen until 1.0.0 is published, which is why this branch is not merged.
+## The bootstrap, as it went
+
+Written up on 2026-09-05, after 1.0.4. The section this replaces said "Steps 1
+to 6 … none of them can happen until 1.0.0 is published, which is why this
+branch is not merged", and stayed that way through four releases that were
+published by exactly the mechanism it described as blocked. A tracker that
+says the pipeline still holds tokens is worse than no tracker: the obvious
+repair for a failed publish would be to put one back.
+
+**Steps 1 to 3 — done.** 1.0.0 went out on 2026-09-04 through the workflow as
+it then stood, with `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN`. Both were revoked
+and both secrets deleted the same day; `gh secret list` now shows one secret on
+this repository, `TAP_DISPATCH_TOKEN`, which publishes nothing and is held by
+`notify-tap.yml` rather than by `release.yml`.
+`only_the_tap_notifier_holds_a_secret` is the test that keeps it that way.
+
+**Steps 4 and 5 — done.** All four trusted publishers are registered and in
+use. 1.0.1 was the first release to publish with no secret anywhere, and 1.0.4
+on 2026-09-05 was the fourth: every publishing job succeeded, and the crates.io
+exchange minted a token and revoked it at job end, which is only possible if
+the registration matches this repository, this workflow and this owner. The
+nine tests in `trusted_publishing_matches.rs` — two more than the seven this
+ticket promised — pass.
+
+**Step 6 — outstanding.** npm's "Require two-factor authentication and disallow
+tokens" has not been confirmed as on. Until it is, trusted publishing is the
+convention here rather than the rule: a token minted against this scope would
+still be accepted, so the property step 3 bought by revoking two tokens is only
+as good as nobody minting a third. The setting is on npmjs.com, is 2FA-gated,
+and is not readable through the registry API — `npm access` answers 403 for the
+org without a token that carries org read — so it cannot be checked from this
+repository or from CI. It has to be looked at by a person with the account.
+
+Nothing else in this ticket is waiting on anything.

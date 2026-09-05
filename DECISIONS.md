@@ -2071,3 +2071,21 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `crates/tailscale-mcp/src/meta.rs`, `crates/tailscale-mcp/src/subcommands/mod.rs`, `crates/tailscale-mcp/tests/the_tier_is_a_floor_only_where_it_is_documented.rs`
 
 **Outcome:** applied
+
+## Q134 — interactive/sweep — gate-resolution
+
+**Question:** Ticket 31 read `Status: in-progress — waiting on 1.0.0` and closed with "Steps 1 to 6 … none of them can happen until 1.0.0 is published, which is why this branch is not merged" — through four releases published by exactly the mechanism it called blocked. Steps 1–5 are demonstrably done; step 6 (npm's "require 2FA and disallow tokens") cannot be checked from here. Close the ticket, or leave it open?
+
+**Options considered:** mark it done, since the code landed / leave the status and add a note / rewrite the status to name what is actually outstanding
+
+**Chosen:** Left open, status rewritten to "bootstrap steps 1-5 done, step 6 outstanding", with a section recording what happened and the evidence for each step. Step 6 is named as needing a person with the npm account.
+
+**Decided-by:** agent
+
+**Justification:** Marking it done would be false — step 6 is the step that makes trusted publishing enforced rather than conventional, and until it is on, a token minted against the scope is still accepted, which is the property steps 1–3 were for. Leaving the status alone would keep a tracker saying the pipeline still holds `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN`; the obvious repair for a failed publish, read against that, is to put a token back — undoing the ticket's own work.
+
+**Verified rather than assumed:** `gh secret list` shows one secret, `TAP_DISPATCH_TOKEN`, held by `notify-tap.yml` and not by `release.yml`; the 1.0.4 run published to npm, crates.io, ghcr and the MCP registry with no publishing secret; the crates.io exchange minted a token and revoked it at job end. Step 6 is not readable through the registry API — `npm access` answers 403 for the org without org read — so it is reported rather than guessed at.
+
+**Ref:** `.scratch/tailscale-mcp-v1/issues/31-trusted-publishing.md`, `crates/tailscale-mcp/tests/no_ticket_waits_on_a_shipped_version.rs`
+
+**Outcome:** applied — step 6 is for the user; nothing in this repository is waiting on it

@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the stable toolchain
-        run: rustup toolchain install stable --profile minimal --no-self-update --default
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
       - uses: actions/cache@v4
         with:
           path: |
@@ -72,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the stable toolchain
-        run: rustup toolchain install stable --profile minimal --no-self-update --default
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
       - uses: actions/cache@v4
         with:
           path: |
@@ -120,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the stable toolchain
-        run: rustup toolchain install stable --profile minimal --component clippy --no-self-update --default
+        run: rustup toolchain install stable --profile minimal --component clippy --no-self-update && rustup default stable
       - uses: actions/cache@v4
         with:
           path: |
@@ -161,7 +161,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the stable toolchain
-        run: rustup toolchain install stable --profile minimal --component rustfmt --no-self-update --default
+        run: rustup toolchain install stable --profile minimal --component rustfmt --no-self-update && rustup default stable
       - name: Format
         run: cargo fmt --all --check
 
@@ -176,7 +176,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install the stable toolchain
-        run: rustup toolchain install stable --profile minimal --no-self-update --default
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
       - uses: actions/cache@v4
         id: deny
         with:

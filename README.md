@@ -61,14 +61,35 @@ That much is enough to start it. Without a credential it offers the tools that
 drive this node and hides the ones that act on the tailnet, and
 `tailscale-mcp diagnose` says which of the two you have.
 
-## Give it a credential
+## Authenticate
 
 `setup` prints no credential of its own, because the file it prints into is one
-people paste into issues and chats without rereading. Adding it is a separate,
-deliberate step — the [credentials
-table](docs/configuration.md#credentials) has every accepted shape.
+people paste into issues and chats without rereading. Adding one is a separate,
+deliberate step. Two shapes go in the `env` block above — an API access token:
 
-An OAuth client is the one to reach for, and the reason is what a client
+```jsonc
+"env": {
+  "TAILSCALE_API_KEY": "tskey-api-…",
+  "TAILSCALE_MCP_ALLOW_WRITE": "true"
+}
+```
+
+or an OAuth client:
+
+```jsonc
+"env": {
+  "TAILSCALE_OAUTH_CLIENT_ID": "k123456CNTRL",
+  "TAILSCALE_OAUTH_CLIENT_SECRET": "tskey-client-…",
+  "TAILSCALE_MCP_ALLOW_WRITE": "true"
+}
+```
+
+The [credentials table](docs/configuration.md#credentials) has the other
+shapes, including the JWT file for federated identity. Every tool is offered
+with either of these: the choice is not about what you can do with the server,
+which is why it is worth making on other grounds.
+
+**Prefer the OAuth client for anything you keep.** The reason is what a client
 configuration *is*: a file somebody writes once and then forgets, holding a
 secret for as long as the tool is installed.
 
@@ -86,19 +107,9 @@ expire on its own, and what sits in the file is not a key but the means of
 minting one — the token it hands this server lasts an hour, so a copy taken from
 a backup or a screen share is worth very little by the time it is used.
 
-So the `env` block above becomes:
-
-```jsonc
-"env": {
-  "TAILSCALE_OAUTH_CLIENT_ID": "k123456CNTRL",
-  "TAILSCALE_OAUTH_CLIENT_SECRET": "tskey-client-…",
-  "TAILSCALE_MCP_ALLOW_WRITE": "true"
-}
-```
-
-An API access token goes in `TAILSCALE_API_KEY` instead, and is what the
-control plane hands you first — reasonable for trying this out, and worth
-replacing with the above once it is something you keep.
+The API access token is what the control plane offers you first, and is the
+quicker thing to try this out with. It is worth replacing once the file is one
+you are going to keep.
 
 ## Tiers and presets
 

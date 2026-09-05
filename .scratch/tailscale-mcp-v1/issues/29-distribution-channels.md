@@ -64,6 +64,16 @@ produced them (Q113). `scripts/update-formula.sh` renders it from a release's
 `SHA256SUMS` and refuses if a marker is left unfilled. The release attaches the
 result; updating the tap — another repository — is committing it there.
 
+**The tap repository did not exist until 2026-09-05.** The formula was right,
+the release attached it, and the README named the command — but nothing had ever
+been published to `tailscale-mcp/homebrew-tap`, so `brew install
+tailscale-mcp/tap/tailscale-mcp` asked every user for GitHub credentials and
+failed. The check below is why it went unnoticed: a *local* tap exercises the
+formula and never the channel, so it passes whether or not the remote exists.
+The tap is now published and the command verified from it, with `brew test` and
+`brew audit --strict` both clean. Updating it after each release is still a
+manual step, which is the next thing here worth fixing (Q124).
+
 Checked by installing it: the rendered formula went into a local tap and
 `brew install` downloaded the archive, verified the checksum, installed the
 binary and ran `brew test` against it. `brew audit` then found that an explicit

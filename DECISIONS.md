@@ -1867,3 +1867,25 @@ The cost is that this is org-level state which no test and no file in this repos
 **Outcome:** applied
 
 **Ref:** `server.json`, `ghcr.io/tailscale-mcp/tailscale-mcp`
+
+## Q124 — build/ticket-29 — irreversible-action
+
+**Question:** The README has always told people to `brew install tailscale-mcp/tap/tailscale-mcp`, and `release.yml` has always rendered the formula and attached it to the release — but `github.com/tailscale-mcp/homebrew-tap` did not exist, so the documented command asked every user for GitHub credentials and failed. Should the tap be created and published?
+
+**Options considered:** create the tap repository and publish the rendered formula / remove the Homebrew row from the README until somebody wants it / keep the formula as a release asset and tell people to install it by hand
+
+**Chosen:** create `tailscale-mcp/homebrew-tap` as a public repository holding `Formula/tailscale-mcp.rb`, taken unedited from the v1.0.2 release asset.
+
+**Decided-by:** user
+
+**Justification:** Ticket 29 committed to five channels and the README names this one; a documented install command that fails is worse than an undocumented one, because the reader concludes the project is broken rather than that the channel is absent. The formula itself was already correct — the missing piece was only ever the repository it is meant to live in.
+
+The published formula is the release asset rather than a hand-written copy, and its four checksums were verified against that release's `SHA256SUMS` before publishing. Anything hand-copied here would be a second source of truth for sums that the pipeline already computes.
+
+**How this was missed, which matters more than the fix.** Ticket 29's criterion was "the tap formula installs a working binary", and it was checked by rendering the formula into a *local* tap and running `brew install` against it. That check passes whether or not a remote tap exists — it is the one arrangement that cannot detect the actual failure. A criterion phrased about the formula got verified in a way that never exercised the channel.
+
+**The remaining fragility is deliberate and should not be left alone.** `release.yml` renders and attaches the formula but does not push it, on the reasoning recorded in its own comment: the tap is another repository. That makes updating the tap a step somebody has to remember after every release, and the failure mode when they forget is silent — `brew install` keeps working and keeps installing the previous version, which is worse than an error. This entry is not a claim that the manual step is right; it is a note that it is now the weakest part of the release, and a follow-up should make the release push the formula.
+
+**Outcome:** applied
+
+**Ref:** `https://github.com/tailscale-mcp/homebrew-tap`, `.github/workflows/release.yml`, `packaging/homebrew/tailscale-mcp.rb.in`

@@ -1995,3 +1995,23 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `crates/tailscale-mcp/src/resources.rs`, `crates/tailscale-mcp/tests/resources_and_prompts.rs`, `docs/configuration.md`, `docs/errors.md`
 
 **Outcome:** applied
+
+## Q130 — interactive/hidden-toolsets — deviation
+
+**Question:** Q127 fixed the startup note, and the instructions had the same bug: they told the model "The tailnet surface is not available in this session, so no `tailnet_*` tool is offered" and then, eleven lines later, "Toolsets offered: ..., tailnet-devices, ...". Patch the second site, or make the mistake unavailable?
+
+**Options considered:** filter at the second call site as well / put the filtered list on `Gate` and have both renderings use it
+
+**Chosen:** `Gate::offered_toolsets`, used by both. Q127's inline filter in `server.rs` is replaced by a call to it.
+
+**Decided-by:** agent
+
+**Justification:** The same error written twice independently is a property of the API, not of the two authors: `gate.toolsets()` is the obvious accessor and returns the wrong list for anything a caller will read. Filtering at the second site would have left the third to be found the same way. `offers` was already the right question and its doc comment already said so; this is that question asked of the whole selection.
+
+**Supersedes:** Q127 in mechanism only — the decision there, that the list is the wrong half and the count is right, stands unchanged.
+
+**Worse than the note it repeats.** The startup note reaches stderr, where a person may see it; the instructions reach the model's context directly, so the contradiction ends in a tool call that is refused. `nothing_names_a_hidden_toolset.rs` checks both renderings at the seam a caller sees, with the converse case so the filter cannot pass by hiding everything.
+
+**Ref:** `crates/tailscale-mcp/src/gating.rs`, `crates/tailscale-mcp/src/instructions.rs`, `crates/tailscale-mcp/src/server.rs`, `crates/tailscale-mcp/tests/nothing_names_a_hidden_toolset.rs`
+
+**Outcome:** applied

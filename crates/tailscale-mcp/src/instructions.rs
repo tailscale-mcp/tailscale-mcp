@@ -102,9 +102,8 @@ pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
     let _ = write!(
         out,
         "\nToolsets offered: {}.",
-        gate.toolsets()
-            .iter()
-            .map(|t| t.as_str())
+        gate.offered_toolsets()
+            .map(|toolset| toolset.as_str())
             .collect::<Vec<_>>()
             .join(", ")
     );

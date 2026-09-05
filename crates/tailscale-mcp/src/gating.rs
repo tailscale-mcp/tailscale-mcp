@@ -266,6 +266,21 @@ impl Gate {
         !self.unavailable.contains(&surface) && self.toolsets.iter().any(|t| t.surface() == surface)
     }
 
+    /// The selected toolsets that this session can actually serve from.
+    ///
+    /// [`toolsets`](Self::toolsets) is what was asked for; this is what came of
+    /// it. Anything shown to a caller wants this one — naming a toolset whose
+    /// surface is missing tells a model that `tailnet-devices` is there, in a
+    /// session where every call to it is refused. That was written twice
+    /// before it was written once: the startup note and the instructions each
+    /// listed the selection, and each contradicted a sentence beside it.
+    pub fn offered_toolsets(&self) -> impl Iterator<Item = Toolset> + '_ {
+        self.toolsets
+            .iter()
+            .copied()
+            .filter(|toolset| self.offers(toolset.surface()))
+    }
+
     pub fn max_tier(&self) -> Tier {
         self.max_tier
     }

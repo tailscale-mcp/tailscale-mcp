@@ -241,9 +241,7 @@ pub async fn build(
 /// for exactly this reason, so the note asks it too.
 fn describe_toolsets(gate: &Gate) -> String {
     let names: Vec<&str> = gate
-        .toolsets()
-        .iter()
-        .filter(|toolset| gate.offers(toolset.surface()))
+        .offered_toolsets()
         .map(|toolset| toolset.as_str())
         .collect();
     if names.is_empty() {

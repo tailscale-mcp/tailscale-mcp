@@ -2107,3 +2107,23 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `crates/tailscale-mcp/src/tools/tailnet_keys.rs`, `crates/tailscale-mcp/tests/every_parameter_says_what_it_is.rs`
 
 **Outcome:** applied
+
+## Q136 — interactive/sweep — deviation
+
+**Question:** `Redactor` documents itself as "built once at startup from whatever credentials were configured", and its literal pass exists because the OAuth client secret "need not look like a Tailscale key". Nothing ever registered a credential: `server::build` constructed `Redactor::default()`, and `with_secret` was reachable only from unit tests. Wire it up, or drop the literal pass as unused?
+
+**Options considered:** wire the session credential in / delete `add_secret` and the literal pass as dead weight / leave it and correct the comment to say the shape rules are all there is
+
+**Chosen:** Wired it. `Redactor::for_credentials` takes the session's credentials and registers the API key or the OAuth client secret; `server::build` calls it. A federated credential registers nothing, deliberately — the JWT is read at exchange time and never held, so at startup there is no value to register.
+
+**Decided-by:** agent
+
+**Justification:** The exposure was narrow. The shape rules cover every credential Tailscale currently issues, including OAuth client secrets, which are `tskey-client-…` in practice; `Secret` refuses to print itself; and the redactor runs over stderr, error text and resource bodies rather than over tool results, which must pass minted keys through untouched. So this is not a leak that was happening.
+
+It is a guarantee that was not true, which is the kind that gets relied on later. The next diagnostic to put a client secret in front of a model — a captured request, a token-endpoint failure quoting what it was sent — would have been covered by a comment and nothing else. Deleting the pass instead would have been defensible only if the shape rules were guaranteed to keep covering every credential shape, which is a promise about Tailscale's future, not about this code.
+
+**What made it invisible:** every test of the literal pass constructed its own `Redactor` and passed. Reverting `server::build` now fails one test and only one — the one that goes through the real build and reads the redactor the session will use.
+
+**Ref:** `crates/tailscale-mcp/src/error.rs`, `crates/tailscale-mcp/src/server.rs`, `crates/tailscale-mcp/tests/the_session_scrubs_its_own_credential.rs`
+
+**Outcome:** applied

@@ -534,9 +534,15 @@ const fn is_token_byte(b: u8) -> bool {
 
 /// Scrubs known secret values in addition to key-shaped ones.
 ///
-/// Built once at startup from whatever credentials were configured, then shared.
-/// The literal pass matters for the OAuth client secret, which is the one
-/// credential we hold that need not look like a Tailscale key.
+/// Built once at startup from whatever credentials were configured, then
+/// shared. The literal pass matters for the OAuth client secret, which is the
+/// one credential we hold that need not look like a Tailscale key.
+///
+/// [`Redactor::for_credentials`] is how a session gets one, and
+/// `the_session_scrubs_its_own_credential` is what keeps that call in place:
+/// this said it was built from the configured credentials for four releases
+/// during which nothing registered one, so the literal pass ran over an empty
+/// list and only the shape rules did any work.
 #[derive(Debug, Clone, Default)]
 pub struct Redactor {
     secrets: Vec<String>,
@@ -560,6 +566,26 @@ impl Redactor {
     pub fn with_secret(mut self, secret: impl Into<String>) -> Self {
         self.add_secret(secret);
         self
+    }
+
+    /// The redactor a session runs with: shape rules, plus whatever secret
+    /// values this session was actually configured with.
+    ///
+    /// A federated credential contributes nothing, and that is not an
+    /// omission: the JWT is read from disk at exchange time and never held, so
+    /// at startup there is no value to register. What it is exchanged *for* is
+    /// a bearer token, which the shape rules cover.
+    #[must_use]
+    pub fn for_credentials(credentials: Option<&tailscale_rest::Credentials>) -> Self {
+        let mut redactor = Self::new();
+        match credentials {
+            Some(tailscale_rest::Credentials::ApiKey(key)) => redactor.add_secret(key.expose()),
+            Some(tailscale_rest::Credentials::OauthClient { client_secret, .. }) => {
+                redactor.add_secret(client_secret.expose());
+            }
+            Some(tailscale_rest::Credentials::Federated { .. }) | None => {}
+        }
+        redactor
     }
 
     /// Shape-based redaction first, then the known values.

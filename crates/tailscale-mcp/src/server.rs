@@ -210,7 +210,7 @@ pub async fn build(
     let ctx = ToolContext {
         local: Arc::clone(&backends.local),
         tailnet,
-        redactor: crate::error::Redactor::default(),
+        redactor: crate::error::Redactor::for_credentials(backends.credentials.as_ref()),
         max_result_bytes: config.max_result_bytes,
         identity,
         cli_version,

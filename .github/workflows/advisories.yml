@@ -1,0 +1,58 @@
+# The dependency advisory check, on a clock rather than on a push.
+#
+# `ci.yml` already runs `cargo deny --all-features check`, and its `advisories`
+# half is the one check in this repository whose answer can change while the
+# tree does not: the RUSTSEC database is published elsewhere and grows without
+# anybody here committing anything. Triggered only by `push` and
+# `pull_request`, it therefore stops asking the moment the work stops — which
+# is exactly the period a finished project spends most of its life in, and
+# exactly when a new advisory against a dependency that is already in five
+# published artefacts would go unnoticed.
+#
+# So this asks weekly, and asks only that. The licence, bans and sources halves
+# of `deny.toml` are decided by the tree and belong where the tree changes;
+# repeating them here would turn a scheduled red into an ambiguous one, and a
+# job that fails for two unrelated reasons is a job people stop reading.
+#
+# **GitHub disables a schedule after 60 days without repository activity**, and
+# emails first. That is a real limit, not a thing this file can work around: it
+# covers the quiet period after a release, not an indefinite one. If it is ever
+# disabled, a push re-enables it.
+name: Advisories
+
+on:
+  schedule:
+    # Mondays, early UTC. The exact hour matters less than not being on the
+    # hour, which is when GitHub's scheduler is most oversubscribed.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+# Reads the tree, writes nothing, and reaches no secret — the same posture as
+# every job in `ci.yml`, for the same reason.
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Kept equal to `ci.yml`'s pin by
+      # `the_advisory_schedule_pins_the_same_cargo_deny`, so the scheduled
+      # answer and the pushed answer come from one tool.
+      CARGO_DENY_VERSION: "0.20.2"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the stable toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
+      - uses: actions/cache@v4
+        id: deny
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-${{ runner.os }}-${{ env.CARGO_DENY_VERSION }}
+      - name: Install cargo-deny
+        if: steps.deny.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --locked --version "$CARGO_DENY_VERSION"
+      - name: Check the advisory database
+        run: cargo deny --all-features check advisories

@@ -1919,3 +1919,23 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Outcome:** applied
 
 **Ref:** `https://github.com/tailscale-mcp/homebrew-tap`, `.github/workflows/release.yml`, `packaging/homebrew/tailscale-mcp.rb.in`
+
+## Q126 — interactive/advisories — tradeoff
+
+**Question:** `cargo deny check` runs only on `push` and `pull_request`, so its `advisories` half — the one check whose answer changes without the tree changing — stops being asked exactly when a finished project goes quiet. Where should a scheduled run live?
+
+**Options considered:** add `schedule:` to `ci.yml` and skip the other jobs with `if: github.event_name != 'schedule'` / a separate `advisories.yml` running the advisories check alone
+
+**Chosen:** A separate `advisories.yml`, weekly, running `cargo deny --all-features check advisories` and nothing else.
+
+**Decided-by:** agent
+
+**Justification:** `ci.yml`'s own header states the principle this follows — "each get their own job, so a failure names itself". A scheduled run of the whole suite would go red for a compiler release or a flaky runner as readily as for an advisory, and the one thing a weekly mail must do is tell the reader, without their opening it, that a dependency now has a CVE. Restricting it to `advisories` is the same argument applied to `deny.toml`'s other halves: licences, bans and sources are decided by the tree, so a schedule cannot tell you anything about them that the last push did not.
+
+**The cost is a second pin.** `cargo-deny` is now pinned in two files, and two pins that drift would have the scheduled and the pushed answers coming from different tools — a disagreement that would read as a real finding. `the_advisory_schedule_pins_the_same_cargo_deny` holds them equal, and `the_advisory_workflow_still_runs_on_a_schedule` fails if the trigger is removed and the file left behind looking like cover. Both were mutated and shown to fail before being trusted. The `if:`-guard alternative avoids the pin but puts a condition on every job in `ci.yml` that exists only to describe a run nobody wanted, and it makes adding a job something you can get subtly wrong.
+
+**What this does not fix.** GitHub disables a schedule after 60 days without repository activity. That bounds the cover to the quiet period after a release rather than an indefinite one, and it is stated in the workflow so nobody reads the file as more than it is.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/advisories.yml`, `crates/tailscale-mcp/tests/advisories_are_asked_on_a_clock.rs`

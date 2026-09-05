@@ -24,10 +24,16 @@ name: Notify the tap
 on:
   release:
     types: [published]
+  # So the poke can be exercised without cutting a release. A path whose only
+  # rehearsal is the real thing is one you learn about at the worst moment —
+  # the same argument `rehearse` makes in `release.yml`.
+  workflow_dispatch:
 
-# Nothing is read from this repository, and nothing is written to it. The job
-# makes one API call outward.
-permissions: {}
+# Reading this repository's own releases is all that is wanted from
+# `GITHUB_TOKEN`; the dispatch outward uses the tap token instead, which has no
+# access here at all.
+permissions:
+  contents: read
 
 jobs:
   notify:
@@ -37,13 +43,33 @@ jobs:
     # A pre-release is not what `brew install` should serve, and the tap reads
     # `/releases/latest`, which skips them. Dispatching would be a no-op run;
     # not dispatching says why.
-    if: github.event.release.prerelease == false
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
     steps:
+      # On a release this is the release's own tag. Run by hand there is no
+      # event to read it from, so it comes from the newest release — which is
+      # what the tap would look at anyway, so the two agree.
+      - name: Work out which tag to name
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          else
+            tag="${{ github.event.release.tag_name }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "naming $tag"
+
       - name: Dispatch to the tap
         env:
           GH_TOKEN: ${{ secrets.TAP_DISPATCH_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::TAP_DISPATCH_TOKEN is empty — the secret is not set on this repository" >&2
+            exit 1
+          fi
           gh api --method POST repos/tailscale-mcp/homebrew-tap/dispatches \
             -f event_type=release-published \
             -f "client_payload[tag]=$TAG"

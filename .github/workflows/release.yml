@@ -53,7 +53,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # A tag names the version; a rehearsal takes it from the manifest. On a
       # tag the two have to agree, because a release whose archives are named
       # for one version and whose crates carry another is worse than no
@@ -75,7 +75,7 @@ jobs:
       - name: Install the stable toolchain
         shell: bash
         run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }} --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -101,7 +101,7 @@ jobs:
           cp "$binary" README.md LICENSE "$staging/"
           tar czf "$staging.tar.gz" "$staging"
           echo "ARCHIVE=$staging.tar.gz" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
@@ -118,10 +118,10 @@ jobs:
       # find out before they do.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -204,8 +204,8 @@ jobs:
       # The one job here that writes anything to this repository.
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -285,7 +285,7 @@ jobs:
       # rather than uploaded from a laptop.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # v7 and not v4: up to v6 this action exported `NODE_AUTH_TOKEN` as
       # `XXXXX-XXXXX-XXXXX-XXXXX` whenever the caller had not set one, so
       # removing the token from this job would have left an `.npmrc`
@@ -348,7 +348,7 @@ jobs:
     env:
       IMAGE: ghcr.io/${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Each architecture is built on a runner of that architecture rather than
       # emulated, so the build is the one the users of that architecture get
       # and takes minutes rather than an hour.
@@ -413,7 +413,7 @@ jobs:
       # exactly the name this listing carries.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The version and the digest are in the script, which `rehearse` runs
       # too: it validated this same listing before anything was created.
       - name: Install the publisher
@@ -443,10 +443,10 @@ jobs:
       # all three.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index

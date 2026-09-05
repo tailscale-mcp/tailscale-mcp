@@ -45,10 +45,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -70,10 +70,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -92,14 +92,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Read from the workspace manifest rather than written out here, so the
       # job cannot drift from the `rust-version` the crates publish.
       - name: Read the minimum supported version
         run: echo "MSRV=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_ENV"
       - name: Install the minimum supported toolchain
         run: rustup toolchain install "$MSRV" --profile minimal --no-self-update
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -118,10 +118,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --component clippy --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The whole history: the check walks from the commit where the
           # convention was adopted to here.
@@ -159,7 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --no-self-update && rustup default stable
       - name: Format
@@ -174,10 +174,10 @@ jobs:
       # day the job ran.
       CARGO_DENY_VERSION: "0.20.2"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: deny
         with:
           path: ~/.cargo/bin/cargo-deny
@@ -211,8 +211,8 @@ jobs:
         # the test runner, `node:crypto` — so both ends are worth knowing about.
         node: ["20", "24"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
       # The launcher downloads a release archive and refuses to run it unless
@@ -229,7 +229,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No cache: the build happens inside the image, where a cached host
       # registry would not reach it, and a `Dockerfile` that only works with a
       # warm cache is a `Dockerfile` that does not work.

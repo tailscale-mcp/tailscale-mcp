@@ -43,10 +43,10 @@ jobs:
       # answer and the pushed answer come from one tool.
       CARGO_DENY_VERSION: "0.20.2"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: deny
         with:
           path: ~/.cargo/bin/cargo-deny

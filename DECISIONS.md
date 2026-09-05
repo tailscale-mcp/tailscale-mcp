@@ -2015,3 +2015,21 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `crates/tailscale-mcp/src/gating.rs`, `crates/tailscale-mcp/src/instructions.rs`, `crates/tailscale-mcp/src/server.rs`, `crates/tailscale-mcp/tests/nothing_names_a_hidden_toolset.rs`
 
 **Outcome:** applied
+
+## Q131 — interactive/hidden-toolsets — deviation
+
+**Question:** Q130 put the filtered list on `Gate` and fixed two renderings. Sweeping the remaining callers of `gate.toolsets()` found two more: the `tailscale_run` paragraph in the instructions, printed whenever passthrough was *selected*, and the `toolsets` field of `tools --json`, which named nine tailnet toolsets in a document whose every tool was local. Fix, or accept as reporting the selection?
+
+**Options considered:** filter both / leave them, on the grounds that a listing may report what was asked for
+
+**Chosen:** Filter both, through `Gate::offered_toolsets`.
+
+**Decided-by:** agent
+
+**Justification:** Neither is a place where the selection is the interesting fact. The `tools` listing already reports the gate's own count and the gate's own tools, so the toolsets beside them are the odd one out — the document contradicted itself in a single object. The passthrough paragraph is sharper still: it introduced `tailscale_run` four lines after the session said no `tailscale_*` tool is offered, and its own comment says it exists to stop "the two halves of what the session is told" contradicting each other.
+
+**Four sites, one cause.** This is the fourth instance of the same mistake and the last: `gate.toolsets()` now has no caller that renders it, and `offered_toolsets` is what the four use. The remaining uses are the gate's own and the tests', which want the selection and are right to.
+
+**Ref:** `crates/tailscale-mcp/src/instructions.rs`, `crates/tailscale-mcp/src/subcommands/mod.rs`, `crates/tailscale-mcp/tests/nothing_names_a_hidden_toolset.rs`
+
+**Outcome:** applied

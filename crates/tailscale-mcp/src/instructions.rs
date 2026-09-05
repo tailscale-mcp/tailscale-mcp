@@ -61,7 +61,14 @@ pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
         ),
     }
 
-    if gate.toolsets().contains(&Toolset::LocalPassthrough) {
+    // Offered rather than selected: with the local surface switched off this
+    // paragraph introduced `tailscale_run` four lines after the session had
+    // said no `tailscale_*` tool is offered — the very contradiction the
+    // comment below says it exists to prevent.
+    if gate
+        .offered_toolsets()
+        .any(|toolset| toolset == Toolset::LocalPassthrough)
+    {
         // Without this the two halves of what the session is told contradict
         // each other: the tier paragraph says which tools are offered, and
         // `tailscale_run` is annotated destructive at every tier because its

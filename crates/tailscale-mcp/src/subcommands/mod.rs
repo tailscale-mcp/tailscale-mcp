@@ -331,7 +331,10 @@ pub fn tools(config: &Config, json: bool) -> Report {
         return Report::ok(pretty(&serde_json::json!({
             "preset": config.preset.as_str(),
             "tier": config.max_tier.as_str(),
-            "toolsets": config.toolsets.iter().map(|t| t.as_str()).collect::<Vec<_>>(),
+            // The same list the `tools` array and `count` beside it are drawn
+            // from. Reporting the selection here put nine tailnet toolsets in
+            // a document whose every tool was local.
+            "toolsets": gate.offered_toolsets().map(|toolset| toolset.as_str()).collect::<Vec<_>>(),
             "count": rows.len(),
             "tools": rows,
         })));

@@ -17,6 +17,9 @@
 mod harness;
 
 use harness::Setup;
+use serde_json::Value;
+use tailscale_mcp::config::{Cli, Config};
+use tailscale_mcp::subcommands;
 
 /// Every toolset named in either rendering is one with a tool behind it.
 #[tokio::test]
@@ -59,5 +62,73 @@ async fn a_session_with_a_tailnet_still_names_its_toolsets() {
     assert!(
         instructions.contains("local-status"),
         "and should not have dropped the local half either: {instructions}"
+    );
+}
+
+/// The `tools` listing agrees with itself.
+///
+/// Its `count` and `tools` come from the gate and its `toolsets` came from the
+/// configuration, so `--no-tailnet` produced one document reporting 29 tools,
+/// every one of them local, under a list naming nine tailnet toolsets.
+#[test]
+fn the_tools_listing_names_no_toolset_its_own_tools_do_not_come_from() {
+    let cli = <Cli as clap::Parser>::try_parse_from(["tailscale-mcp", "--no-tailnet"])
+        .expect("the arguments parse");
+    let config = Config::resolve_with(cli, |_| None).expect("the configuration resolves");
+    let report = subcommands::tools(&config, true);
+    let parsed: Value = serde_json::from_str(&report.text).expect("JSON");
+
+    let named: Vec<&str> = parsed["toolsets"]
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|toolset| toolset.as_str().expect("a name"))
+        .collect();
+    let surfaces: Vec<&str> = parsed["tools"]
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|tool| tool["surface"].as_str().expect("a surface"))
+        .collect();
+
+    assert!(
+        surfaces.iter().all(|surface| *surface == "local"),
+        "the premise is a listing whose tools are all local: {surfaces:?}"
+    );
+    assert!(
+        named.iter().all(|name| !name.starts_with("tailnet-")),
+        "the listing names a tailnet toolset none of its own tools came from: {named:?}"
+    );
+}
+
+/// Guidance for a tool is offered only where the tool is.
+///
+/// `tailscale_run` gets a paragraph of its own, and the paragraph appeared
+/// whenever the passthrough toolset was *selected* — so a session with the
+/// local surface switched off introduced it four lines after saying no
+/// `tailscale_*` tool is offered.
+#[tokio::test]
+async fn the_passthrough_paragraph_follows_the_tool_it_describes() {
+    let without = Setup::new()
+        .preset("full")
+        .toolsets("+local-passthrough")
+        .without_cli()
+        .start()
+        .await;
+    assert!(
+        !without.instructions().contains("tailscale_run"),
+        "no local surface, so no `tailscale_run` to introduce: {}",
+        without.instructions()
+    );
+
+    let with = Setup::new()
+        .preset("full")
+        .toolsets("+local-passthrough")
+        .start()
+        .await;
+    assert!(
+        with.instructions().contains("tailscale_run"),
+        "and where it is offered it still gets its paragraph: {}",
+        with.instructions()
     );
 }

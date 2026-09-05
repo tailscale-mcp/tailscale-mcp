@@ -36,8 +36,13 @@ The tailnet paths list devices, read the policy file, the DNS configuration, the
 tailnet settings and the keys, then read back one device by the identifier the
 listing gave — which is the read that would catch an identifier this server
 builds wrongly. All of them are reads, so a read-only credential is enough.
-**Not yet run against a real tailnet**: that needs the read-only credential the
-maintainer has still to supply.
+**Run against a real tailnet on 2026-09-05**, with an API access token: all six
+reads pass, including the read-back by the listed identifier. The first run
+failed, and on something no other test could have caught — the DNS read named
+`tailnet_dns_get`, which is not a tool and never has been. The toolset offers
+`tailnet_dns_configuration_get` and four narrower readers instead. A gated test
+says nothing until somebody opens the gate, which is why the ticket counted the
+run as outstanding rather than the code as written.
 
 The write gate covers one test, which sets a custom posture attribute on a
 device and deletes it again, reading back both times. It is the smallest thing

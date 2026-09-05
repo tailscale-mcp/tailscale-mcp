@@ -239,6 +239,7 @@ pub struct KeyUpdateParams {
     /// whether an update without one is meaningful (Q80).
     #[serde(default)]
     pub key_type: Option<String>,
+    /// Up to 50 characters of letters, digits, hyphens and spaces.
     #[serde(default)]
     pub description: Option<String>,
     /// The complete replacement list of scopes.
@@ -247,12 +248,17 @@ pub struct KeyUpdateParams {
     /// The complete replacement list of tags.
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    /// Federated identities: the issuer whose JWTs are accepted.
     #[serde(default)]
     pub issuer: Option<String>,
+    /// Federated identities: the subject a JWT must claim.
     #[serde(default)]
     pub subject: Option<String>,
+    /// Federated identities: the audience a JWT must claim.
     #[serde(default)]
     pub audience: Option<String>,
+    /// Federated identities: claims mapped to the values they must have.
+    /// The complete replacement set, like `scopes` and `tags`.
     #[serde(default)]
     pub custom_claim_rules: Option<std::collections::BTreeMap<String, String>>,
 }

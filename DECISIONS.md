@@ -2089,3 +2089,21 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `.scratch/tailscale-mcp-v1/issues/31-trusted-publishing.md`, `crates/tailscale-mcp/tests/no_ticket_waits_on_a_shipped_version.rs`
 
 **Outcome:** applied — step 6 is for the user; nothing in this repository is waiting on it
+
+## Q135 — interactive/sweep — gate-resolution
+
+**Question:** `tailnet_key_update` carried five parameters with no documentation — `issuer`, `subject`, `audience`, `custom_claim_rules`, `description` — while `KeyCreateParams` directly above it describes the same four federated-identity fields. Write descriptions for the update struct, or point it at the create struct's?
+
+**Options considered:** copy the create struct's wording / write new wording for the update case / factor the four federated fields into a shared struct and flatten it
+
+**Chosen:** Copied the create struct's wording, with one addition: `custom_claim_rules` says it is a complete replacement set, as `scopes` and `tags` already do on that struct.
+
+**Decided-by:** agent
+
+**Justification:** The fields mean the same thing in both calls, and two descriptions of one concept drift. Factoring them into a shared flattened struct is the change that would prevent this recurring, but it would move four fields out of a params struct that reads top to bottom as the request body, for one caller — and `SelfConfirmation` is flattened precisely because it appears six times. Two is not six. The test below is the cheaper guard and catches the whole class rather than this instance.
+
+**Why it was invisible:** nothing checked parameter descriptions. `docs_are_current` renders tool summaries, so an undescribed *tool* would show as an empty cell; parameters never reach that document. The gap was found by listing the real schemas over a live session and reading them.
+
+**Ref:** `crates/tailscale-mcp/src/tools/tailnet_keys.rs`, `crates/tailscale-mcp/tests/every_parameter_says_what_it_is.rs`
+
+**Outcome:** applied

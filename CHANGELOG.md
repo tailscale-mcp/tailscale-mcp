@@ -3,6 +3,19 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.0.4 — 2026-09-05
+
+### Fixed
+
+- The release never told the tap, because GITHUB_TOKEN cannot (Q132)
+- The tool listing printed a floor as though it were a tier (Q133)
+
+### Documentation
+
+- Say why an OAuth client is the better credential to leave in a config
+- Split pointing a client at it from giving it a credential
+- Put both credential shapes before the argument for choosing
+
 ## 1.0.3 — 2026-09-05
 
 ### Fixed

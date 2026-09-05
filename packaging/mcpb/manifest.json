@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "tailscale-mcp",
   "display_name": "Tailscale",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Drive a Tailscale node and its tailnet through the CLI and the control-plane API",
   "long_description": "Reads and drives the Tailscale node this bundle runs on through the `tailscale` command-line interface, and the tailnet behind it through the control-plane REST API. The local tools need the `tailscale` command-line interface installed; the tailnet tools need a control-plane credential. Whichever backend is missing, its tools are not offered rather than failing when called.\n\nTools are read-only unless you permit more. Write tools change configuration; destructive tools remove or expose something, such as deleting a device or publishing a funnel. Each tier is hidden until it is permitted, so a tool that is not offered cannot be called by mistake.",
   "author": {

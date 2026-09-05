@@ -388,3 +388,99 @@ fn the_checks_catch_a_workflow_that_no_longer_matches() {
     );
     assert_eq!(named, vec!["GITHUB_TOKEN", "NPM_TOKEN"]);
 }
+
+/// The property the last test states, over every workflow rather than one.
+///
+/// `nothing_that_publishes_reads_a_repository_secret` reads `release.yml`,
+/// because that is the workflow the registries were told about. Once a second
+/// workflow exists that does hold a secret — `notify-tap.yml`, which needs a
+/// cross-repository token because `GITHUB_TOKEN` cannot reach another
+/// repository — reading one file is no longer the same claim: a publish step
+/// could be added next door and the check would not notice.
+///
+/// So this reads them all. A workflow may hold a secret, or it may publish;
+/// not both. That keeps the guarantee where it was — nothing that can publish
+/// carries a credential worth stealing — while allowing a workflow whose only
+/// power is to poke another repository.
+#[test]
+fn no_publishing_workflow_reads_a_repository_secret() {
+    // What publishing looks like, whichever registry it is aimed at.
+    const PUBLISHES: &[&str] = &[
+        "npm publish",
+        "npm stage",
+        "cargo publish",
+        "docker push",
+        "mcp-publisher publish",
+        "crates-io-auth-action",
+    ];
+
+    let workflows = repo::root().join(".github").join("workflows");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&workflows).expect("the workflows directory") {
+        let path = entry.expect("a directory entry").path();
+        if path.extension().is_none_or(|e| e != "yml") {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .expect("a file name")
+            .to_string_lossy()
+            .into_owned();
+        let text = std::fs::read_to_string(&path).expect("a workflow");
+        checked += 1;
+
+        let secrets: Vec<String> = secrets_read(&text)
+            .into_iter()
+            .filter(|named| named != "GITHUB_TOKEN")
+            .collect();
+        if secrets.is_empty() {
+            continue;
+        }
+        for marker in PUBLISHES {
+            assert!(
+                !text.contains(marker),
+                "`{name}` reads {secrets:?} and also runs `{marker}`; a workflow \
+                 may hold a secret or publish, not both"
+            );
+        }
+    }
+    assert!(
+        checked >= 2,
+        "only {checked} workflow(s) read; the check is thin"
+    );
+}
+
+/// And the one workflow that does hold a secret is the one we think it is.
+///
+/// Not a style rule: it is what makes the test above meaningful to read. A new
+/// secret appearing in a third workflow should be a decision somebody makes on
+/// purpose, not something that arrives with a pull request nobody queried.
+#[test]
+fn only_the_tap_notifier_holds_a_secret() {
+    let workflows = repo::root().join(".github").join("workflows");
+    let mut holders: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(&workflows).expect("the workflows directory") {
+        let path = entry.expect("a directory entry").path();
+        if path.extension().is_none_or(|e| e != "yml") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("a workflow");
+        if secrets_read(&text)
+            .iter()
+            .any(|named| named != "GITHUB_TOKEN")
+        {
+            holders.push(
+                path.file_name()
+                    .expect("a file name")
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+    }
+    holders.sort();
+    assert_eq!(
+        holders,
+        ["notify-tap.yml"],
+        "these workflows hold a repository secret; if that is deliberate, say so here"
+    );
+}

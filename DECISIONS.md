@@ -1894,6 +1894,28 @@ The cost is latency: up to six hours where `brew install` serves the previous ve
 
 Both branches were proven rather than assumed: the no-op path against the current release, and the update path by regressing the tap to 1.0.1 and watching it restore itself to 1.0.2.
 
+## Q125 — build/ticket-29 — tradeoff
+
+**Question:** The six-hour window in Q124 is the time `brew install` can serve the previous version after a release. Closing it to seconds needs the release to poke the tap, and `GITHUB_TOKEN` cannot reach another repository. Should a cross-repository credential be introduced into a repository that deliberately has none?
+
+**Options considered:** poll every five minutes, which is GitHub's floor and needs no credential / a fine-grained token that only pokes the tap / leave the six hours and poke by hand after a release
+
+**Chosen:** the token, in a new `notify-tap.yml` that publishes nothing.
+
+**Decided-by:** user
+
+**Justification:** The options were put with the cost stated plainly, including that this repository stops being one with no secrets at all. Five-minute polling was the recommendation and was declined: it buys most of the latency but runs 288 times a day for a repository that releases rarely, and it still is not the "within seconds" the fix was asked for.
+
+**What the secret can and cannot do.** Fine-grained, `contents: write` on `tailscale-mcp/homebrew-tap` alone. It cannot publish to any registry, cannot write to this repository, and cannot read anything private. Stolen, it lets somebody rewrite a formula — which the tap then checks against this repository's published `SHA256SUMS` before committing, so the blast radius is a formula that fails its own verification rather than a package anybody installs.
+
+**The honest risk is not the token; it is the test.** `nothing_that_publishes_reads_a_repository_secret` reads `release.yml` and nothing else. That was sound while `release.yml` was the only workflow that could hold a secret, and it stops being sound the moment a second one does: a publish step could be added next door and the check would pass. Satisfying the letter of that test while weakening what it means is exactly the failure this journal exists to catch, so the test was widened rather than left alone. `no_publishing_workflow_reads_a_repository_secret` now reads every workflow and holds a simpler line — a workflow may hold a secret or it may publish, never both — and `only_the_tap_notifier_holds_a_secret` fails if a secret appears anywhere else, so a third one has to be a decision somebody makes rather than something that arrives in a pull request. Both were shown to fail before being trusted.
+
+**The schedule stays, and its job changes.** It is no longer the mechanism but the bound on how long a silently broken dispatch can go unnoticed — which is the same failure mode as the manual step Q124 removed, and would be reintroduced by making the poke the only path.
+
+**Outcome:** applied
+
+**Ref:** `.github/workflows/notify-tap.yml`, `crates/tailscale-mcp/tests/trusted_publishing_matches.rs`, `https://github.com/tailscale-mcp/homebrew-tap`
+
 **Outcome:** applied
 
 **Ref:** `https://github.com/tailscale-mcp/homebrew-tap`, `.github/workflows/release.yml`, `packaging/homebrew/tailscale-mcp.rb.in`

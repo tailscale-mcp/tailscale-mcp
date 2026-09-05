@@ -1,0 +1,50 @@
+# Tell the Homebrew tap that a release happened.
+#
+# The tap keeps its own copy of the formula and updates itself by reading this
+# repository's newest release. On a schedule alone that takes up to six hours,
+# during which `brew install` serves the previous version — so this pokes it
+# and the tap is current within seconds.
+#
+# **This workflow publishes nothing, and that is the property to preserve.**
+# `release.yml` holds no repository secret: npm and crates.io take its own
+# identity through OIDC, and `trusted_publishing_matches.rs` enforces that. The
+# token here is the one secret in the repository, and it exists because
+# `GITHUB_TOKEN` is scoped to the repository that minted it and so cannot reach
+# the tap. It is a fine-grained token with `contents: write` on
+# `tailscale-mcp/homebrew-tap` and nothing else: it cannot publish a package,
+# cannot write here, and cannot read anything private. Stolen, it lets somebody
+# rewrite a formula that the tap then checks against this repository's own
+# published checksums.
+#
+# `no_publishing_workflow_reads_a_repository_secret` holds the line: it reads
+# every workflow, and any that touches a registry must carry no secret but
+# `GITHUB_TOKEN`. Adding a publish step here would fail it.
+name: Notify the tap
+
+on:
+  release:
+    types: [published]
+
+# Nothing is read from this repository, and nothing is written to it. The job
+# makes one API call outward.
+permissions: {}
+
+jobs:
+  notify:
+    name: Poke the tap
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # A pre-release is not what `brew install` should serve, and the tap reads
+    # `/releases/latest`, which skips them. Dispatching would be a no-op run;
+    # not dispatching says why.
+    if: github.event.release.prerelease == false
+    steps:
+      - name: Dispatch to the tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_DISPATCH_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh api --method POST repos/tailscale-mcp/homebrew-tap/dispatches \
+            -f event_type=release-published \
+            -f "client_payload[tag]=$TAG"
+          echo "told the tap about $TAG"

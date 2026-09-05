@@ -1939,3 +1939,23 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Outcome:** applied
 
 **Ref:** `.github/workflows/advisories.yml`, `crates/tailscale-mcp/tests/advisories_are_asked_on_a_clock.rs`
+
+## Q127 — interactive/startup-note — deviation
+
+**Question:** With no control-plane credential the startup note read "Offering 30 tools: local-status, …, tailnet-devices, tailnet-invites, … at the read tier and above" — a count that excluded the tailnet surface beside a list that named thirteen toolsets of it. Which half was wrong?
+
+**Options considered:** the list, which names selected toolsets / the count, which names contributing ones
+
+**Chosen:** The list. `describe_toolsets` now filters by `Gate::offers`, so the note names only toolsets this session can actually serve from.
+
+**Decided-by:** agent
+
+**Justification:** `Gate::offers` already exists and its doc comment states the rule the note was breaking — the instructions use it because they "have to describe what a session can actually do rather than what it was asked for", and a startup note is the same kind of claim to the same reader. The count was right: `registry.visible` excludes a tool whose surface is unavailable, so the two halves of one sentence disagreed and only the list could be the wrong one. Changing the count instead would have meant advertising tools that every call refuses.
+
+**Found by using the published artifact.** Nothing in the suite drove 1.0.2 from npm through a real protocol session; the harness is in-process and the earlier bundle check stopped at `initialize`. A session that listed tools and read the notes showed it immediately. `the_summary_names_no_toolset_that_offers_nothing` now holds the two halves together, and reverting the filter reproduces the shipped sentence verbatim.
+
+**It is in 1.0.2 and stays there.** The fix reaches users at the next version; nothing about this warrants a release of its own.
+
+**Outcome:** applied
+
+**Ref:** `crates/tailscale-mcp/src/server.rs`

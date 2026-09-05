@@ -232,8 +232,20 @@ pub async fn build(
     })
 }
 
+/// The toolsets this session actually offers something from.
+///
+/// Selected is not the same as offered: a toolset whose surface has no backend
+/// — no `tailscale` binary, no control-plane credential — contributes no tools,
+/// and naming it here beside a count that excludes it describes a session
+/// nobody is in. [`Gate::offers`] is the question the instructions already ask
+/// for exactly this reason, so the note asks it too.
 fn describe_toolsets(gate: &Gate) -> String {
-    let names: Vec<&str> = gate.toolsets().iter().map(|t| t.as_str()).collect();
+    let names: Vec<&str> = gate
+        .toolsets()
+        .iter()
+        .filter(|toolset| gate.offers(toolset.surface()))
+        .map(|toolset| toolset.as_str())
+        .collect();
     if names.is_empty() {
         "no toolsets".to_owned()
     } else {
@@ -1032,6 +1044,32 @@ mod tests {
         assert!(summary.contains("Offering"), "{summary}");
         assert!(summary.contains("local-status"), "{summary}");
         assert!(summary.contains("read"), "{summary}");
+    }
+
+    /// The count and the list are one sentence and have to agree.
+    ///
+    /// With no credential the tailnet toolsets are still *selected* — the
+    /// preset picks them and nothing in the configuration says otherwise — but
+    /// they contribute nothing, and the count beside them already knows that.
+    /// Naming them anyway told a reader that `tailnet-devices` was on offer in
+    /// a session where every call to it would be refused, which is the one
+    /// thing a startup note exists to prevent.
+    #[tokio::test]
+    async fn the_summary_names_no_toolset_that_offers_nothing() {
+        let startup = server(Cli::default(), backends(Some(healthy_node()), false)).await;
+        let summary = startup
+            .notes
+            .last()
+            .expect("a summary is always the last note");
+        assert!(
+            summary.contains("local-status"),
+            "the local surface is there and should be named: {summary}"
+        );
+        assert!(
+            !summary.contains("tailnet-"),
+            "no credential, so no tailnet toolset offers anything; naming one \
+             contradicts the count in the same sentence: {summary}"
+        );
     }
 
     /// `call_tool` without a [`RequestContext`], which only a live session can

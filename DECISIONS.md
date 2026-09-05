@@ -2033,3 +2033,23 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `crates/tailscale-mcp/src/instructions.rs`, `crates/tailscale-mcp/src/subcommands/mod.rs`, `crates/tailscale-mcp/tests/nothing_names_a_hidden_toolset.rs`
 
 **Outcome:** applied
+
+## Q132 — interactive/tap-poke — deviation
+
+**Question:** `notify-tap.yml` (Q125) triggers on `release: published` and has never fired on one. GitHub raises no workflow-triggering event for anything `GITHUB_TOKEN` did, and `release.yml` creates the release with `GITHUB_TOKEN`, so 1.0.3 shipped with the tap serving 1.0.2. How should the release reach the notifier?
+
+**Options considered:** dispatch `notify-tap.yml` from `release.yml` with `GITHUB_TOKEN` / give `release.yml` the tap token and call the tap directly / trigger on `workflow_run` when the release workflow completes
+
+**Chosen:** `release.yml` runs `gh workflow run notify-tap.yml` after creating the release, with `actions: write`.
+
+**Decided-by:** agent
+
+**Justification:** `workflow_dispatch` and `repository_dispatch` are the two events GitHub excepts from the `GITHUB_TOKEN` rule, so this is the same mechanism the notifier already accepts, asked for rather than awaited. Verified on a scratch branch before being relied on: a workflow using `GITHUB_TOKEN` started `notify-tap.yml`, and the attempt also showed that `gh workflow run` resolves the workflow name against the default branch, which `notify-tap.yml` satisfies.
+
+**Giving `release.yml` the tap token was the wrong shape.** `no_publishing_workflow_reads_a_repository_secret` holds that a workflow may publish or hold a secret and never both, and `release.yml` is the publishing one — the property the whole OIDC conversion exists for. `workflow_run` would also have worked but fires after every run of the release workflow, including a rehearsal that publishes nothing.
+
+**Why it hid.** The poke was only ever exercised by `workflow_dispatch`, which is precisely the path the rule excepts — the rehearsal took the one route that works and proved nothing about the route it would take. Q125 called the schedule "the bound on how long a silently broken dispatch can go unnoticed", and that is exactly what it turned out to be.
+
+**Ref:** `.github/workflows/release.yml`, `crates/tailscale-mcp/tests/the_release_pokes_the_tap.rs`
+
+**Outcome:** applied

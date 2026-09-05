@@ -203,6 +203,9 @@ jobs:
     permissions:
       # The one job here that writes anything to this repository.
       contents: write
+      # And starts `notify-tap.yml`, because a release made with `GITHUB_TOKEN`
+      # raises no event that would.
+      actions: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -262,6 +265,24 @@ jobs:
             --notes-file NOTES.md \
             --verify-tag \
             artifacts/*
+
+      # `notify-tap.yml` listens for `release: published` and never heard one:
+      # GitHub raises no workflow-triggering event for anything `GITHUB_TOKEN`
+      # did, so that a workflow cannot set itself off, and the release above is
+      # created with `GITHUB_TOKEN`. 1.0.3 went out with the tap still serving
+      # 1.0.2 until somebody ran the poke by hand.
+      #
+      # `workflow_dispatch` is one of the two exceptions to that rule, so the
+      # poke is asked for by name rather than waited for. It goes here because
+      # the tap reads the formula and `SHA256SUMS` off the release, which the
+      # step above has just attached — and nothing later in this workflow is
+      # something the tap looks at.
+      - name: Tell the tap there is a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run notify-tap.yml --ref "$GITHUB_REF_NAME"
+          echo "asked notify-tap to poke the tap about $GITHUB_REF_NAME"
 
   npm:
     name: Publish to npm

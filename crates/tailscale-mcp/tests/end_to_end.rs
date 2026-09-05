@@ -207,7 +207,9 @@ async fn the_tailnet_read_paths_work_against_a_real_tailnet() {
         "the policy file, in whichever form: {policy}"
     );
 
-    harness.call("tailnet_dns_get", json!({})).await;
+    harness
+        .call("tailnet_dns_configuration_get", json!({}))
+        .await;
     harness.call("tailnet_settings_get", json!({})).await;
     harness.call("tailnet_key_list", json!({})).await;
 

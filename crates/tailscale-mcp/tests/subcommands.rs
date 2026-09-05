@@ -178,6 +178,28 @@ fn the_version_says_what_it_is_and_what_it_can_speak() {
     );
 }
 
+/// And says each of them once.
+///
+/// The line names the preferred version and then lists what else it speaks, so
+/// the list is the others. `KNOWN_VERSIONS` includes the preferred one, and
+/// printing it unfiltered produced "MCP protocol 2025-11-25 (also speaks ...,
+/// 2025-11-25, ...)" — a sentence claiming the server also speaks the version
+/// it just said it speaks.
+#[test]
+fn the_version_names_each_protocol_once() {
+    let report = subcommands::version();
+    for known in rmcp::model::ProtocolVersion::KNOWN_VERSIONS {
+        let version = known.to_string();
+        assert_eq!(
+            report.text.matches(&version).count(),
+            1,
+            "`{version}` appears more than once; the list after \"also speaks\" is \
+             the versions other than the one already named: {}",
+            report.text
+        );
+    }
+}
+
 /// The SDK version in `version`'s output is written by hand, because there is
 /// no way to read a dependency's version at runtime. This is what stops it
 /// going stale (Q97).

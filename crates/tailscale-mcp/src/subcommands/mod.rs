@@ -387,16 +387,27 @@ fn row(meta: &ToolMeta) -> Listed {
 
 /// This server's version, and what protocol versions it can speak.
 pub fn version() -> Report {
-    let known: Vec<String> = rmcp::model::ProtocolVersion::KNOWN_VERSIONS
+    let latest = rmcp::model::ProtocolVersion::LATEST;
+    // `KNOWN_VERSIONS` contains the newest one too, and it is named by itself
+    // immediately before this list. "Also" is a claim about the others, so
+    // repeating it there said the server speaks a version in addition to
+    // itself.
+    let others: Vec<String> = rmcp::model::ProtocolVersion::KNOWN_VERSIONS
         .iter()
+        .filter(|known| **known != latest)
         .map(ToString::to_string)
         .collect();
+    // A build where the newest is the only one is not a build that should
+    // print an empty parenthesis.
+    let rest = if others.is_empty() {
+        String::new()
+    } else {
+        format!(" (also speaks {})", others.join(", "))
+    };
     Report::ok(format!(
-        "{} {}\nrmcp {RMCP_VERSION}\nMCP protocol {} (also speaks {})\n",
+        "{} {}\nrmcp {RMCP_VERSION}\nMCP protocol {latest}{rest}\n",
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
-        rmcp::model::ProtocolVersion::LATEST,
-        known.join(", ")
     ))
 }
 

@@ -23,7 +23,7 @@ which of the two this machine has.
 | `TAILSCALE_MCP_NO_LOCAL` | `--no-local` | off | Do not offer the tools that drive this node, even where the `tailscale` binary is present. |
 | `TAILSCALE_MCP_NO_TAILNET` | `--no-tailnet` | off | Do not offer the tools that drive the tailnet, even where a credential is present. |
 | `TAILSCALE_MCP_CLI_PATH` | `--cli-path` | found on `PATH`, then in the macOS application bundles | Where the `tailscale` binary is. |
-| `TAILSCALE_MCP_MAX_RESULT_BYTES` | `--max-result-bytes` | `1048576` (1 MiB) | Refuse a tool result larger than this, with `result_too_large`, rather than sending it to a model that cannot hold it. |
+| `TAILSCALE_MCP_MAX_RESULT_BYTES` | `--max-result-bytes` | `1048576` (1 MiB) | Refuse a tool result or a resource larger than this, with `result_too_large`, rather than sending it to a model that cannot hold it. Both, because a resource and the tool beside it answer with the same bytes. |
 | `TAILSCALE_MCP_LOG` | `--log` | `warn,tailscale_mcp=info` | Logging filter, in the `tracing` syntax. Logs go to standard error. The MCP SDK is held to `info` unless the filter names it, because it traces whole messages — secrets included — at `debug`. |
 | `TAILSCALE_MCP_HTTP_TOKEN` | none | none | The bearer token an HTTP caller must present. It has no flag on purpose: an argument is readable by every process on this machine. |
 | `TAILSCALE_MCP_HTTP_NO_AUTH` | `--http-no-auth` | off | Serve HTTP with no token at all. Binding anywhere but loopback needs either this or a token. |

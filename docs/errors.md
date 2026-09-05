@@ -43,7 +43,7 @@ key that appeared in a command's standard error reaches the caller as
 | `not_found` | The target of the operation does not exist. | Check the identifier. A device can be named by its node id or its numeric id; a service name includes its `svc:` prefix. |
 | `conflict` | The state changed underneath: a stale version identifier, or a resource that already exists. | Read the current state again and retry from it. For the policy file that means reading its version identifier immediately before writing. |
 | `rate_limited` | The control plane asked us to slow down. | Wait and retry. |
-| `result_too_large` | The result would exceed the configured size cap. | Ask for less, or raise `TAILSCALE_MCP_MAX_RESULT_BYTES`. The cap exists so that a result no model can hold fails as a sentence rather than as a wall of JSON. |
+| `result_too_large` | A tool result or a resource would exceed the configured size cap. | Ask for less, or raise `TAILSCALE_MCP_MAX_RESULT_BYTES`. The cap exists so that a result no model can hold fails as a sentence rather than as a wall of JSON. |
 | `confirmation_required` | The operation is one the caller must state intent for. | Call it again with `confirm: true`. The tools that ask are the ones that affect the whole tailnet or that can cut this server off from what it is driving; the `hint` says which it is. |
 
 ## Two refusals that are not errors

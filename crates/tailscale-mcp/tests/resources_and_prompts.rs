@@ -451,3 +451,52 @@ async fn the_preferences_resource_does_not_run_an_excluded_command() {
 
     harness.shutdown().await;
 }
+
+/// A resource is held to the same ceiling as the tool beside it.
+///
+/// `tailscale://status` and `tailscale_status` answer with the same bytes, so
+/// a cap on one and not the other is a cap on neither: a caller wanting the
+/// document the tool had just refused could read the resource instead. The
+/// module makes the same argument for redaction — "a resource is not a way
+/// around that" — and the cap is the other thing a result passes on the way
+/// out.
+#[tokio::test]
+async fn a_resource_is_refused_when_it_is_over_the_result_cap() {
+    let harness = Setup::new()
+        .toolsets("local-status")
+        .env(tailscale_mcp::config::MAX_RESULT_BYTES_ENV, "64")
+        .start()
+        .await;
+
+    let refused = harness
+        .read_resource("tailscale://status")
+        .await
+        .expect_err("the status document is far over a 64 byte cap");
+    assert!(
+        refused.contains("64 byte cap"),
+        "the refusal should name the ceiling it hit: {refused}"
+    );
+
+    harness.shutdown().await;
+}
+
+/// And is not refused under the cap this server ships with.
+///
+/// The default is a mebibyte, so the check above must not be something every
+/// session meets: a resource that stopped working by default would be a worse
+/// bug than the one being fixed.
+#[tokio::test]
+async fn the_same_resource_is_answered_under_the_default_cap() {
+    let harness = Setup::new().toolsets("local-status").start().await;
+
+    let answered = harness
+        .read_resource("tailscale://status")
+        .await
+        .expect("the default cap is a mebibyte and this document is nowhere near it");
+    assert!(
+        !answered.contents.is_empty(),
+        "the resource should still answer with its document"
+    );
+
+    harness.shutdown().await;
+}

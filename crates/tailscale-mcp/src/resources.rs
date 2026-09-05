@@ -16,10 +16,14 @@
 //! are the part a person wrote, so `tailnet://policy` is served
 //! `application/hujson` as text rather than parsed into something smaller.
 //!
-//! **Nothing here answers with something a tool result would have redacted.**
-//! Each body goes through the session's redactor on the way out, which is what
-//! `status --json` needs: it carries key material for this node, and a
-//! resource is exactly as public as a tool result.
+//! **Nothing here answers with something a tool result would have redacted,
+//! and nothing answers with more than one would have carried.** Each body goes
+//! through the session's redactor on the way out, which is what `status
+//! --json` needs: it carries key material for this node, and a resource is
+//! exactly as public as a tool result. It is held to the session's result cap
+//! for the same reason — `tailscale://status` and `tailscale_status` answer
+//! with the same bytes, so a ceiling on one and not the other is a ceiling on
+//! neither.
 
 use std::sync::Arc;
 
@@ -259,6 +263,19 @@ pub async fn read(
         // Exactly as public as a tool result: `status --json` carries this
         // node's key material, and a resource is not a way around that.
         let body = ctx.redactor.apply(&body).into_owned();
+        // And held to the same ceiling, for the same reason. Redaction is one
+        // of the two things a tool result passes on the way out; a resource
+        // that skipped the other would fetch, uncapped, the document the tool
+        // beside it had just refused — `tailscale://status` and
+        // `tailscale_status` answer with the same bytes. The default cap is a
+        // mebibyte, so this changes nothing until an operator asks for a
+        // smaller one, which is the operator who wanted the ceiling.
+        if body.len() > ctx.max_result_bytes {
+            return Err(ToolError::result_too_large(
+                body.len(),
+                ctx.max_result_bytes,
+            ));
+        }
         return Ok(ReadResourceResult::new(vec![
             ResourceContents::text(body, uri).with_mime_type(entry.mime_type),
         ]));

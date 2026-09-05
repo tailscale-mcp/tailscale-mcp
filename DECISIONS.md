@@ -1977,3 +1977,21 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `crates/tailscale-mcp/src/subcommands/mod.rs`, `crates/tailscale-mcp/tests/subcommands.rs`
 
 **Outcome:** applied
+
+## Q129 — interactive/resource-cap — deviation
+
+**Question:** `--max-result-bytes` refused an oversized tool result and ignored resources, so `tailscale://status` answered 19 KB under a 500-byte cap while `tailscale_status`, which returns the same bytes, was refused. Should the cap cover resources?
+
+**Options considered:** apply the cap to resource reads / leave resources uncapped and say so in the documentation
+
+**Chosen:** Apply it. `resources::read` now checks the redacted body against the session's `max_result_bytes`.
+
+**Decided-by:** agent
+
+**Justification:** `resources.rs` already argues the case for the other outbound protection — its comment on redaction reads "a resource is not a way around that" — and the cap is the second of the two things a tool result passes on the way out. Leaving one applied and not the other made the ceiling advisory: a caller could fetch, uncapped, the document the tool beside it had just refused, and it is the same document. The documentation said "tool result" throughout, so nothing was broken as promised; it was silent rather than deliberate, and is now updated.
+
+**Safe because the default is a mebibyte.** Every resource this server offers is far under it, so a default session is unchanged — the behaviour differs only where an operator asked for a smaller ceiling, which is the operator who wanted one. `the_same_resource_is_answered_under_the_default_cap` holds that half, so a regression that broke resources by default fails rather than passing quietly.
+
+**Ref:** `crates/tailscale-mcp/src/resources.rs`, `crates/tailscale-mcp/tests/resources_and_prompts.rs`, `docs/configuration.md`, `docs/errors.md`
+
+**Outcome:** applied

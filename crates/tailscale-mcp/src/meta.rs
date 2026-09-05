@@ -295,12 +295,16 @@ pub struct ToolMeta {
     pub idempotent: bool,
     /// Whether [`Self::tier`] is a floor rather than the whole truth.
     ///
-    /// One tool sets this: the passthrough, whose risk is decided by the
-    /// arguments it is given rather than by its row. The gate still reads the
-    /// tier, so the tool is offered as soon as its floor is permitted, and the
-    /// handler refuses anything above what the session allows. The annotations
-    /// state the worst case, because a client reading `read_only` has no way to
-    /// know that this one is conditional.
+    /// Set by the rows whose risk is decided by the arguments they are given
+    /// rather than by the row: the passthrough, `tailnet_device_authorize` and
+    /// `tailnet_service_approval_set`, the last two by Q70. The gate still
+    /// reads the tier, so such a tool is offered as soon as its floor is
+    /// permitted, and the handler refuses anything above what the session
+    /// allows. The annotations state the worst case, because a client reading
+    /// `read_only` has no way to know that this one is conditional.
+    ///
+    /// `the_tier_is_a_floor_only_where_it_is_documented` pins that list, so a
+    /// fourth row adopting the flag is a change somebody has to write down.
     pub varying_tier: bool,
     /// The lowest `tailscale` version that accepts this command, where the
     /// command is newer than our supported floor.

@@ -295,6 +295,11 @@ struct Listed {
     toolset: &'static str,
     surface: &'static str,
     tier: &'static str,
+    /// Whether `tier` is a floor rather than the whole truth, which for three
+    /// rows it is. Written only where it is true, so that a row without the
+    /// field means what it always meant.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    tier_is_a_floor: bool,
     summary: &'static str,
 }
 
@@ -347,6 +352,17 @@ pub fn tools(config: &Config, json: bool) -> Report {
         shown.len(),
         metas.len()
     );
+    // The tier column shows the row's tier, and for three rows that is a floor
+    // rather than the whole truth. `docs/tools.md` has a notes column and says
+    // so there; this has neither the column nor the room, and a summary cut to
+    // its first sentence drops the very clause that would have said it. So the
+    // marker carries it, and appears only in a listing that has one to explain.
+    if shown.iter().any(|meta| meta.varying_tier) {
+        text.push_str(
+            "`+` marks a tier that is a floor: some arguments to that tool need \
+             a higher one.\n\n",
+        );
+    }
     let widest = shown.iter().map(|m| m.name.len()).max().unwrap_or(0);
     let mut toolset = None;
     for meta in &shown {
@@ -354,10 +370,15 @@ pub fn tools(config: &Config, json: bool) -> Report {
             toolset = Some(meta.toolset);
             text.push_str(&format!("{}\n", meta.toolset.as_str()));
         }
+        let tier = if meta.varying_tier {
+            format!("{}+", meta.tier.as_str())
+        } else {
+            meta.tier.as_str().to_owned()
+        };
         text.push_str(&format!(
-            "  {:<widest$}  {:<11}  {}\n",
+            "  {:<widest$}  {:<12}  {}\n",
             meta.name,
-            meta.tier.as_str(),
+            tier,
             first_sentence(meta.summary)
         ));
     }
@@ -395,6 +416,7 @@ fn row(meta: &ToolMeta) -> Listed {
         toolset: meta.toolset.as_str(),
         surface: meta.toolset.surface().as_str(),
         tier: meta.tier.as_str(),
+        tier_is_a_floor: meta.varying_tier,
         summary: meta.summary,
     }
 }

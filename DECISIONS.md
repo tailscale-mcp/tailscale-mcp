@@ -2053,3 +2053,21 @@ Both branches were proven rather than assumed: the no-op path against the curren
 **Ref:** `.github/workflows/release.yml`, `crates/tailscale-mcp/tests/the_release_pokes_the_tap.rs`
 
 **Outcome:** applied
+
+## Q133 — interactive/sweep — deviation
+
+**Question:** Three rows carry `varying: true`, meaning their tier is a floor and the handler decides the rest. `docs/tools.md` says so in a notes column; the `tools` subcommand, whose stated job is to print what a preset and tier would offer, prints the floor as though it were the tier. Should the subcommand say which kind of tier it is reporting, and if so how, given a table with no notes column?
+
+**Options considered:** leave it, since the tool's own summary says "needs the destructive tier" / widen the table with a notes column like `docs/tools.md` / mark the tier itself and explain the mark
+
+**Chosen:** Mark it. The tier column renders `write+`, and a listing containing such a row prints one line saying what `+` means. The JSON row gains `tier_is_a_floor`, written only where it is true.
+
+**Decided-by:** agent
+
+**Justification:** Leaving it relies on the summary, and the table deliberately cuts the summary to its first sentence — which for all three rows is the half that does *not* mention the tier. So the one rendering a person scans to decide whether they need `--allow-destructive` was the one rendering that could not tell them. A notes column would have to be wide enough for the longest note and would push the summary off most terminals; the marker costs one character and appears only where it applies.
+
+**The comment was already wrong.** `ToolMeta::varying_tier` said "One tool sets this: the passthrough", written when that was true and left alone when Q70 gave the flag to `tailnet_device_authorize` and ticket 20 to `tailnet_service_approval_set`. A reader auditing tier against annotation reads that comment, finds two rows annotated destructive at the write tier, and concludes the derivation is broken. The list is now pinned by a test rather than asserted in prose, so the next row to adopt the flag arrives with the edits it implies.
+
+**Ref:** `crates/tailscale-mcp/src/meta.rs`, `crates/tailscale-mcp/src/subcommands/mod.rs`, `crates/tailscale-mcp/tests/the_tier_is_a_floor_only_where_it_is_documented.rs`
+
+**Outcome:** applied

@@ -36,9 +36,9 @@ tailscale-mcp setup claude-code
 ```
 
 prints the snippet for your client — `claude-code`, `claude-desktop`, `vscode`,
-`cursor` or `zed` — and says where it goes. It writes nothing; the snippet is
-yours to paste, and it leaves the credential out on purpose, so that a secret
-does not end up in a file somebody pastes into a chat.
+`cursor` or `zed` — and says where it goes. It writes nothing: the snippet is
+yours to paste, and it leaves the credential out, for the reason in the next
+section.
 
 Installed through npm there is nothing to install first, and the client can
 carry the settings:
@@ -50,7 +50,6 @@ carry the settings:
       "command": "npx",
       "args": ["-y", "@tailscale-mcp/tailscale-mcp"],
       "env": {
-        "TAILSCALE_API_KEY": "tskey-api-…",
         "TAILSCALE_MCP_ALLOW_WRITE": "true"
       }
     }
@@ -58,10 +57,20 @@ carry the settings:
 }
 ```
 
-An [OAuth client](docs/configuration.md#credentials) is the better credential
-here, and the reason is what a client configuration *is*: a file somebody
-writes once and then forgets, holding a secret for as long as the tool is
-installed.
+That much is enough to start it. Without a credential it offers the tools that
+drive this node and hides the ones that act on the tailnet, and
+`tailscale-mcp diagnose` says which of the two you have.
+
+## Give it a credential
+
+`setup` prints no credential of its own, because the file it prints into is one
+people paste into issues and chats without rereading. Adding it is a separate,
+deliberate step — the [credentials
+table](docs/configuration.md#credentials) has every accepted shape.
+
+An OAuth client is the one to reach for, and the reason is what a client
+configuration *is*: a file somebody writes once and then forgets, holding a
+secret for as long as the tool is installed.
 
 An API access token suits that badly on three counts. It belongs to a person
 and carries everything that person can do, so what leaks with the file is their
@@ -76,6 +85,20 @@ scopes narrow it to what the toolsets you enabled actually call. It does not
 expire on its own, and what sits in the file is not a key but the means of
 minting one — the token it hands this server lasts an hour, so a copy taken from
 a backup or a screen share is worth very little by the time it is used.
+
+So the `env` block above becomes:
+
+```jsonc
+"env": {
+  "TAILSCALE_OAUTH_CLIENT_ID": "k123456CNTRL",
+  "TAILSCALE_OAUTH_CLIENT_SECRET": "tskey-client-…",
+  "TAILSCALE_MCP_ALLOW_WRITE": "true"
+}
+```
+
+An API access token goes in `TAILSCALE_API_KEY` instead, and is what the
+control plane hands you first — reasonable for trying this out, and worth
+replacing with the above once it is something you keep.
 
 ## Tiers and presets
 

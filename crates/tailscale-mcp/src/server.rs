@@ -355,7 +355,11 @@ impl ServerHandler for TailscaleMcpServer {
                 .enable_completions()
                 .build(),
         )
-        .with_instructions(instructions::render(&self.gate, &self.ctx));
+        .with_instructions(instructions::render(
+            &self.gate,
+            &self.ctx,
+            instructions::Offered::new(&self.registry, &self.gate),
+        ));
         // Not `from_build_env`: that reads the *SDK*'s package metadata.
         info.server_info = Implementation::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
             .with_title("Tailscale")

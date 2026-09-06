@@ -2319,3 +2319,33 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Justification:** This is what the settled design named, and the two differ in kind: users and tags are short lists, while devices are already completable through the resource template and would in most tailnets fill the hundred-value cap on their own, crowding out the users and tags a subject usually is. Offering nothing for a device name is not a false promise — the parameter still accepts one — but it is a gap worth naming rather than closing silently.
 **Outcome:** assumed
 **Ref:** (pending)
+
+## Q151 — interactive/post-1.2.0 — deviation
+
+**Question:** The instructions told every session "Where a tailnet must be named, `-` means the tailnet the credential belongs to and is almost always right." Gate that sentence by surface, or remove it?
+**Options considered:** gate it on the tailnet surface / gate it on the tool that takes a tailnet being offered / remove it
+**Chosen:** Removed outright.
+**Decided-by:** human
+**Justification:** Exactly one tool of 186 takes a `tailnet` argument — `tailnet_organization_tailnet_delete` — and `path_segment` accepts `-`, so the advice's only possible application was "when deleting a tailnet, your own is almost always the right one". That tool's own comment says the opposite: naming it explicitly is the point, because "deleting whatever `TAILSCALE_TAILNET` happens to say is exactly the accident the confirmation exists to prevent". Gating would have preserved a sentence that is wrong wherever it appears. The env var's `-` default is a separate, correct thing and is documented in `docs/configuration.md §Environment`.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q152 — interactive/post-1.2.0 — deviation
+
+**Question:** Two instruction paragraphs — the `confirm` explanation and the identifier advice's tailnet half — were sent to every session regardless of what it offered. Leave them, or gate them?
+**Options considered:** leave them as general background / gate each on what the session offers
+**Chosen:** Gate both, on the same principle as the passthrough paragraph beside them.
+**Decided-by:** human
+**Justification:** Measured rather than assumed: at the read tier — the default — no offered tool takes a `confirm` argument, and under `--no-tailnet` the identifier advice described the `tailnet_*` tools two paragraphs after the same text said none was offered. Both are the defect this module already had twice, and the passthrough paragraph carries a comment naming it. Gating needed one fact the gate cannot supply, whether any *offered tool* takes confirmation, so the call site asks the registry and passes an `Offered` in — the shape `resources::Surfaces` already uses for the same reason.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q153 — interactive/post-1.2.0 — tradeoff
+
+**Question:** Three metadata fields put a `confirm` argument on a tool. Where should "does this tool ask for confirmation?" be answered?
+**Options considered:** spell the disjunction at each use site / one named method on `ToolMeta`
+**Chosen:** `ToolMeta::takes_confirmation`.
+**Decided-by:** agent
+**Justification:** The disjunction was written twice — once in the instructions and once in the test meant to hold them — which made a mutation of it invisible: each copy still agreed with itself. One definition is what the test can actually pin, and the concept deserves a name anyway, since a caller sees one argument whichever of the three fields produced it.
+**Outcome:** applied
+**Ref:** (pending)

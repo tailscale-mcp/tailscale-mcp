@@ -331,6 +331,17 @@ impl ToolMeta {
             .is_none_or(|allowed| allowed.contains(&std::env::consts::OS))
     }
 
+    /// Whether this tool exposes a `confirm` argument to the caller.
+    ///
+    /// Three fields put one there and they mean different things — the row
+    /// demands it, every call severs, or a call severs when its target turns
+    /// out to be this node — but a caller sees the same argument for all
+    /// three. Anything reasoning about what a session shows a model wants this
+    /// question, not the three underneath it.
+    pub const fn takes_confirmation(&self) -> bool {
+        self.requires_confirmation || self.self_severing || self.severs_local_node
+    }
+
     /// Annotations are derived, not stored, so that a tool cannot claim to be
     /// read-only while sitting at the destructive tier.
     pub const fn annotations(&self) -> Annotations {

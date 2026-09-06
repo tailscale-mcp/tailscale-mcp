@@ -12,8 +12,40 @@ use crate::context::ToolContext;
 use crate::gating::Gate;
 use crate::meta::{Surface, Tier, Toolset};
 
+/// What is true of this session's own tool table.
+///
+/// The gate answers which toolsets and tier are offered; it cannot answer
+/// whether any *tool* that survived both takes a `confirm` argument, and that
+/// is a different question — a write-tier session that selected only
+/// `local-status` has no confirmable tool in it. Asked once, at the one place
+/// that holds the registry, so that the paragraphs below describe this session
+/// rather than the union of every session. The same shape as
+/// [`crate::resources::Surfaces`], and for the same reason.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Offered {
+    confirmable: bool,
+}
+
+impl Offered {
+    /// Ask the tool table, through the gate that decides what a session sees.
+    pub fn new(registry: &crate::registry::Registry, gate: &Gate) -> Self {
+        Self {
+            confirmable: registry
+                .visible(gate)
+                .into_iter()
+                .any(|entry| entry.meta.takes_confirmation()),
+        }
+    }
+
+    /// For the tests, which have no registry to ask.
+    #[must_use]
+    pub const fn with_confirmable(confirmable: bool) -> Self {
+        Self { confirmable }
+    }
+}
+
 /// Compose the instructions for a server in this configuration.
-pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
+pub fn render(gate: &Gate, ctx: &ToolContext, offered: Offered) -> String {
     let mut out = String::with_capacity(1024);
     out.push_str(
         "This server drives Tailscale through two separate surfaces.\n\n\
@@ -83,22 +115,42 @@ pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
         );
     }
 
-    out.push_str(
-        "Some tools take a `confirm` argument. They are the ones that cannot be undone, or that \
-         can cut this server off from the tailnet it is managing. They refuse to run without it. \
-         Set it only when the person you are working for has asked for that specific action; it \
-         is not a formality to be filled in.\n\n",
-    );
+    // Only where one is actually offered. At the read tier no tool takes a
+    // `confirm` argument at all, so every default session was being told how
+    // to use an argument it would never see — the same contradiction the
+    // passthrough paragraph above exists to avoid.
+    if offered.confirmable {
+        out.push_str(
+            "Some tools take a `confirm` argument. They are the ones that cannot be undone, or \
+             that can cut this server off from the tailnet it is managing. They refuse to run \
+             without it. Set it only when the person you are working for has asked for that \
+             specific action; it is not a formality to be filled in.\n\n",
+        );
+    }
 
-    out.push_str(
-        "Identifiers: a device can be named by its MagicDNS name, the short name before the \
-         first dot of it, its hostname, or one of its Tailscale IP addresses. The `tailnet_*` \
-         tools also take the node ID (`n1234567CNTRL`) and the numeric id a listing reports, \
-         and answer with those; a name is resolved against the tailnet's device list, and a \
-         name matching more than one device is refused rather than guessed at. Where a tailnet \
-         must be named, `-` means the tailnet the credential belongs to and is almost always \
-         right.\n\n",
-    );
+    // The first sentence holds on either surface; the rest is about the
+    // tailnet tools by name, and a session that has just been told it has none
+    // should not then be told what they accept. The sentence that used to
+    // close this paragraph — that `-` names the credential's own tailnet and
+    // is almost always right — is gone rather than gated: the only tool in the
+    // table that takes a tailnet is the one that deletes it, whose own
+    // parameter asks for an id or a name, and where "your own" is the last
+    // thing a caller should be nudged towards.
+    if local || tailnet {
+        out.push_str(
+            "Identifiers: a device can be named by its MagicDNS name, the short name before \
+             the first dot of it, its hostname, or one of its Tailscale IP addresses.",
+        );
+        if tailnet {
+            out.push_str(
+                " The `tailnet_*` tools also take the node ID (`n1234567CNTRL`) and the \
+                 numeric id a listing reports, and answer with those; a name is resolved \
+                 against the tailnet's device list, and a name matching more than one device \
+                 is refused rather than guessed at.",
+            );
+        }
+        out.push_str("\n\n");
+    }
 
     if let Some(version) = ctx.cli_version {
         let _ = writeln!(
@@ -167,7 +219,11 @@ mod tests {
 
     #[test]
     fn both_surfaces_are_explained() {
-        let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &context());
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Read),
+            &context(),
+            Offered::default(),
+        );
         assert!(text.contains("tailscale_*"), "{text}");
         assert!(text.contains("tailnet_*"), "{text}");
     }
@@ -175,11 +231,19 @@ mod tests {
     #[test]
     fn a_missing_surface_is_stated_rather_than_left_to_be_discovered() {
         let local_only: BTreeSet<Toolset> = BTreeSet::from([Toolset::LocalStatus]);
-        let text = render(&gate(local_only, Tier::Read), &context());
+        let text = render(
+            &gate(local_only, Tier::Read),
+            &context(),
+            Offered::default(),
+        );
         assert!(text.contains("tailnet surface is not available"), "{text}");
 
         let tailnet_only: BTreeSet<Toolset> = BTreeSet::from([Toolset::TailnetDevices]);
-        let text = render(&gate(tailnet_only, Tier::Read), &context());
+        let text = render(
+            &gate(tailnet_only, Tier::Read),
+            &context(),
+            Offered::default(),
+        );
         assert!(text.contains("local surface is not available"), "{text}");
     }
 
@@ -192,24 +256,29 @@ mod tests {
         let both = BTreeSet::from([Toolset::LocalStatus, Toolset::TailnetDevices]);
         let no_control_plane =
             Gate::unchecked(both.clone(), Tier::Read, BTreeSet::from([Surface::Tailnet]));
-        let text = render(&no_control_plane, &context());
+        let text = render(&no_control_plane, &context(), Offered::default());
         assert!(text.contains("tailnet surface is not available"), "{text}");
         assert!(!text.contains("local surface is not available"), "{text}");
 
         let no_cli = Gate::unchecked(both, Tier::Read, BTreeSet::from([Surface::Local]));
-        let text = render(&no_cli, &context());
+        let text = render(&no_cli, &context(), Offered::default());
         assert!(text.contains("local surface is not available"), "{text}");
     }
 
     #[test]
     fn the_tier_is_stated_and_hiding_is_explained() {
-        let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &context());
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Read),
+            &context(),
+            Offered::default(),
+        );
         assert!(text.contains("Permitted tier: read."), "{text}");
         assert!(text.contains("hidden, not merely refused"), "{text}");
 
         let text = render(
             &gate(Preset::Core.toolsets(), Tier::Destructive),
             &context(),
+            Offered::default(),
         );
         assert!(text.contains("read, write and destructive"), "{text}");
     }
@@ -218,26 +287,99 @@ mod tests {
     fn the_passthrough_is_explained_only_where_it_is_offered() {
         // Its annotations say destructive at every tier, which contradicts the
         // tier paragraph unless the session is told why.
-        let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &context());
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Read),
+            &context(),
+            Offered::default(),
+        );
         assert!(!text.contains("tailscale_run"), "{text}");
 
         let mut with_passthrough = Preset::Core.toolsets();
         with_passthrough.insert(Toolset::LocalPassthrough);
-        let text = render(&gate(with_passthrough, Tier::Read), &context());
+        let text = render(
+            &gate(with_passthrough, Tier::Read),
+            &context(),
+            Offered::default(),
+        );
         assert!(text.contains("`tailscale_run` is the exception"), "{text}");
         assert!(text.contains("held to the permitted tier"), "{text}");
     }
 
     #[test]
-    fn confirmation_is_explained_as_intent_rather_than_ceremony() {
-        let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &context());
+    fn confirmation_is_explained_only_where_a_tool_asks_for_it() {
+        // It used to be explained everywhere, including the default session:
+        // at the read tier no tool takes a `confirm` argument, so every one of
+        // those was told how to use an argument it would never be shown.
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Read),
+            &context(),
+            Offered::with_confirmable(false),
+        );
+        assert!(!text.contains("`confirm`"), "{text}");
+
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Destructive),
+            &context(),
+            Offered::with_confirmable(true),
+        );
         assert!(text.contains("`confirm`"), "{text}");
         assert!(text.contains("not a formality"), "{text}");
     }
 
+    /// The identifiers paragraph describes the tools this session has.
+    #[test]
+    fn the_identifier_advice_is_about_the_surfaces_that_are_there() {
+        // Both halves, when both surfaces are.
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Read),
+            &context(),
+            Offered::default(),
+        );
+        assert!(text.contains("named by its MagicDNS name"), "{text}");
+        assert!(text.contains("node ID (`n1234567CNTRL`)"), "{text}");
+
+        // With no tailnet surface the first half still holds — the CLI has
+        // always resolved names — but the second described tools the same
+        // session had just said were not offered, two paragraphs earlier.
+        let local_only: BTreeSet<Toolset> = BTreeSet::from([Toolset::LocalStatus]);
+        let text = render(
+            &gate(local_only, Tier::Read),
+            &context(),
+            Offered::default(),
+        );
+        assert!(text.contains("named by its MagicDNS name"), "{text}");
+        assert!(!text.contains("node ID"), "{text}");
+        assert!(!text.contains("tailnet's device list"), "{text}");
+    }
+
+    /// The one tool that takes a tailnet is the one that deletes it.
+    #[test]
+    fn nothing_suggests_defaulting_a_tailnet_to_our_own() {
+        // `-` reaches the credential's own tailnet, and the only tool in the
+        // table taking a `tailnet` argument is `tailnet_organization_tailnet_delete`,
+        // whose own comment says naming it explicitly is the point. Saying `-`
+        // "is almost always right" pointed the wrong way in the one place it
+        // could ever apply.
+        for tier in [Tier::Read, Tier::Write, Tier::Destructive] {
+            let text = render(
+                &gate(Preset::Full.toolsets(), tier),
+                &context(),
+                Offered::with_confirmable(true),
+            );
+            assert!(
+                !text.contains("almost always right"),
+                "at {tier:?} the instructions still recommend a default tailnet: {text}"
+            );
+        }
+    }
+
     #[test]
     fn what_was_learned_at_startup_is_passed_on() {
-        let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &context());
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Read),
+            &context(),
+            Offered::default(),
+        );
         assert!(text.contains("1.102.2"), "{text}");
         assert!(
             text.contains("This node is workstation.example-tailnet.ts.net.\n"),
@@ -257,7 +399,11 @@ mod tests {
             paths: PathPolicy::default(),
             ..context()
         };
-        let text = render(&gate(Preset::Core.toolsets(), Tier::Read), &bare);
+        let text = render(
+            &gate(Preset::Core.toolsets(), Tier::Read),
+            &bare,
+            Offered::default(),
+        );
         assert!(!text.contains("reports version"), "{text}");
         assert!(!text.contains("This node is"), "{text}");
     }
@@ -270,6 +416,7 @@ mod tests {
                 Tier::Read,
             ),
             &context(),
+            Offered::default(),
         );
         assert!(text.contains("local-status, tailnet-dns"), "{text}");
     }

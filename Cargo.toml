@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/tailscale-rest", "crates/tailscale-cli", "crates/tailscale-mcp"]
 
 [workspace.package]
-version = "1.0.4"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -12,8 +12,8 @@ homepage = "https://github.com/tailscale-mcp/tailscale-mcp"
 authors = ["The tailscale-mcp authors"]
 
 [workspace.dependencies]
-tailscale-rest = { version = "1.0.4", path = "crates/tailscale-rest" }
-tailscale-cli = { version = "1.0.4", path = "crates/tailscale-cli" }
+tailscale-rest = { version = "1.1.0", path = "crates/tailscale-rest" }
+tailscale-cli = { version = "1.1.0", path = "crates/tailscale-cli" }
 
 rmcp = "3.2.0"
 tokio = "1"

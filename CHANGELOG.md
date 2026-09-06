@@ -3,6 +3,28 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.1.0 — 2026-09-06
+
+### Fixed
+
+- Five parameters reached a model with nothing saying what they are (Q135)
+- The session redactor held no secrets, four releases running (Q136)
+- A prompt was offered in sessions holding none of its tools
+
+### Changed
+
+- Say what the public library is for, and drop what nothing calls
+
+### Documentation
+
+- Ticket 31 said the token conversion had not landed, four releases on (Q134)
+- Step 6 was done, and my reason for doubting it was wrong (Q137)
+- Record removing the last hand-publishing credential (Q138)
+
+### Build and CI
+
+- The runbook asked for a release commit cliff does not skip
+
 ## 1.0.4 — 2026-09-05
 
 ### Fixed

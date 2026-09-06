@@ -248,7 +248,9 @@ pub async fn probe_node(
 }
 
 /// `tailscale status --json`, parsed, or nothing if it could not be had.
-async fn status_document(backend: &dyn tailscale_cli::LocalBackend) -> Option<serde_json::Value> {
+pub(crate) async fn status_document(
+    backend: &dyn tailscale_cli::LocalBackend,
+) -> Option<serde_json::Value> {
     let output = backend
         .run(Invocation::read(["status", "--json"]))
         .await

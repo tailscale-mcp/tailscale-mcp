@@ -392,6 +392,51 @@ impl Harness {
         }
     }
 
+    /// Complete one prompt argument.
+    ///
+    /// # Panics
+    /// If the request could not be made at all — which is itself the assertion
+    /// in several places, completion being a method that does not fail.
+    pub async fn complete_prompt(
+        &self,
+        prompt: &str,
+        argument: &str,
+        typed: &str,
+    ) -> rmcp::model::CompletionInfo {
+        self.complete(rmcp::model::Reference::for_prompt(prompt), argument, typed)
+            .await
+    }
+
+    /// Complete one variable of a resource template.
+    ///
+    /// # Panics
+    /// If the request could not be made at all.
+    pub async fn complete_resource(
+        &self,
+        uri: &str,
+        argument: &str,
+        typed: &str,
+    ) -> rmcp::model::CompletionInfo {
+        self.complete(rmcp::model::Reference::for_resource(uri), argument, typed)
+            .await
+    }
+
+    async fn complete(
+        &self,
+        reference: rmcp::model::Reference,
+        argument: &str,
+        typed: &str,
+    ) -> rmcp::model::CompletionInfo {
+        self.client
+            .complete(rmcp::model::CompleteRequestParams::new(
+                reference,
+                rmcp::model::ArgumentInfo::new(argument, typed),
+            ))
+            .await
+            .unwrap_or_else(|e| panic!("completion should never fail, and did: {e}"))
+            .completion
+    }
+
     /// The names of every tool on offer.
     pub async fn tool_names(&self) -> Vec<String> {
         self.tools()

@@ -210,6 +210,19 @@ impl From<SelfIdentity> for Identity {
     }
 }
 
+/// Every string in a JSON array, or nothing at all if it is not one.
+fn strings(value: &serde_json::Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| Some(item.as_str()?.to_owned()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// One device, in the fields anything outside the device tools needs of it.
 ///
 /// The control plane's device object is large and mostly irrelevant here: what
@@ -225,6 +238,10 @@ pub struct Device {
     pub hostname: String,
     /// Every Tailscale address it answers on.
     pub addresses: Vec<String>,
+    /// The tags it wears, `tag:` prefix included. Read from the device rather
+    /// than from the policy file because a tag nothing wears and a tag in use
+    /// are different questions, and completion wants both answered.
+    pub tags: Vec<String>,
 }
 
 impl Device {
@@ -351,15 +368,8 @@ impl ToolContext {
                             node_id: device["nodeId"].as_str()?.to_owned(),
                             name: device["name"].as_str().unwrap_or_default().to_owned(),
                             hostname: device["hostname"].as_str().unwrap_or_default().to_owned(),
-                            addresses: device["addresses"]
-                                .as_array()
-                                .map(|addresses| {
-                                    addresses
-                                        .iter()
-                                        .filter_map(|address| Some(address.as_str()?.to_owned()))
-                                        .collect()
-                                })
-                                .unwrap_or_default(),
+                            addresses: strings(&device["addresses"]),
+                            tags: strings(&device["tags"]),
                         })
                     })
                     .collect()

@@ -98,6 +98,14 @@ _Avoid_: document, file, feed
 A canned, parameterised workflow the server offers to the client, which steers a sequence of tool calls.
 _Avoid_: template, recipe, macro
 
+**Slot**:
+An argument the protocol can complete: a prompt's argument, or a variable in a resource template. Tool arguments are not slots — the protocol has no way to reference one — which is what bounds completion to four places.
+_Avoid_: field, parameter (a parameter is a tool's, and cannot be completed)
+
+**Resolution**:
+Turning what a caller wrote — a MagicDNS name, a short name, a hostname, an address — into the identifier the control plane takes. A name matching more than one device is refused rather than guessed at.
+_Avoid_: lookup, mapping, translation
+
 **Tier**:
 A tool's risk class: read, write, or destructive.
 _Avoid_: level, permission, mode

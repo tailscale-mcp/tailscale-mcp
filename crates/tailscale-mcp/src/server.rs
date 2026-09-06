@@ -10,10 +10,11 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, GetPromptRequestParams,
-    GetPromptResponse, GetPromptResult, Implementation, InitializeResult, ListPromptsResult,
-    ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
-    ReadResourceRequestParams, ReadResourceResponse, ServerCapabilities, ServerInfo, Tool,
+    CallToolRequestParams, CallToolResponse, CallToolResult, CompleteRequestParams, CompleteResult,
+    GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation, InitializeResult,
+    ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, ServerCapabilities,
+    ServerInfo, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
@@ -21,6 +22,7 @@ use serde_json::Value;
 use tailscale_cli::{CliBackend, LocalBackend, Unavailable};
 use tailscale_rest::Credentials;
 
+use crate::completion;
 use crate::config::Config;
 use crate::context::{Identity, PathPolicy, SelfIdentity, ToolContext};
 use crate::error::{ToolError, ToolResult};
@@ -258,6 +260,10 @@ pub struct TailscaleMcpServer {
     registry: Arc<Registry>,
     gate: Gate,
     ctx: Arc<ToolContext>,
+    /// How fast this session may ask for completions. Per session, because
+    /// that is the thing being protected: one client typing quickly should not
+    /// spend another's budget.
+    completions: completion::Limiter,
 }
 
 impl TailscaleMcpServer {
@@ -266,6 +272,7 @@ impl TailscaleMcpServer {
             registry,
             gate,
             ctx,
+            completions: completion::Limiter::new(),
         }
     }
 
@@ -339,6 +346,13 @@ impl ServerHandler for TailscaleMcpServer {
                 // one this server does not serve is a lie a client acts on.
                 .enable_resources()
                 .enable_prompts()
+                // Only the server declares this one — there is no client half
+                // of the capability. Without it, a client that supports
+                // completion has no way to know this server does, and rmcp's
+                // default handler would answer `completion/complete` with an
+                // empty success anyway: a method advertised nowhere and
+                // answered emptily is the worst of both.
+                .enable_completions()
                 .build(),
         )
         .with_instructions(instructions::render(&self.gate, &self.ctx));
@@ -471,6 +485,20 @@ impl ServerHandler for TailscaleMcpServer {
             GetPromptResult::new(prompt.expand(given, surfaces))
                 .with_description(prompt.description),
         ))
+    }
+
+    /// Values for the four slots that have a knowable set.
+    ///
+    /// Never an error. A completion is a popup: the client shows what comes
+    /// back and moves on, so a failure it would have to explain buys nothing
+    /// that an empty list does not. [`completion`] says what each slot draws
+    /// from and why.
+    async fn complete(
+        &self,
+        request: CompleteRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CompleteResult, McpError> {
+        Ok(completion::complete(&self.ctx, &self.gate, &self.completions, &request).await)
     }
 
     async fn call_tool(

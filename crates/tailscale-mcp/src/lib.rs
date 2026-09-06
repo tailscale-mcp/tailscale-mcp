@@ -21,6 +21,7 @@
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 pub mod cli;
+pub mod completion;
 pub mod config;
 pub mod context;
 pub mod error;

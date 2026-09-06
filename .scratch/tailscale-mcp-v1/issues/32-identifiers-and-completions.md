@@ -1,6 +1,6 @@
 # 32 — Device identifiers, and argument completions
 
-Status: open
+Status: done
 Milestone: 3 — Tailnet surface
 Blocked by: —
 
@@ -47,6 +47,9 @@ The five destructive tools resolve like the rest: ambiguity is already refused,
 and `confirm` is where deliberateness lives.
 
 ## B — argument completions
+
+**Done.** Three slots draw on real sources, the fourth deliberately offers
+nothing, and the capability is declared so clients that support it will ask.
 
 `completion/complete`, which this server currently answers without advertising,
 because rmcp's default handler returns an empty success. Advertising follows

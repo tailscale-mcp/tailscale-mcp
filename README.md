@@ -152,7 +152,7 @@ they are wrong; it makes the caller say it meant them.
 - **[docs/errors.md](docs/errors.md)** — every error code and what to do about
   it.
 
-## Resources and prompts
+## Resources, prompts and completions
 
 Nine resources — eight fixed and one template addressed by device identifier —
 give a client the local node's status, preferences, netcheck report and tailnet
@@ -165,6 +165,23 @@ Three prompts steer a sequence of tool calls: `diagnose_connectivity`,
 the resources: each appears only when the surface it needs is on, and
 `diagnose_connectivity`, which reads from both, stops at the steps the session
 can actually take.
+
+Of the four argument slots those two surfaces expose, three are completed, so
+a client can offer the values rather than leave them to be guessed: the device
+template's identifier, `diagnose_connectivity`'s peer, and
+`audit_tailnet_access`'s subject. The fourth, `review_policy_change`'s goal, is
+a sentence about intent, and completing it would be inventing one. Every value offered is one the server will
+accept back — a device is offered by its MagicDNS name, never by a hostname two
+machines might share — and a source that cannot answer completes to nothing
+rather than to an error. The method is rate limited, as the specification asks,
+because each keystroke is a request.
+
+Note that the protocol completes a prompt argument and a resource template
+variable, and nothing else: **tool arguments cannot be completed**, so this
+helps the four slots above and none of the 186 tools. Client support is
+uneven — Claude Code completes resource templates, VS Code completes both, and
+several clients do neither — so this is an improvement where it is read and
+inert everywhere else.
 
 ## Transports
 

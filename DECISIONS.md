@@ -2269,3 +2269,53 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Justification:** Without it a burst of named calls costs one listing each, which the control plane rate-limits. For the session is worse than no cache in the case that matters: a device renamed or added mid-session would stay invisible, and resolution failing on a device the caller can see in `tailnet_device_list` is the least explicable failure available. Ten seconds covers a burst without outliving a change anyone would notice.
 **Outcome:** applied
 **Ref:** (pending)
+
+## Q146 — ticket-32/part-b — tradeoff
+
+**Question:** Which slots should `completion/complete` serve, given that the protocol can complete only a prompt argument and a resource template variable?
+**Options considered:** all four slots / the three with a knowable set / only the device template, the one slot clients actually reach
+**Chosen:** Three: the device template's `device_id`, `diagnose_connectivity`'s `peer`, and `audit_tailnet_access`'s `subject`. `review_policy_change`'s `goal` returns nothing.
+**Decided-by:** human
+**Justification:** `goal` is a sentence saying what a policy change is meant to achieve; there is no set of those to draw from, and a slot that answered would be inventing the caller's intent. The other three each have a source the server already reads. Tool arguments are not completable at all — rmcp's `Reference` has exactly two variants, verified in 3.2.0 — so the reach of this feature is these four places and no others.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q147 — ticket-32/part-b — tradeoff
+
+**Question:** A device is found by its hostname and by its address. Which spelling should be offered back?
+**Options considered:** the spelling that matched / the MagicDNS name always / the node id
+**Chosen:** The MagicDNS name, whatever the match was on.
+**Decided-by:** agent
+**Justification:** `CompletionInfo` carries no display label — the string in `values` is the string the client inserts — so an offered value has to be one the server will accept. Hostnames are not unique and resolution refuses the ambiguous ones (Q143), so offering a hostname would mean completing to a value the next call rejects. The node id would always work but is unreadable, and the point of the feature is to spare the caller exactly that.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q148 — ticket-32/part-b — tradeoff
+
+**Question:** What should a completion do when its source is unreachable — no credential, a node that is not running, a control plane answering 429?
+**Options considered:** return the error / return an empty list and log
+**Chosen:** Empty list, with the reason logged at debug.
+**Decided-by:** human
+**Justification:** A completion is an autocomplete popup. An empty one renders; an error is something the client has to find words for, in a UI that has none. Nothing is lost either: the caller can still type the value, and the tool call that follows reports the real failure with the real message. The handler's signature has no error arm at all, so this cannot regress by accident.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q149 — ticket-32/part-b — gate-resolution
+
+**Question:** Should `completion/complete` be rate limited, and how?
+**Options considered:** no limit / a fixed window / a token bucket
+**Chosen:** A per-session token bucket, twenty in reserve refilling at twenty a second.
+**Decided-by:** agent
+**Justification:** The specification says a server SHOULD limit this method, and its security section says implementations MUST. The reason is concrete here: every keystroke is a request, and the device slot's source is a control plane that rate limits us in turn. A bucket rather than a window because completion arrives in bursts — one per character of a typed word — and a window would refuse the tail of every one. Per session, so that one client typing quickly cannot spend another's budget.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q150 — ticket-32/part-b — deviation
+
+**Question:** `audit_tailnet_access`'s `subject` is described as "a user, tag or device". Should the completion offer devices too?
+**Options considered:** users and tags, as designed / users, tags and devices
+**Chosen:** Users and tags only, for now.
+**Decided-by:** agent
+**Justification:** This is what the settled design named, and the two differ in kind: users and tags are short lists, while devices are already completable through the resource template and would in most tailnets fill the hundred-value cap on their own, crowding out the users and tags a subject usually is. Offering nothing for a device name is not a false promise — the parameter still accepts one — but it is a gap worth naming rather than closing silently.
+**Outcome:** assumed
+**Ref:** (pending)

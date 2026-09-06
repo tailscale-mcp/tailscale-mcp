@@ -2127,3 +2127,23 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Ref:** `crates/tailscale-mcp/src/error.rs`, `crates/tailscale-mcp/src/server.rs`, `crates/tailscale-mcp/tests/the_session_scrubs_its_own_credential.rs`
 
 **Outcome:** applied
+
+## Q137 — interactive/sweep — gate-resolution
+
+**Question:** Q134 left ticket 31's step 6 open on the grounds that npm's publishing-access setting could not be read from here. Is it on?
+
+**Options considered:** leave it open as unverifiable / infer it from what the registry does answer / look at the page
+
+**Chosen:** Looked at the page. It is on, and has been: **Publishing access** on the package's settings has "Require two-factor authentication and disallow bypass 2fa tokens (recommended)" selected, alongside a Trusted Publisher entry for `tailscale-mcp/tailscale-mcp` / `release.yml` with `npm publish` rather than stage-only. Ticket 31 is closed. Supersedes the step-6 half of Q134.
+
+**Decided-by:** human — the user said it was done; this records the confirmation.
+
+**Justification:** The inference in Q134 was wrong, and worth writing down because it is the sort that looks sound. A live token was found holding `write` on the package, and that was read as evidence the setting was off. It is not: `write` is the collaborator permission and this option does not touch it. The option governs whether a token that bypasses 2FA may *publish*. Permission to publish and acceptance at publish time are different questions, and only the second one is what step 6 is about.
+
+**On what is checkable:** five registry endpoints were tried with a working token — all 404 or 405 — plus `npm access` (403 without org read), the packument and the provenance attestation. None carries it. So this is genuinely a look-at-the-page fact, and the ticket now says so rather than leaving the next reader to retry the same dead ends.
+
+**Supersedes:** Q134 — only its finding on step 6; the rest of that entry, on steps 1 to 5, stands.
+
+**Ref:** `.scratch/tailscale-mcp-v1/issues/31-trusted-publishing.md`
+
+**Outcome:** applied

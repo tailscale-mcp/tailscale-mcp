@@ -1,6 +1,6 @@
 # 31 — Trusted publishing
 
-Status: in-progress — bootstrap steps 1-5 done, step 6 outstanding
+Status: done
 Milestone: 5 — Packaging
 Blocked by: 30
 
@@ -155,13 +155,21 @@ the registration matches this repository, this workflow and this owner. The
 nine tests in `trusted_publishing_matches.rs` — two more than the seven this
 ticket promised — pass.
 
-**Step 6 — outstanding.** npm's "Require two-factor authentication and disallow
-tokens" has not been confirmed as on. Until it is, trusted publishing is the
-convention here rather than the rule: a token minted against this scope would
-still be accepted, so the property step 3 bought by revoking two tokens is only
-as good as nobody minting a third. The setting is on npmjs.com, is 2FA-gated,
-and is not readable through the registry API — `npm access` answers 403 for the
-org without a token that carries org read — so it cannot be checked from this
-repository or from CI. It has to be looked at by a person with the account.
+**Step 6 — done.** Confirmed on the package's own settings page on 2026-09-05:
+under **Publishing access**, "Require two-factor authentication and disallow
+bypass 2fa tokens (recommended)" is the selected option, and the Trusted
+Publisher entry above it names `tailscale-mcp/tailscale-mcp` and `release.yml`
+with the `npm publish` permission rather than stage-only. That is the pairing
+npm's own note on that page calls maximum security: a trusted publisher plus
+the most restrictive token option.
 
-Nothing else in this ticket is waiting on anything.
+This step cannot be checked from the repository or from CI. Five registry
+endpoints were tried with a working token and every one answers 404 or 405,
+and `npm access` answers 403 for the org without org read; nothing in the
+packument or the provenance attestation carries it either. **A live token
+having `write` on the package does not indicate the setting is off** — that is
+the collaborator permission, which this option does not change. It governs
+whether a 2FA-bypassing token may *publish*, and the only way to read it is to
+open the page while signed in.
+
+Nothing in this ticket is outstanding.

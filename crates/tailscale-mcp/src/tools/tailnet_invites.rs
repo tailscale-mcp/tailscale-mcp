@@ -168,7 +168,8 @@ pub struct NoParams {}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
 }
 
@@ -187,10 +188,11 @@ pub struct InviteParams {
 // ---------------------------------------------------------------------------
 
 async fn device_invite_list(ctx: &ToolContext, params: DeviceParams) -> ToolResult<Value> {
+    let device = crate::tools::tailnet_devices::resolve(ctx, &params.device_id).await?;
     let client = ctx.tailnet()?;
     Ok(as_listing(
         client
-            .get(device_invites_path(&params.device_id)?)
+            .get(device_invites_path(&device)?)
             .send_as::<Value>()
             .await?,
     ))
@@ -198,7 +200,8 @@ async fn device_invite_list(ctx: &ToolContext, params: DeviceParams) -> ToolResu
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceInviteCreateParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// One entry per person to invite. An empty list is refused: it would be
     /// a call that creates nothing and answers as though it worked.
@@ -234,8 +237,9 @@ async fn device_invite_create(
             "`invites` is empty; give at least one invitation to create",
         ));
     }
+    let device = crate::tools::tailnet_devices::resolve(ctx, &params.device_id).await?;
     client
-        .post(device_invites_path(&params.device_id)?)
+        .post(device_invites_path(&device)?)
         .json(&params.invites)
         .send_as::<Value>()
         .await

@@ -2229,3 +2229,43 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Ref:** `cliff.toml`, `RELEASING.md`
 
 **Outcome:** applied
+
+## Q142 — ticket-32/part-a — deviation
+
+**Question:** The instructions told every session that a device could be named by its node ID, one of its Tailscale IP addresses, or its MagicDNS name. Only the node ID was true of the `tailnet_*` tools. Correct the sentence, or make the sentence true?
+**Options considered:** narrow the instructions to node ID only / resolve names server-side in every tool that takes a device / leave it and document the gap
+**Chosen:** Resolve server-side. Anything that is not already an identifier is looked up in the tailnet's own device listing and matched against the name, the short name, the hostname and the addresses; identifiers pass through untouched and cost no listing.
+**Decided-by:** human
+**Justification:** The local surface already accepted all of these because the CLI resolves names itself, so the two surfaces disagreed about what a device is called — and the instructions described the local one. Narrowing the sentence would have made the server honest and the tailnet surface worse; the promise was the right one, the implementation was missing. Ticket 32 under `.scratch/tailscale-mcp-v1/issues/`.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q143 — ticket-32/part-a — tradeoff
+
+**Question:** A name can match more than one device — hostnames are not unique. Resolve to the first match, or refuse?
+**Options considered:** first match wins / refuse with `invalid_args` naming the candidates / prefer the most recently seen device
+**Chosen:** Refuse, naming up to five candidates and asking for a node id.
+**Decided-by:** human
+**Justification:** The set of tools taking a device includes the ones that delete it, expire its key, and sever it from the tailnet. Resolving a two-device match by listing order is a coin flip whose loser is an unrelated machine; a refusal costs a round trip. The cost is real — a caller who names an ambiguous host has to look up an id — but it is paid in the case where guessing would be unrecoverable.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q144 — ticket-32/part-a — tradeoff
+
+**Question:** Where should the self-protection guard run relative to resolution, given that severing tools must refuse to act on this node?
+**Options considered:** resolve first, then guard the resolved id / guard the given spelling first, then resolve, then guard again
+**Chosen:** Guard twice — the caller's own spelling before the lookup, and the resolved id after it.
+**Decided-by:** agent
+**Justification:** Resolution needs the control plane; the guard does not, because `SelfIdentity::matches` already recognises this node's addresses and short name. Ordering the lookup first made the refusal depend on a reachable listing, which a regression in `tailnet_surface` caught: the guard stopped working when `/devices` answered 401. Guarding first keeps the refusal free and network-independent, and the second guard still catches the spellings only a listing can resolve, such as a hostname.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q145 — ticket-32/part-a — tradeoff
+
+**Question:** How long should a resolved device listing be reused?
+**Options considered:** no cache / ten seconds, shared across tools / for the session
+**Chosen:** Ten seconds, in a cache shared by every tool on the context.
+**Decided-by:** agent
+**Justification:** Without it a burst of named calls costs one listing each, which the control plane rate-limits. For the session is worse than no cache in the case that matters: a device renamed or added mid-session would stay invisible, and resolution failing on a device the caller can see in `tailnet_device_list` is the least explicable failure available. Ten seconds covers a burst without outliving a change anyone would notice.
+**Outcome:** applied
+**Ref:** (pending)

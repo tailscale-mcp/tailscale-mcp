@@ -8,6 +8,9 @@ Two changes, one release. The second is only worth having because of the first.
 
 ## A — the tailnet surface accepts the identifiers it claims to
 
+**Done.** All 17 tools and the resource template resolve; the instructions and
+every `device_id` description now describe what the server actually accepts.
+
 Every session reads this, from `instructions.rs`:
 
 > Identifiers: a device can be named by its node ID, one of its Tailscale IP

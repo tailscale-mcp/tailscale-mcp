@@ -215,6 +215,7 @@ pub async fn build(
         identity,
         cli_version,
         paths: PathPolicy::default(),
+        devices: Default::default(),
         max_tier: config.max_tier,
     };
 

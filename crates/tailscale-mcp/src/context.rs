@@ -210,6 +210,84 @@ impl From<SelfIdentity> for Identity {
     }
 }
 
+/// One device, in the fields anything outside the device tools needs of it.
+///
+/// The control plane's device object is large and mostly irrelevant here: what
+/// resolution and completion both want is the set of names a person might use
+/// for a machine, and the identifier the API will actually take in exchange.
+#[derive(Clone, Debug)]
+pub struct Device {
+    /// What the control plane accepts, and what resolution answers with.
+    pub node_id: String,
+    /// The MagicDNS name, fully qualified.
+    pub name: String,
+    /// The machine's own name for itself, which need not be unique.
+    pub hostname: String,
+    /// Every Tailscale address it answers on.
+    pub addresses: Vec<String>,
+}
+
+impl Device {
+    /// The label before the first dot of the MagicDNS name.
+    ///
+    /// `laptop.example-tailnet.ts.net` is what a listing prints and `laptop` is
+    /// what a person types, so both have to name the same device.
+    #[must_use]
+    pub fn short_name(&self) -> &str {
+        self.name.split('.').next().unwrap_or(&self.name)
+    }
+
+    /// Whether an already-lowercased value is one of this device's names.
+    ///
+    /// Exact against each field rather than a prefix: this decides which device
+    /// a caller meant, and a value that merely begins like a name is not an
+    /// answer to that. Completion matches loosely; addressing does not.
+    #[must_use]
+    pub fn answers_to(&self, lowercased: &str) -> bool {
+        self.name.to_ascii_lowercase() == lowercased
+            || self.hostname.to_ascii_lowercase() == lowercased
+            || self.short_name().to_ascii_lowercase() == lowercased
+            || self
+                .addresses
+                .iter()
+                .any(|address| address.to_ascii_lowercase() == lowercased)
+    }
+}
+
+/// The tailnet's device list, held briefly.
+///
+/// Two callers read it and both read it in bursts: resolving an identifier
+/// happens once per device-addressing call, and completing one happens once per
+/// keystroke. Ten seconds is longer than either burst and shorter than anyone's
+/// patience for a device that has since been renamed.
+///
+/// The lock is never held across an await — the listing is fetched outside it
+/// and stored after — so two callers racing simply both fetch, which costs a
+/// request and no correctness.
+/// What the cache holds: when it was read, and what it read.
+type Listing = Arc<Mutex<Option<(Instant, Arc<[Device]>)>>>;
+
+#[derive(Clone, Debug, Default)]
+pub struct DeviceCache {
+    held: Listing,
+}
+
+impl DeviceCache {
+    const TTL: Duration = Duration::from_secs(10);
+
+    fn fresh(&self) -> Option<Arc<[Device]>> {
+        let held = self.held.lock().ok()?;
+        let (at, devices) = held.as_ref()?;
+        (at.elapsed() < Self::TTL).then(|| Arc::clone(devices))
+    }
+
+    fn put(&self, devices: &Arc<[Device]>) {
+        if let Ok(mut held) = self.held.lock() {
+            *held = Some((Instant::now(), Arc::clone(devices)));
+        }
+    }
+}
+
 /// Everything a handler may reach.
 #[derive(Clone)]
 pub struct ToolContext {
@@ -233,6 +311,12 @@ pub struct ToolContext {
     pub cli_version: Option<Version>,
     /// Where the tools that take a path are allowed to write.
     pub paths: PathPolicy,
+    /// The tailnet's device list, cached for a few seconds.
+    ///
+    /// The only mutable state a session holds. It exists because two features
+    /// ask the same question repeatedly — which device did you mean, and which
+    /// could you have meant — and neither should cost a request each time.
+    pub devices: DeviceCache,
     /// The most dangerous tier this session permits.
     ///
     /// The gate is what normally applies this, before a handler is reached, so
@@ -243,6 +327,48 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
+    /// The tailnet's devices, from the cache when it is warm enough.
+    ///
+    /// The error is the one the caller would have got anyway: without a
+    /// credential this is the missing-credential sentence, and a control-plane
+    /// failure is reported as itself rather than as an absent device.
+    pub async fn tailnet_devices(&self) -> crate::error::ToolResult<Arc<[Device]>> {
+        if let Some(warm) = self.devices.fresh() {
+            return Ok(warm);
+        }
+        let client = self.tailnet()?;
+        let answer = client
+            .get(client.tailnet_path(None, "/devices"))
+            .send_as::<serde_json::Value>()
+            .await?;
+        let devices: Arc<[Device]> = answer["devices"]
+            .as_array()
+            .map(|listed| {
+                listed
+                    .iter()
+                    .filter_map(|device| {
+                        Some(Device {
+                            node_id: device["nodeId"].as_str()?.to_owned(),
+                            name: device["name"].as_str().unwrap_or_default().to_owned(),
+                            hostname: device["hostname"].as_str().unwrap_or_default().to_owned(),
+                            addresses: device["addresses"]
+                                .as_array()
+                                .map(|addresses| {
+                                    addresses
+                                        .iter()
+                                        .filter_map(|address| Some(address.as_str()?.to_owned()))
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(|| Vec::new().into());
+        self.devices.put(&devices);
+        Ok(devices)
+    }
+
     /// Whether `target` names the node this server runs on.
     ///
     /// Two sources, because the control plane accepts two identifiers for the

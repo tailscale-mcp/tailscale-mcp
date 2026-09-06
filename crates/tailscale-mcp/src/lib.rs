@@ -65,6 +65,7 @@ pub(crate) mod testing {
             identity: Identity::default(),
             cli_version: None,
             paths: PathPolicy::default(),
+            devices: Default::default(),
             max_tier: Tier::Destructive,
         }
     }

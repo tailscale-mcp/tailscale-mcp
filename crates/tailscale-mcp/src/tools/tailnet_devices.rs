@@ -48,7 +48,7 @@ crate::tools! {
     tailnet_device_list => DeviceListParams, device_list,
         toolset: TailnetDevices, tier: Read, idempotent: true;
 
-    /// Read one device by its node id or its numeric id.
+    /// Read one device, by any of the names or identifiers it answers to.
     tailnet_device_get => DeviceGetParams, device_get,
         toolset: TailnetDevices, tier: Read, idempotent: true;
 
@@ -149,6 +149,117 @@ crate::tools! {
 /// control plane resolves which tailnet it belongs to. Only the two
 /// tailnet-wide endpoints — the listing and the batch attribute update — go
 /// through [`tailscale_rest::Client::tailnet_path`].
+/// Resolve the device, refusing first if either spelling names this node.
+///
+/// The guard runs twice on purpose. Against what the caller wrote it costs
+/// nothing and asks no control plane, so severing this node stays refused even
+/// when the listing is unreachable — which is the direction that matters, since
+/// a missed match is how a session cuts itself off. Against what that resolved
+/// to it catches the one spelling [`SelfIdentity::matches`] does not know: the
+/// machine's own hostname, which is not any of the identifiers the API accepts.
+///
+/// [`SelfIdentity::matches`]: crate::context::SelfIdentity::matches
+async fn resolve_not_ourselves(
+    ctx: &ToolContext,
+    what: &str,
+    given: &str,
+    confirmation: &crate::tools::common::SelfConfirmation,
+) -> ToolResult<String> {
+    // Before the lookup, not after: this check needs no control plane, and a
+    // call that is about to sever the session it arrived on should be refused
+    // without reaching for the network first.
+    not_at_ourselves(ctx, what, given, confirmation).await?;
+    let device = resolve(ctx, given).await?;
+    if device != given.trim() {
+        not_at_ourselves(ctx, what, &device, confirmation).await?;
+    }
+    Ok(device)
+}
+
+/// The same check, for the handlers that resolve before they know they need it.
+///
+/// `device_authorize` only guards one of its two directions and `device_routes_set`
+/// has a paragraph to say first, so neither can be folded into the call above;
+/// both still owe the caller the same two checks.
+async fn neither_names_us(
+    ctx: &ToolContext,
+    what: &str,
+    given: &str,
+    resolved: &str,
+    confirmation: &crate::tools::common::SelfConfirmation,
+) -> ToolResult<()> {
+    not_at_ourselves(ctx, what, given, confirmation).await?;
+    if resolved != given.trim() {
+        not_at_ourselves(ctx, what, resolved, confirmation).await?;
+    }
+    Ok(())
+}
+
+/// Whether a value is already an identifier the control plane will take.
+///
+/// The two accepted shapes are distinctive enough to recognise without asking
+/// anybody: a node id is `n`, alphanumerics, then `CNTRL`, and the legacy id is
+/// all digits. Everything else is a name, and gets resolved. Recognising rather
+/// than resolving is what keeps every call that works today working byte for
+/// byte, and keeps a mistyped node id reaching the control plane so the answer
+/// comes from the authority on it.
+#[must_use]
+pub(crate) fn is_identifier(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() {
+        return false;
+    }
+    let numeric = value.bytes().all(|byte| byte.is_ascii_digit());
+    let node_id = value.len() > "nCNTRL".len()
+        && value.starts_with('n')
+        && value.ends_with("CNTRL")
+        && value[1..value.len() - "CNTRL".len()]
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric());
+    numeric || node_id
+}
+
+/// The identifier the control plane accepts for whatever the caller named.
+///
+/// The instructions promise a device can be named by its address or its
+/// MagicDNS name, and on the local surface the CLI makes that true. Here it is
+/// true because of this: anything that is not already an identifier is looked
+/// up in the tailnet's own listing.
+///
+/// It refuses rather than guesses. Hostnames are not unique — two machines
+/// called `macbook-air` is an ordinary state of affairs — and picking one of
+/// them is how the wrong device gets deleted. A caller given the candidates can
+/// retry unambiguously; a caller given a silent choice cannot.
+pub(crate) async fn resolve(ctx: &ToolContext, given: &str) -> ToolResult<String> {
+    if is_identifier(given) {
+        return Ok(given.trim().to_owned());
+    }
+    let wanted = given.trim().to_ascii_lowercase();
+    let devices = ctx.tailnet_devices().await?;
+    let mut found = devices.iter().filter(|device| device.answers_to(&wanted));
+    let Some(first) = found.next() else {
+        return Err(ToolError::not_found(&format!(
+            "no device in this tailnet is called `{given}`; the name, the hostname, the \
+             MagicDNS name and the addresses were all checked"
+        ))
+        .with_hint("`tailnet_device_list` names every device this credential can see."));
+    };
+    let rest: Vec<&str> = found
+        .map(|device| device.node_id.as_str())
+        .take(4)
+        .collect();
+    if rest.is_empty() {
+        return Ok(first.node_id.clone());
+    }
+    let mut named = vec![first.node_id.as_str()];
+    named.extend(rest);
+    Err(ToolError::invalid_args(format!(
+        "`{given}` names more than one device in this tailnet: {}. Give one of those node \
+         ids instead.",
+        named.join(", ")
+    )))
+}
+
 pub(crate) fn device_path(device: &str, rest: &str) -> ToolResult<String> {
     let id = device_id("device_id", device)?;
     Ok(format!("/api/v2/device/{id}{rest}"))
@@ -333,16 +444,20 @@ fn checked_fields(fields: Option<&str>) -> ToolResult<Option<String>> {
 /// never reads is a caller being told something works when it does nothing.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceParams {
-    /// The device's node id (`n1234567CNTRL`, the `nodeId` in a listing) or
-    /// its numeric `id`. Either works.
+    /// The device, by its node id (`n1234567CNTRL`, the `nodeId` in a
+    /// listing), its numeric `id`, its MagicDNS name, the short name before
+    /// the first dot of that, its hostname, or one of its addresses. A name
+    /// matching more than one device is refused rather than guessed at.
     pub device_id: String,
 }
 
 /// A device, for an operation that cuts this node off when the device is ours.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SeveringDeviceParams {
-    /// The device's node id (`n1234567CNTRL`, the `nodeId` in a listing) or
-    /// its numeric `id`. Either works.
+    /// The device, by its node id (`n1234567CNTRL`, the `nodeId` in a
+    /// listing), its numeric `id`, its MagicDNS name, the short name before
+    /// the first dot of that, its hostname, or one of its addresses. A name
+    /// matching more than one device is refused rather than guessed at.
     pub device_id: String,
     #[serde(flatten)]
     pub confirmation: SelfConfirmation,
@@ -351,8 +466,10 @@ pub struct SeveringDeviceParams {
 /// A device, and which of its fields to read.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceGetParams {
-    /// The device's node id (`n1234567CNTRL`, the `nodeId` in a listing) or
-    /// its numeric `id`. Either works.
+    /// The device, by its node id (`n1234567CNTRL`, the `nodeId` in a
+    /// listing), its numeric `id`, its MagicDNS name, the short name before
+    /// the first dot of that, its hostname, or one of its addresses. A name
+    /// matching more than one device is refused rather than guessed at.
     pub device_id: String,
     /// Which fields to return: `default` for the common ones, `all` to add
     /// posture identity and client connectivity.
@@ -361,17 +478,18 @@ pub struct DeviceGetParams {
 }
 
 async fn device_get(ctx: &ToolContext, params: DeviceGetParams) -> ToolResult<Value> {
+    let device = resolve(ctx, &params.device_id).await?;
     let client = ctx.tailnet()?;
     let fields = checked_fields(params.fields.as_deref())?;
     Ok(client
-        .get(device_path(&params.device_id, "")?)
+        .get(device_path(&device, "")?)
         .maybe_query("fields", fields)
         .send_as::<Value>()
         .await?)
 }
 
 async fn device_delete(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolResult<Value> {
-    not_at_ourselves(
+    let device = resolve_not_ourselves(
         ctx,
         "removing it from the tailnet",
         &params.device_id,
@@ -379,15 +497,12 @@ async fn device_delete(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolR
     )
     .await?;
     let client = ctx.tailnet()?;
-    client
-        .delete(device_path(&params.device_id, "")?)
-        .send()
-        .await?;
+    client.delete(device_path(&device, "")?).send().await?;
     report(Done::new("deleted").about("device_id", params.device_id))
 }
 
 async fn device_expire(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolResult<Value> {
-    not_at_ourselves(
+    let device = resolve_not_ourselves(
         ctx,
         "expiring its node key",
         &params.device_id,
@@ -395,10 +510,7 @@ async fn device_expire(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolR
     )
     .await?;
     let client = ctx.tailnet()?;
-    client
-        .post(device_path(&params.device_id, "/expire")?)
-        .send()
-        .await?;
+    client.post(device_path(&device, "/expire")?).send().await?;
     report(Done::new("key expired").about("device_id", params.device_id))
 }
 
@@ -408,7 +520,8 @@ async fn device_expire(ctx: &ToolContext, params: SeveringDeviceParams) -> ToolR
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceAuthorizeParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// `true` to authorise, `false` to revoke an existing authorisation.
     pub authorized: bool,
@@ -435,9 +548,20 @@ async fn device_authorize(ctx: &ToolContext, params: DeviceAuthorizeParams) -> T
         )
         .await?;
     }
+    let device = resolve(ctx, &params.device_id).await?;
+    if !params.authorized {
+        neither_names_us(
+            ctx,
+            "revoking its authorisation",
+            &params.device_id,
+            &device,
+            &params.confirmation,
+        )
+        .await?;
+    }
     let client = ctx.tailnet()?;
     client
-        .post(device_path(&params.device_id, "/authorized")?)
+        .post(device_path(&device, "/authorized")?)
         .json(&json!({"authorized": params.authorized}))
         .send()
         .await?;
@@ -453,7 +577,8 @@ async fn device_authorize(ctx: &ToolContext, params: DeviceAuthorizeParams) -> T
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceRenameParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// The new name. The control plane derives the MagicDNS name from it.
     pub name: String,
@@ -466,10 +591,11 @@ async fn device_rename(ctx: &ToolContext, params: DeviceRenameParams) -> ToolRes
     // away the name it dialled: anything that reconnects by MagicDNS stops
     // finding this node. That is the same loss as an address change, arriving
     // one round-trip later (Q88).
-    not_at_ourselves(ctx, "renaming it", &params.device_id, &params.confirmation).await?;
+    let device =
+        resolve_not_ourselves(ctx, "renaming it", &params.device_id, &params.confirmation).await?;
     let client = ctx.tailnet()?;
     client
-        .post(device_path(&params.device_id, "/name")?)
+        .post(device_path(&device, "/name")?)
         .json(&json!({"name": params.name}))
         .send()
         .await?;
@@ -478,7 +604,8 @@ async fn device_rename(ctx: &ToolContext, params: DeviceRenameParams) -> ToolRes
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceTagsParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// The complete set of tags, each `tag:` prefixed. An empty list removes
     /// every tag, which returns the device to its owner's identity.
@@ -490,7 +617,7 @@ pub struct DeviceTagsParams {
 async fn device_tags_set(ctx: &ToolContext, params: DeviceTagsParams) -> ToolResult<Value> {
     // Retagging replaces the whole set, and a policy rule that granted
     // this caller its route in through one of the old tags stops applying.
-    not_at_ourselves(
+    let device = resolve_not_ourselves(
         ctx,
         "replacing its tags",
         &params.device_id,
@@ -499,7 +626,7 @@ async fn device_tags_set(ctx: &ToolContext, params: DeviceTagsParams) -> ToolRes
     .await?;
     let client = ctx.tailnet()?;
     client
-        .post(device_path(&params.device_id, "/tags")?)
+        .post(device_path(&device, "/tags")?)
         .json(&json!({"tags": params.tags}))
         .send()
         .await?;
@@ -508,7 +635,8 @@ async fn device_tags_set(ctx: &ToolContext, params: DeviceTagsParams) -> ToolRes
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceKeyExpiryParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// `true` to stop the device's key expiring, `false` to let it expire on
     /// the tailnet's schedule again.
@@ -519,9 +647,10 @@ async fn device_key_expiry_set(
     ctx: &ToolContext,
     params: DeviceKeyExpiryParams,
 ) -> ToolResult<Value> {
+    let device = resolve(ctx, &params.device_id).await?;
     let client = ctx.tailnet()?;
     client
-        .post(device_path(&params.device_id, "/key")?)
+        .post(device_path(&device, "/key")?)
         .json(&json!({"keyExpiryDisabled": params.key_expiry_disabled}))
         .send()
         .await?;
@@ -537,7 +666,8 @@ async fn device_key_expiry_set(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceIpParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// The new IPv4 address, from the tailnet's own range.
     pub ipv4: String,
@@ -546,7 +676,7 @@ pub struct DeviceIpParams {
 }
 
 async fn device_ip_set(ctx: &ToolContext, params: DeviceIpParams) -> ToolResult<Value> {
-    not_at_ourselves(
+    let device = resolve_not_ourselves(
         ctx,
         "moving it to another address",
         &params.device_id,
@@ -555,7 +685,7 @@ async fn device_ip_set(ctx: &ToolContext, params: DeviceIpParams) -> ToolResult<
     .await?;
     let client = ctx.tailnet()?;
     client
-        .post(device_path(&params.device_id, "/ip")?)
+        .post(device_path(&device, "/ip")?)
         .json(&json!({"ipv4": params.ipv4}))
         .send()
         .await?;
@@ -567,16 +697,18 @@ async fn device_ip_set(ctx: &ToolContext, params: DeviceIpParams) -> ToolResult<
 // ---------------------------------------------------------------------------
 
 async fn device_routes_get(ctx: &ToolContext, params: DeviceParams) -> ToolResult<Value> {
+    let device = resolve(ctx, &params.device_id).await?;
     let client = ctx.tailnet()?;
     Ok(client
-        .get(device_path(&params.device_id, "/routes")?)
+        .get(device_path(&device, "/routes")?)
         .send_as::<Value>()
         .await?)
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeviceRoutesParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// The complete set of enabled routes, as CIDR blocks. An empty list
     /// disables every route the device advertises.
@@ -588,7 +720,7 @@ pub struct DeviceRoutesParams {
 async fn device_routes_set(ctx: &ToolContext, params: DeviceRoutesParams) -> ToolResult<Value> {
     // A caller reached over a subnet this node advertises loses its route
     // in when the route stops being enabled.
-    not_at_ourselves(
+    let device = resolve_not_ourselves(
         ctx,
         "changing which of its routes are enabled",
         &params.device_id,
@@ -599,7 +731,7 @@ async fn device_routes_set(ctx: &ToolContext, params: DeviceRoutesParams) -> Too
     // This one answers with the routes it settled on, which is worth more to a
     // caller than a report that it worked.
     Ok(client
-        .post(device_path(&params.device_id, "/routes")?)
+        .post(device_path(&device, "/routes")?)
         .json(&json!({"routes": params.routes}))
         .send_as::<Value>()
         .await?)
@@ -610,16 +742,18 @@ async fn device_routes_set(ctx: &ToolContext, params: DeviceRoutesParams) -> Too
 // ---------------------------------------------------------------------------
 
 async fn device_attributes_get(ctx: &ToolContext, params: DeviceParams) -> ToolResult<Value> {
+    let device = resolve(ctx, &params.device_id).await?;
     let client = ctx.tailnet()?;
     Ok(client
-        .get(device_path(&params.device_id, "/attributes")?)
+        .get(device_path(&device, "/attributes")?)
         .send_as::<Value>()
         .await?)
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AttributeParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// The attribute's name, which has to begin `custom:`.
     pub attribute_key: String,
@@ -627,7 +761,8 @@ pub struct AttributeParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AttributeSetParams {
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// The attribute's name, which has to begin `custom:`.
     pub attribute_key: String,
@@ -644,8 +779,9 @@ pub struct AttributeSetParams {
 }
 
 async fn device_attribute_set(ctx: &ToolContext, params: AttributeSetParams) -> ToolResult<Value> {
+    let device = resolve(ctx, &params.device_id).await?;
     let client = ctx.tailnet()?;
-    let path = attribute_path(&params.device_id, &params.attribute_key)?;
+    let path = attribute_path(&device, &params.attribute_key)?;
     let mut body = json!({"value": params.value});
     if let Some(expiry) = &params.expiry {
         body["expiry"] = json!(expiry);
@@ -668,8 +804,9 @@ async fn device_attribute_set(ctx: &ToolContext, params: AttributeSetParams) -> 
 }
 
 async fn device_attribute_delete(ctx: &ToolContext, params: AttributeParams) -> ToolResult<Value> {
+    let device = resolve(ctx, &params.device_id).await?;
     let client = ctx.tailnet()?;
-    let path = attribute_path(&params.device_id, &params.attribute_key)?;
+    let path = attribute_path(&device, &params.attribute_key)?;
     client.delete(path).send().await?;
     report(
         Done::new("attribute deleted")
@@ -706,7 +843,10 @@ async fn device_attributes_update(
     let mut nodes = std::collections::BTreeMap::new();
     let mut changed = 0usize;
     for (device, attributes) in &params.nodes {
-        let device = device_id("nodes", device)?;
+        // Named the same way as everywhere else: a caller who may write
+        // `laptop` for one device should not have to write a node id here
+        // because there are several. One listing serves the whole batch.
+        let device = device_id("nodes", &resolve(ctx, device).await?)?;
         for key in attributes.keys() {
             if !key.starts_with("custom:") {
                 return Err(ToolError::invalid_args(format!(

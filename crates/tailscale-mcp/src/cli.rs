@@ -338,6 +338,7 @@ mod tests {
             identity: Identity::default(),
             cli_version,
             paths: PathPolicy::default(),
+            devices: Default::default(),
             max_tier: crate::meta::Tier::Destructive,
         }
     }

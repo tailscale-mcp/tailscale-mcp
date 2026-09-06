@@ -199,7 +199,8 @@ async fn service_devices_list(ctx: &ToolContext, params: ServiceParams) -> ToolR
 pub struct ServiceDeviceParams {
     /// The service's name, as `svc:example`.
     pub service_name: String,
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
 }
 
@@ -207,7 +208,8 @@ pub struct ServiceDeviceParams {
 pub struct ServiceApprovalParams {
     /// The service's name, as `svc:example`.
     pub service_name: String,
-    /// The device's node id or numeric id.
+    /// The device, by node id, numeric id, MagicDNS name, short name,
+    /// hostname or address.
     pub device_id: String,
     /// Whether the device may host the service. `false` takes it out of the
     /// service.
@@ -223,7 +225,8 @@ fn approval_suffix(device: &str) -> ToolResult<String> {
 async fn service_approval_get(ctx: &ToolContext, params: ServiceDeviceParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let name = &path_segment("service_name", &params.service_name)?;
-    let suffix = approval_suffix(&params.device_id)?;
+    let device = crate::tools::tailnet_devices::resolve(ctx, &params.device_id).await?;
+    let suffix = approval_suffix(&device)?;
     either_spelling(|base| {
         client
             .get(service_path(client, base, name, &suffix))
@@ -244,7 +247,8 @@ async fn service_approval_set(
         require_destructive(ctx, "withdrawing a device's approval to serve a service")?;
     }
     let name = &path_segment("service_name", &params.service_name)?;
-    let suffix = approval_suffix(&params.device_id)?;
+    let device = crate::tools::tailnet_devices::resolve(ctx, &params.device_id).await?;
+    let suffix = approval_suffix(&device)?;
     let body = tailscale_rest::models::service::ServiceApprovalRequest {
         approved: Some(params.approved),
         unknown: Default::default(),

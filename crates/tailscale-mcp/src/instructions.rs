@@ -91,9 +91,13 @@ pub fn render(gate: &Gate, ctx: &ToolContext) -> String {
     );
 
     out.push_str(
-        "Identifiers: a device can be named by its node ID, one of its Tailscale IP addresses, or \
-         its MagicDNS name. Where a tailnet must be named, `-` means the tailnet the credential \
-         belongs to and is almost always right.\n\n",
+        "Identifiers: a device can be named by its MagicDNS name, the short name before the \
+         first dot of it, its hostname, or one of its Tailscale IP addresses. The `tailnet_*` \
+         tools also take the node ID (`n1234567CNTRL`) and the numeric id a listing reports, \
+         and answer with those; a name is resolved against the tailnet's device list, and a \
+         name matching more than one device is refused rather than guessed at. Where a tailnet \
+         must be named, `-` means the tailnet the credential belongs to and is almost always \
+         right.\n\n",
     );
 
     if let Some(version) = ctx.cli_version {
@@ -152,6 +156,7 @@ mod tests {
             .into(),
             cli_version: Some(Version::new(1, 102, 2)),
             paths: PathPolicy::default(),
+            devices: Default::default(),
             max_tier: Tier::Destructive,
         }
     }

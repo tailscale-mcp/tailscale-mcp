@@ -218,9 +218,13 @@ async fn tailnet_json(ctx: Arc<ToolContext>, rest: &str) -> ToolResult<String> {
 }
 
 async fn device(ctx: Arc<ToolContext>, device_id: String) -> ToolResult<String> {
+    // The template accepts what the tools accept, which is the whole point of
+    // the resolution: `tailnet://device/laptop` and `tailnet_device_get` are
+    // two ways of asking the same question and should take the same answer.
+    let resolved = crate::tools::tailnet_devices::resolve(&ctx, &device_id).await?;
     let client = ctx.tailnet()?;
     let answer = client
-        .get(crate::tools::tailnet_devices::device_path(&device_id, "")?)
+        .get(crate::tools::tailnet_devices::device_path(&resolved, "")?)
         .send_as::<Value>()
         .await?;
     Ok(crate::tools::common::pretty(&answer))

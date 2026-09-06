@@ -179,7 +179,7 @@ preset, the tier and which surfaces are reachable; see
 | Tool | Tier | Notes | What it does |
 |---|---|---|---|
 | `tailnet_device_list` | read |  | List the devices in the tailnet. Answers with the control plane's own `{"devices": [...]}`, or with a `window` beside it when `limit` or `offset` narrowed the list here. The endpoint has no pagination, so a large tailnet answers whole and may exceed this server's result cap. `filters` is what asks the control plane for less, and so the only one of these that can rescue such a listing; `limit` and `offset` are applied to an answer that has already arrived. `fields: "all"` adds the costlier fields — posture identity, client connectivity — that `default` leaves out, and `fields: "default"` is the smaller answer. |
-| `tailnet_device_get` | read |  | Read one device by its node id or its numeric id. |
+| `tailnet_device_get` | read |  | Read one device, by any of the names or identifiers it answers to. |
 | `tailnet_device_delete` | destructive |  | Remove a device from the tailnet permanently. The machine has to re-authenticate to come back, as a new device with a new address. Only devices belonging to this tailnet can be deleted; a device shared in from another tailnet is refused by the control plane. |
 | `tailnet_device_expire` | destructive |  | Expire a device's node key, which disconnects it until someone re-authenticates the machine. The device itself is kept. |
 | `tailnet_device_authorize` | write | tier depends on arguments | Authorise a device, or revoke its authorisation. Only meaningful on a tailnet that requires device approval. Authorising is a write; revoking disconnects the device until it is authorised again, and needs the destructive tier. |

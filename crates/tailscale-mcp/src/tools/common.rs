@@ -45,13 +45,6 @@ pub fn push_list(args: &mut Vec<String>, name: &str, value: Option<&[String]>) {
     }
 }
 
-/// The same for a number, which has no natural empty value to elide.
-pub fn push_number(args: &mut Vec<String>, name: &str, value: Option<u16>) {
-    if let Some(value) = value {
-        args.push(format!("--{name}={value}"));
-    }
-}
-
 /// Whatever a command said on standard error, when it said anything.
 ///
 /// Carried on the answer rather than raised, because a command that succeeded

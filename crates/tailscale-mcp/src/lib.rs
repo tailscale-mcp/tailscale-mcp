@@ -8,6 +8,13 @@
 //! The crate is a library as well as a binary so that the tests can build a
 //! whole server in-process and drive it as a client, which is where nearly all
 //! of the behaviour is observable.
+//!
+//! That is the whole of why the library is public, and so it carries no
+//! stability guarantee: the compatible thing to depend on is the protocol this
+//! server speaks, which the contract tests pin, rather than the Rust surface
+//! the tests happen to reach through. A signature here may change in any
+//! release, and `cargo semver-checks` will say so — the question that answers
+//! is whether the change was meant, not whether it is allowed.
 
 // A panic in a test is a failed test, which is what these lints exist to
 // prevent elsewhere.

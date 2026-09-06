@@ -2191,3 +2191,23 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Ref:** `crates/tailscale-mcp/src/resources.rs`, `crates/tailscale-mcp/src/server.rs`, `README.md`
 
 **Outcome:** applied
+
+## Q140 — interactive/round-15 — tradeoff
+
+**Question:** Q139 changed the arity of `PromptEntry::expand`, which is public. Does the library surface of this crate carry a stability guarantee, and what should the next release be?
+
+**Options considered:** keep the old arity and add a second method beside it / narrow the method's visibility / accept the break, state that the library carries no guarantee, and let the release version say so
+
+**Chosen:** The third. `lib.rs` now says outright that the public library exists so the tests can build a server in-process and carries no stability guarantee, and the dead `tools::common::push_number` — found in round 13 and left alone only because removing it broke semver at a patch — goes with it.
+
+**Decided-by:** agent
+
+**Justification:** `lib.rs` already said why the library is public: "so that the tests can build a whole server in-process and drive it as a client". What it did not say is the consequence, which left every change to a public signature looking like a question nobody had answered. The first two options both make the code worse to keep a promise the crate never made — a second expansion method would be one no caller wants (it would name tools the session lacks, which is the bug Q139 fixed), and narrowing visibility is itself a breaking change, so it buys nothing.
+
+**Verified, not assumed.** `cargo semver-checks` against the published 1.0.4 names exactly two breaks and nothing else: `PromptEntry::expand` "takes 1 parameters ... but now takes 2", and `push_number` "pub fn removed or renamed". 223 checks, 221 pass. So the surface change is bounded and known rather than guessed at — which is the point of stating the policy: the tool still reports, and what it reports is whether a change was meant.
+
+**What it costs, and who decides.** Strict semver reads two major-level breaks and asks for 2.0.0. That is the release call, not this entry's: the honest options are 2.0.0 by the letter, or a minor with the policy now stated in the crate and the breaks named in the changelog. Recommended is the minor, because nothing an MCP client depends on changed shape — the compatible surface is the protocol, which the contract tests pin, and no library consumer is known. Flagged for the user rather than assumed, and no version has been bumped here.
+
+**Ref:** `crates/tailscale-mcp/src/lib.rs`, `crates/tailscale-mcp/src/tools/common.rs`
+
+**Outcome:** applied

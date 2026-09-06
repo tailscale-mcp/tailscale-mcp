@@ -2211,3 +2211,21 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Ref:** `crates/tailscale-mcp/src/lib.rs`, `crates/tailscale-mcp/src/tools/common.rs`
 
 **Outcome:** applied
+
+## Q141 — interactive/release-1.1.0 — deviation
+
+**Question:** `cliff.toml` skips `^chore\(release\)`, but `RELEASING.md` says to write `chore: release x.y.z`, which does not match it. Following the runbook puts a "Release x.y.z" line in the changelog for good. Which of the two is wrong?
+
+**Options considered:** change the runbook to the scoped form / widen the skip rule / leave it and hand-edit the changelog
+
+**Chosen:** Both of the first two. The runbook now says `chore(release): x.y.z`, and the skip rule covers the unscoped shape as well.
+
+**Decided-by:** agent
+
+**Justification:** The scoped form is what v1.0.1, v1.0.2 and v1.0.3 actually used and what the skip rule was written for, so the runbook is the half that drifted. Fixing only the runbook would still leave v1.0.4's commit — which followed the runbook as written — surfacing in the changelog on every future regeneration, and the changelog is generated whole each time, so that entry would appear inside an already-published section. Widening the rule as well keeps a released section from changing under a later release. The third option is not available: the file says "do not edit by hand", and a hand-edit would be undone by the next release.
+
+**Found by cutting the release, not by review.** The dry run wrote `### Housekeeping — Release 1.0.4` into the 1.0.4 section, which no released section had; three earlier releases having no such entry is what identified the runbook rather than the config as the thing that changed.
+
+**Ref:** `cliff.toml`, `RELEASING.md`
+
+**Outcome:** applied

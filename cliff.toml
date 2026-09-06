@@ -52,7 +52,11 @@ commit_parsers = [
   { message = "^docs", group = "<!-- 4 -->Documentation" },
   { message = "^test", group = "<!-- 5 -->Tests" },
   { message = "^ci|^build", group = "<!-- 6 -->Build and CI" },
-  { message = "^chore\\(release\\)", skip = true },
+  # Both shapes the runbook has asked for: `chore(release): x.y.z`, which
+  # 1.0.1 to 1.0.3 used, and `chore: release x.y.z`, which 1.0.4 used because
+  # `RELEASING.md` said so. A release commit is the bump itself and says
+  # nothing a reader of the changelog wants.
+  { message = "^chore\\(release\\)|^chore: release ", skip = true },
   { message = "^chore", group = "<!-- 7 -->Housekeeping" },
   { message = "^revert", group = "<!-- 8 -->Reverted" },
   # Everything before the convention was adopted (Q107). One group, last, so

@@ -19,7 +19,7 @@ What npm and crates.io were told about this repository is written down in
 ```sh
 scripts/prepare-release.sh          # or --version x.y.z to override the rule
 git diff                            # read it
-git commit -am "chore: release x.y.z"
+git commit -am "chore(release): x.y.z"
 git push
 git tag vx.y.z && git push origin vx.y.z
 ```

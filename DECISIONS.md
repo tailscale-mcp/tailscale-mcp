@@ -2147,3 +2147,23 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Ref:** `.scratch/tailscale-mcp-v1/issues/31-trusted-publishing.md`
 
 **Outcome:** applied
+
+## Q138 — interactive/sweep — irreversible-action
+
+**Question:** With npm locked to trusted publishing, crates.io still had a personal API token with `publish-new`, `publish-update`, `yank` and `change-owners`, live, and exported from a developer shell. crates.io has no "disallow tokens" setting, so trusted publishing there is additive rather than exclusive. Leave it as the manual-release escape hatch, or remove it?
+
+**Options considered:** keep it for hand-publishing if a release stalls / narrow its scopes / revoke it and hold the line that releases come only from CI
+
+**Chosen:** Revoked, and both local copies removed — the export in this machine's `~/.zshenv` and a `~/.cargo/credentials` file on another host. The user revoked the token themselves; this entry records the decision and the verification.
+
+**Decided-by:** human
+
+**Justification:** On npm the package setting refuses a 2FA-bypassing token, so the credential found there could not actually publish. crates.io offers no such setting, which inverts the reasoning: "no token exists" is not a belt-and-braces measure there, it is the whole of the protection. A token that can publish, yank and *change owners* is a larger hole than the npm one that prompted the search, and it was one line above it in the same file.
+
+**What it costs.** There is now no way to publish these crates by hand. A release that stops midway is recovered by re-running the failed job from the Actions tab, which `RELEASING.md` already documents job by job — and a crates.io version cannot be unpublished anyway, so the hand-publish path was never the recovery for the case that matters most.
+
+**Verified, not assumed.** Revocation was confirmed by differential probe rather than by the page: before, the token answered "this action can only be performed on the crates.io website" where an invalid one answered "authentication failed" — auth passing, endpoint refusing. After, both answer "authentication failed". Every reachable host was then re-checked for a cargo credentials file, a `CARGO_REGISTRY_TOKEN` or `NPM_TOKEN` export, and an `.npmrc` auth line; all clean. Two hosts could not be reached and are named in the transcript rather than assumed clean.
+
+**Ref:** `RELEASING.md`, `packaging/registry/trusted-publishers.toml`
+
+**Outcome:** applied

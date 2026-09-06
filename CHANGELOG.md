@@ -3,6 +3,20 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.2.0 — 2026-09-06
+
+### Added
+
+- Offer values for the slots that have a knowable set
+
+### Fixed
+
+- Accept the device identifiers the instructions promise
+
+### Documentation
+
+- Ticket 32, device identifiers and argument completions
+
 ## 1.1.0 — 2026-09-06
 
 ### Fixed

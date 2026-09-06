@@ -283,6 +283,37 @@ pub async fn read(
     Err(ToolError::not_found(&format!("the resource `{uri}`")))
 }
 
+/// Which surfaces a session has, for the prompt steps that reach across both.
+///
+/// [`PromptEntry::surface`] decides whether a prompt is offered at all; this
+/// is the finer question the ones that reach across have to ask. A numbered
+/// procedure that tells the model to call `tailnet_device_list` in a session
+/// with no credential is naming a tool that does not exist there, which is the
+/// thing [`crate::gating::Gate::offers`] was written to stop the instructions
+/// doing.
+#[derive(Clone, Copy, Debug)]
+pub struct Surfaces {
+    local: bool,
+    tailnet: bool,
+}
+
+impl Surfaces {
+    /// From the same question the resource listing asks of every entry.
+    pub fn new(offers: impl Fn(Surface) -> bool) -> Self {
+        Self {
+            local: offers(Surface::Local),
+            tailnet: offers(Surface::Tailnet),
+        }
+    }
+
+    pub const fn has(self, surface: Surface) -> bool {
+        match surface {
+            Surface::Local => self.local,
+            Surface::Tailnet => self.tailnet,
+        }
+    }
+}
+
 /// One prompt: a name, an optional argument, and the guidance it expands to.
 pub struct PromptEntry {
     pub name: &'static str,
@@ -290,7 +321,11 @@ pub struct PromptEntry {
     pub description: &'static str,
     /// The one optional argument, and what it is for.
     pub argument: (&'static str, &'static str),
-    expand: fn(Option<&str>) -> String,
+    /// The surface the prompt cannot work without, and so the one that decides
+    /// whether it is listed at all — the rule [`read`] already applies to a
+    /// resource.
+    pub surface: Surface,
+    expand: fn(Option<&str>, Surfaces) -> String,
 }
 
 impl std::fmt::Debug for PromptEntry {
@@ -316,8 +351,11 @@ impl PromptEntry {
         .with_title(self.title)
     }
 
-    pub fn expand(&self, argument: Option<&str>) -> Vec<PromptMessage> {
-        vec![PromptMessage::new_text(Role::User, (self.expand)(argument))]
+    pub fn expand(&self, argument: Option<&str>, surfaces: Surfaces) -> Vec<PromptMessage> {
+        vec![PromptMessage::new_text(
+            Role::User,
+            (self.expand)(argument, surfaces),
+        )]
     }
 }
 
@@ -326,6 +364,11 @@ impl PromptEntry {
 /// All three work under the read tier, which is why none of them tells the
 /// model to write anything: validation and preview do not mutate, and a prompt
 /// that ended in a write would be one a read-only session could not finish.
+///
+/// Tier is not the only way a step can be out of reach. Each prompt also names
+/// the surface it cannot work without, so that a session missing that surface
+/// is not offered a procedure whose every step it would refuse; and the one
+/// prompt that reads from both drops the steps whose surface is absent.
 pub fn prompts() -> Vec<PromptEntry> {
     vec![
         PromptEntry {
@@ -336,10 +379,26 @@ pub fn prompts() -> Vec<PromptEntry> {
                 "peer",
                 "The peer that cannot be reached, by name or address.",
             ),
-            expand: |peer| {
+            // The question is why *this node* cannot reach something, and the
+            // first three steps are what answers it. The control plane
+            // corroborates; it does not stand in for the node.
+            surface: Surface::Local,
+            expand: |peer, surfaces| {
                 let subject = match peer {
                     Some(peer) => format!("the peer `{peer}`"),
                     None => "the tailnet in general".to_owned(),
+                };
+                // Steps 4 and 5 are control-plane reads. A session with no
+                // credential has neither tool, and a numbered procedure that
+                // names them there sends the model at something it was never
+                // offered — so the list ends at 3 and says so.
+                let control_plane = if surfaces.has(Surface::Tailnet) {
+                    "4. `tailnet_device_list` — does the control plane agree the peer exists, \
+                        is it authorised, and has its key expired?\n\
+                     5. `tailnet_policy_preview` — would the policy in force let these two \
+                        talk?\n"
+                } else {
+                    ""
                 };
                 format!(
                     "Diagnose connectivity between this node and {subject}, using read-only \
@@ -351,9 +410,7 @@ pub fn prompts() -> Vec<PromptEntry> {
                         and what NAT does it see?\n\
                      3. `tailscale_ping` — does traffic actually arrive, and does it go direct \
                         or over a relay?\n\
-                     4. `tailnet_device_list` — does the control plane agree the peer exists, is \
-                        it authorised, and has its key expired?\n\
-                     5. `tailnet_policy_preview` — would the policy in force let these two talk?\n\
+                     {control_plane}\
                      \n\
                      Report what you found at each step and name the first one that explains the \
                      failure. Do not change anything: every tool above is a read, and a fix is \
@@ -369,7 +426,8 @@ pub fn prompts() -> Vec<PromptEntry> {
                 "goal",
                 "What the change is meant to achieve, in a sentence.",
             ),
-            expand: |goal| {
+            surface: Surface::Tailnet,
+            expand: |goal, _| {
                 let purpose = match goal {
                     Some(goal) => format!("The change is meant to: {goal}\n\n"),
                     None => String::new(),
@@ -403,7 +461,8 @@ pub fn prompts() -> Vec<PromptEntry> {
                 "subject",
                 "A user, tag or device to audit rather than the whole tailnet.",
             ),
-            expand: |subject| {
+            surface: Surface::Tailnet,
+            expand: |subject, _| {
                 let scope = match subject {
                     Some(subject) => format!("Limit the audit to `{subject}`.\n\n"),
                     None => String::new(),
@@ -491,12 +550,17 @@ mod tests {
         assert_eq!(devices.captures("tailnet://devices/n1"), None);
     }
 
+    /// A session that has both surfaces, which is what most of these ask about.
+    fn both() -> Surfaces {
+        Surfaces::new(|_| true)
+    }
+
     #[test]
     fn every_prompt_expands_with_and_without_its_argument() {
         for prompt in prompts() {
             let (name, _) = prompt.argument;
-            let without = prompt.expand(None);
-            let with = prompt.expand(Some("example"));
+            let without = prompt.expand(None, both());
+            let with = prompt.expand(Some("example"), both());
             assert_eq!(without.len(), 1);
             assert_ne!(
                 format!("{with:?}"),
@@ -526,7 +590,7 @@ mod tests {
             .iter()
             .find(|p| p.name == "review_policy_change")
             .expect("declared");
-        let text = format!("{:?}", policy.expand(None));
+        let text = format!("{:?}", policy.expand(None, both()));
 
         let at = |needle: &str| {
             text.find(needle)
@@ -546,7 +610,7 @@ mod tests {
         // write tool would be one a read-only session could not finish.
         let table = crate::tools::entries();
         for prompt in prompts() {
-            let text = format!("{:?}", prompt.expand(Some("example")));
+            let text = format!("{:?}", prompt.expand(Some("example"), both()));
             for entry in &table {
                 if entry.meta.tier != crate::meta::Tier::Read && text.contains(entry.meta.name) {
                     // `tailnet_policy_set` is named as the thing *not* to do.
@@ -558,5 +622,55 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The surface half of the question the test above asks about the tier.
+    ///
+    /// A prompt is listed when its own surface is there, so what it expands to
+    /// may still name the *other* one. Every tool it names has to be on a
+    /// surface the session actually has — otherwise the procedure sends the
+    /// model at a tool that does not exist for it, which is the thing hiding
+    /// a toolset was meant to prevent.
+    #[test]
+    fn no_prompt_names_a_tool_from_a_surface_the_session_lacks() {
+        let table = crate::tools::entries();
+        for present in [Surface::Local, Surface::Tailnet] {
+            let only = Surfaces::new(|surface| surface == present);
+            for prompt in prompts() {
+                if prompt.surface != present {
+                    continue;
+                }
+                let text = format!("{:?}", prompt.expand(Some("example"), only));
+                for entry in &table {
+                    let named = entry.meta.surface() != present && text.contains(entry.meta.name);
+                    assert!(
+                        !named || entry.meta.name == "tailnet_policy_set",
+                        "with only the {} surface, `{}` still names `{}`",
+                        present.as_str(),
+                        prompt.name,
+                        entry.meta.name
+                    );
+                }
+            }
+        }
+    }
+
+    /// And the listing rule itself: each prompt says which surface it needs.
+    #[test]
+    fn every_prompt_declares_the_surface_it_cannot_work_without() {
+        let expected = [
+            ("diagnose_connectivity", Surface::Local),
+            ("review_policy_change", Surface::Tailnet),
+            ("audit_tailnet_access", Surface::Tailnet),
+        ];
+        let declared: Vec<_> = prompts()
+            .iter()
+            .map(|prompt| (prompt.name, prompt.surface))
+            .collect();
+        assert_eq!(
+            declared,
+            expected.to_vec(),
+            "a prompt changing surface changes which sessions are offered it"
+        );
     }
 }

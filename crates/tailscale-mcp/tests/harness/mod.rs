@@ -380,6 +380,18 @@ impl Harness {
             .unwrap_or_else(|e| panic!("`{name}` could not be got: {e}"))
     }
 
+    /// Ask for a prompt and keep the refusal, for the sessions that refuse.
+    pub async fn prompt_refusal(&self, name: &str) -> String {
+        match self
+            .client
+            .get_prompt(rmcp::model::GetPromptRequestParams::new(name.to_owned()))
+            .await
+        {
+            Ok(result) => panic!("`{name}` was expanded rather than refused: {result:?}"),
+            Err(error) => error.to_string(),
+        }
+    }
+
     /// The names of every tool on offer.
     pub async fn tool_names(&self) -> Vec<String> {
         self.tools()

@@ -282,8 +282,13 @@ async fn no_resource_answers_with_something_a_tool_result_would_have_redacted() 
 #[tokio::test]
 async fn all_three_prompts_expand_with_and_without_their_argument() {
     // Under the read tier, which is the point: validation and preview do not
-    // mutate, so a read-only session can follow all three to the end.
-    let harness = Setup::new().toolsets("tailnet-policy").start().await;
+    // mutate, so a read-only session can follow all three to the end. Both
+    // surfaces, because a prompt is listed only where the surface it needs is,
+    // and this test is about the argument rather than about that.
+    let harness = Setup::new()
+        .toolsets("local-status,tailnet-policy")
+        .start()
+        .await;
 
     let listed: Vec<String> = harness
         .prompts()
@@ -499,4 +504,104 @@ async fn the_same_resource_is_answered_under_the_default_cap() {
     );
 
     harness.shutdown().await;
+}
+
+/// A prompt is listed where its surface is, and nowhere else.
+///
+/// The two resource listings already work this way, and the reason is the same
+/// one `Gate::offers` was written for: a session shown `audit_tailnet_access`
+/// with no credential is shown a five-step procedure it would refuse at every
+/// step.
+#[tokio::test]
+async fn a_prompt_is_not_listed_where_its_surface_is_missing() {
+    for (toolsets, expected) in [
+        (
+            "local-status,tailnet-policy",
+            vec![
+                "diagnose_connectivity",
+                "review_policy_change",
+                "audit_tailnet_access",
+            ],
+        ),
+        (
+            "tailnet-policy",
+            vec!["review_policy_change", "audit_tailnet_access"],
+        ),
+        ("local-status", vec!["diagnose_connectivity"]),
+    ] {
+        let harness = Setup::new().toolsets(toolsets).start().await;
+        let listed: Vec<String> = harness
+            .prompts()
+            .await
+            .into_iter()
+            .map(|prompt| prompt.name)
+            .collect();
+        assert_eq!(listed, expected, "with the toolsets `{toolsets}`");
+        harness.shutdown().await;
+    }
+}
+
+/// And asking for one anyway says which surface it wanted.
+#[tokio::test]
+async fn asking_for_a_prompt_whose_surface_is_missing_says_which_one() {
+    let harness = Setup::new().toolsets("local-status").start().await;
+
+    let refusal = harness.prompt_refusal("audit_tailnet_access").await;
+    assert!(
+        refusal.contains("tailnet"),
+        "the refusal should name the surface it wanted: {refusal}"
+    );
+
+    // A name that is not a prompt at all is still the other answer.
+    let unknown = harness.prompt_refusal("no_such_prompt").await;
+    assert!(
+        unknown.contains("is not a prompt"),
+        "an unknown name is not a missing surface: {unknown}"
+    );
+
+    harness.shutdown().await;
+}
+
+/// The one prompt that reads from both surfaces stops at what it has.
+///
+/// `diagnose_connectivity` is offered wherever the local surface is, including
+/// the commonest session of all: a machine with the CLI and no credential. Its
+/// last two steps are control-plane reads, and naming them there would send
+/// the model at two tools this session was never offered.
+#[tokio::test]
+async fn the_diagnosis_drops_its_control_plane_steps_without_a_credential() {
+    let local = Setup::new().toolsets("local-status").start().await;
+    let text = format!(
+        "{:?}",
+        local.prompt("diagnose_connectivity", json!({})).await
+    );
+    assert!(
+        text.contains("tailscale_status") && text.contains("tailscale_ping"),
+        "the local steps are the ones that survive: {text}"
+    );
+    for absent in ["tailnet_device_list", "tailnet_policy_preview"] {
+        assert!(
+            !text.contains(absent),
+            "`{absent}` is not a tool this session has: {text}"
+        );
+    }
+    local.shutdown().await;
+
+    // With a credential they come back, which is what makes the omission a
+    // property of the session rather than of the prompt.
+    let both = Setup::new()
+        .toolsets("local-status,tailnet-devices")
+        .start()
+        .await;
+    let text = format!(
+        "{:?}",
+        both.prompt("diagnose_connectivity", json!({})).await
+    );
+    for present in ["tailnet_device_list", "tailnet_policy_preview"] {
+        assert!(
+            text.contains(present),
+            "`{present}` belongs in a session that has the control plane: {text}"
+        );
+    }
+    both.shutdown().await;
 }

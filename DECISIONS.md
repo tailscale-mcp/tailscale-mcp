@@ -2167,3 +2167,27 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Ref:** `RELEASING.md`, `packaging/registry/trusted-publishers.toml`
 
 **Outcome:** applied
+
+## Q139 — interactive/round-14 — deviation
+
+**Question:** Tools and resources both disappear when the surface they need is absent; prompts did not. Should a prompt follow the same rule, and what should the one prompt that reads from both surfaces do?
+
+**Options considered:** leave prompts listed everywhere and let the model discover the missing tools by calling them / hide a prompt whose surface is absent / hide it and also drop the steps that name the other surface
+
+**Chosen:** All three prompts now declare the surface they cannot work without, `list_prompts` filters on it, `get_prompt` refuses with the surface it wanted, and `diagnose_connectivity` — offered wherever the local surface is — emits its two control-plane steps only when there is a credential.
+
+**Decided-by:** agent
+
+**Justification:** The rule was already written down twice on the other two listings. `Gate::offers` says a session must be told "what it can actually do rather than what it was asked for", and `offered_toolsets` records that naming an absent surface "tells a model that `tailnet-devices` is there, in a session where every call to it is refused. That was written twice before it was written once." `resources::read` states the same: "a resource whose backend is missing is not listed, so a client asking for one by name is asking for something it was never offered." Prompts were the third listing and had missed it — the module's own doc comment reasoned carefully about the *tier* ("all three work under the read tier") and never about the surface, and the test suite matched: `no_prompt_asks_for_a_tool_that_needs_more_than_the_read_tier` existed with no surface counterpart.
+
+**What it was costing.** Measured, not inferred. With `--no-tailnet`, `review_policy_change` named four tailnet tools and had none of them; `audit_tailnet_access` named six and had none. With `--no-local`, `diagnose_connectivity` named three local tools and had none. The worst case is the commonest session of all — a machine with the CLI and no credential, which is the first run for anybody who has not made an API key yet — where two of the three prompts were five-step procedures that fail at every step.
+
+**Why the third option rather than the second.** Hiding by surface alone still left `diagnose_connectivity` listed in a no-credential session naming `tailnet_device_list` and `tailnet_policy_preview` in steps 4 and 5. Dropping the prompt entirely there would be worse: diagnosing this node's connectivity is exactly what a local-only session is for. So the prompt stays and the two steps go, which makes the omission a property of the session rather than of the prompt — the with-credential expansion still carries them, and a test asserts both directions.
+
+**What stays deliberate.** `review_policy_change` still names `tailnet_policy_set`, a write tool a read-tier session cannot call. That is the existing tier decision, framed in the prompt as the thing *not* to do and sanctioned by name in the tier test; the new surface test carries the same exception rather than quietly widening it.
+
+**Verified, not assumed.** Each of the four pieces was reverted in turn and the suite re-run: dropping the listing filter fails `a_prompt_is_not_listed_where_its_surface_is_missing`; dropping the `get_prompt` check fails `asking_for_a_prompt_whose_surface_is_missing_says_which_one`; making the control-plane steps unconditional fails both `no_prompt_names_a_tool_from_a_surface_the_session_lacks` and the session-level `the_diagnosis_drops_its_control_plane_steps_without_a_credential`; and mislabelling the diagnosis as a tailnet prompt fails `every_prompt_declares_the_surface_it_cannot_work_without`. 658 tests pass, clippy is clean under `-D warnings`.
+
+**Ref:** `crates/tailscale-mcp/src/resources.rs`, `crates/tailscale-mcp/src/server.rs`, `README.md`
+
+**Outcome:** applied

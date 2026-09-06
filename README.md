@@ -161,7 +161,10 @@ settings. They are read-only, they appear only when their surface is on, and
 there are no subscriptions.
 
 Three prompts steer a sequence of tool calls: `diagnose_connectivity`,
-`review_policy_change` and `audit_tailnet_access`.
+`review_policy_change` and `audit_tailnet_access`. They follow the same rule as
+the resources: each appears only when the surface it needs is on, and
+`diagnose_connectivity`, which reads from both, stops at the steps the session
+can actually take.
 
 ## Transports
 

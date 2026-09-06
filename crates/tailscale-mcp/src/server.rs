@@ -422,9 +422,13 @@ impl ServerHandler for TailscaleMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, McpError> {
+        // The rule the two listings above follow, for the third listing that
+        // needs it: a prompt whose surface is missing is a numbered procedure
+        // every step of which this session would refuse.
         Ok(ListPromptsResult::with_all_items(
             resources::prompts()
                 .iter()
+                .filter(|entry| self.gate.offers(entry.surface))
                 .map(resources::PromptEntry::describe)
                 .collect(),
         ))
@@ -442,14 +446,29 @@ impl ServerHandler for TailscaleMcpServer {
             .ok_or_else(|| {
                 McpError::invalid_params(format!("`{}` is not a prompt", request.name), None)
             })?;
+        // Asking for one by name is asking for something this session never
+        // listed, and the answer says which of the two it is: a name that is
+        // not a prompt anywhere, or a prompt this server has no surface for.
+        if !self.gate.offers(prompt.surface) {
+            return Err(McpError::invalid_params(
+                format!(
+                    "`{}` is not offered, because this server has no {} surface",
+                    request.name,
+                    prompt.surface.as_str()
+                ),
+                None,
+            ));
+        }
         let (argument, _) = prompt.argument;
         let given = request
             .arguments
             .as_ref()
             .and_then(|arguments| arguments.get(argument))
             .and_then(Value::as_str);
+        let surfaces = resources::Surfaces::new(|surface| self.gate.offers(surface));
         Ok(GetPromptResponse::Complete(
-            GetPromptResult::new(prompt.expand(given)).with_description(prompt.description),
+            GetPromptResult::new(prompt.expand(given, surfaces))
+                .with_description(prompt.description),
         ))
     }
 

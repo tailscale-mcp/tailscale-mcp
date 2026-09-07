@@ -1,0 +1,7 @@
+# Build with the stable channel — whatever `rustup update stable` has made current —
+# so a machine whose default toolchain is something else still builds this workspace
+# the way CI does. This selects a channel, not a version: the MSRV stays
+# `rust-version` in Cargo.toml, and the "Minimum toolchain" job still checks it,
+# because `cargo +$MSRV` takes precedence over this file (DECISIONS.md Q4, Q156).
+[toolchain]
+channel = "stable"

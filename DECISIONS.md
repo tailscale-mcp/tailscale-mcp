@@ -2369,3 +2369,14 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Justification:** Written because it caught a live mistake: the hint added for Q154 named `tailnet_organization_tailnets_list`, which does not exist — the tool is `..._tailnet_list`. A hint is read at the moment a call has already failed, so a wrong name there costs more than anywhere else, and nothing else in the suite would have found it. Doc comments are excluded deliberately: `//!` and `///` on private items name modules, such as `tailnet_keys` and `tailscale_rest`, which are not tools and do not claim to be.
 **Outcome:** applied
 **Ref:** (pending)
+
+## Q156 — interactive/toolchain — deviation
+
+**Question:** Frank asked that the repo "use rust stable" so it stays aligned with `rustup update stable` — the command that fixed today's `cargo install` failures on fleet machines whose stable channel had fallen behind another crate's MSRV. Q4 settled "no `rust-toolchain.toml`". Does a channel selection reopen it?
+**Options considered:** keep Q4 as is and decline / a `rust-toolchain.toml` pinning a version / a `rust-toolchain.toml` naming `channel = "stable"`, with the MSRV declaration and its job untouched
+**Chosen:** `rust-toolchain.toml` with `channel = "stable"`. `rust-version = "1.88"` and the Minimum-toolchain job stay exactly as they are.
+**Decided-by:** human
+**Justification:** Q4 argued against a *version* pin: it would force every contributor onto one version and hide MSRV breakage until release. A channel selection does neither — it follows whatever stable rustup currently has, which is what CI installs in every job (`rustup toolchain install stable … && rustup default stable`) and what contributors were building with anyway. What Q4 wanted to protect survives intact: the MSRV job runs `cargo "+$MSRV" check`, and a `+toolchain` argument takes precedence over the file — verified here, `cargo +1.88 check --workspace --all-targets --locked` passes under the override. `cargo test --workspace --all-targets --locked` plus the doc tests: 691 passed. The file sits at the workspace root, so no member crate packages it.
+**Outcome:** applied
+**Ref:** (pending)
+**Supersedes:** Q4 — only its "no `rust-toolchain.toml`" clause; the lint set it chose is untouched.

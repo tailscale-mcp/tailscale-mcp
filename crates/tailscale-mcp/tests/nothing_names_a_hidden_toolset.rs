@@ -15,6 +15,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 mod harness;
+mod repo;
 
 use harness::Setup;
 use serde_json::Value;
@@ -213,8 +214,15 @@ async fn no_session_is_told_to_default_a_tailnet_to_our_own() {
                 .as_str()
                 .unwrap_or_default();
             assert!(
-                description.contains("its id") && !description.contains('-'),
+                description.contains("its id"),
                 "the one tool taking a tailnet should ask for it explicitly: {description}"
+            );
+            // It names `-` only to say it is refused — never as a default to
+            // reach for. The handler enforces that; this is the half a model
+            // reads before it calls.
+            assert!(
+                description.contains("refused"),
+                "and should say `-` will not do: {description}"
             );
         }
         harness.shutdown().await;
@@ -264,4 +272,112 @@ async fn a_tool_asks_for_confirmation_exactly_when_its_metadata_says_so() {
         disagreed.join("\n  ")
     );
     harness.shutdown().await;
+}
+
+/// Every tool this server names in text is a tool this server has.
+///
+/// Hints and error messages point a model at the tool it should have called —
+/// `tailnet_device_list` names every device, call `tailnet_service_get` and
+/// send back what it answered — and a name that has drifted sends it looking
+/// for something that is not there. Two places are checked because they fail
+/// differently: the schemas a client reads on every call, and the string
+/// literals a caller only sees once something has gone wrong, which is exactly
+/// when a wrong name costs the most.
+#[tokio::test]
+async fn every_tool_named_in_text_exists() {
+    // The whole table, hidden toolsets included, so that naming a tool from a
+    // toolset this test did not select is not mistaken for naming nothing.
+    let harness = Setup::new()
+        .preset("full")
+        .toolsets("+local-debug,+local-passthrough")
+        .tier(Tier::Destructive)
+        .start()
+        .await;
+    let real: std::collections::BTreeSet<String> = harness
+        .tools()
+        .await
+        .iter()
+        .map(|tool| tool.name.to_string())
+        .collect();
+    assert!(
+        real.len() > 150,
+        "the whole table should be here: {}",
+        real.len()
+    );
+
+    let looks_like_a_tool = regex_lite_tool_names;
+    let mut missing: Vec<String> = Vec::new();
+
+    // The descriptions a client reads without anything going wrong.
+    for tool in harness.tools().await {
+        let mut text = tool.description.clone().unwrap_or_default().to_string();
+        if let Some(properties) = tool
+            .input_schema
+            .get("properties")
+            .and_then(Value::as_object)
+        {
+            for schema in properties.values() {
+                if let Some(described) = schema.get("description").and_then(Value::as_str) {
+                    text.push(' ');
+                    text.push_str(described);
+                }
+            }
+        }
+        for named in looks_like_a_tool(&text) {
+            if !real.contains(&named) {
+                missing.push(format!("{} describes `{named}`", tool.name));
+            }
+        }
+    }
+
+    // And the strings that only surface on a refusal. Doc comments are left
+    // out on purpose: `//!` and `///` on private items talk about modules —
+    // `tailnet_keys`, `tailscale_rest` — which are not tools and never claimed
+    // to be.
+    for file in repo::rust_sources(&repo::root().join("crates/tailscale-mcp/src")) {
+        let body = std::fs::read_to_string(&file).expect("a source file");
+        for (number, line) in body.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            for named in looks_like_a_tool(line) {
+                if !real.contains(&named) {
+                    missing.push(format!(
+                        "{}:{} names `{named}`",
+                        file.file_name().unwrap_or_default().to_string_lossy(),
+                        number + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "these name a tool that does not exist:\n  {}",
+        missing.join("\n  ")
+    );
+    harness.shutdown().await;
+}
+
+/// Every `` `tailscale_x` `` or `` `tailnet_x` `` in a piece of text.
+fn regex_lite_tool_names(text: &str) -> Vec<String> {
+    text.split('`')
+        .skip(1)
+        .step_by(2)
+        // A bare prefix is not a name: `registry.rs` quotes `tailscale_` and
+        // `tailnet_` when explaining what the two surfaces are called.
+        .filter(|quoted| {
+            ["tailscale_", "tailnet_"]
+                .iter()
+                .any(|prefix| quoted.starts_with(prefix) && quoted.len() > prefix.len())
+        })
+        .filter(|quoted| {
+            quoted
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        })
+        .map(str::to_owned)
+        .collect()
 }

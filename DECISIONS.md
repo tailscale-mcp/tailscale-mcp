@@ -2349,3 +2349,23 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Justification:** The disjunction was written twice — once in the instructions and once in the test meant to hold them — which made a mutation of it invisible: each copy still agreed with itself. One definition is what the test can actually pin, and the concept deserves a name anyway, since a caller sees one argument whichever of the three fields produced it.
 **Outcome:** applied
 **Ref:** (pending)
+
+## Q154 — interactive/post-1.2.1 — deviation
+
+**Question:** `tailnet_organization_tailnet_delete` accepts `-` as its tailnet, which the control plane reads as the credential's own. Leave it to the confirmation, or refuse the name?
+**Options considered:** rely on the destructive tier plus `confirm: true` / refuse `-` in `path_segment` for every caller / refuse it in this one handler
+**Chosen:** Refuse it in the handler, before the path is built, with a message naming what to do instead.
+**Decided-by:** human
+**Justification:** The confirmation does not cover this case: a caller who meant to delete *a* tailnet would confirm, and would still be deleting the wrong one. `-` is a correct default for the sixteen paths built through `tailnet_path`, so refusing it in `path_segment` would break reads that are right today; the danger is not the character but what it means at this one call. This is the rule Q143 set for device names — refuse rather than guess when an identifier could mean something the caller did not intend — applied to the last place in the table that lacked it. 1.2.1 removed the instruction sentence that recommended `-`; this removes the acceptance behind it.
+**Outcome:** applied
+**Ref:** (pending)
+
+## Q155 — interactive/post-1.2.1 — gate-resolution
+
+**Question:** Nothing checked that a tool named in a hint or a description is a tool that exists. Should something?
+**Options considered:** leave it to review / a test over the schemas / a test over the schemas and the source strings
+**Chosen:** Both, in `every_tool_named_in_text_exists`.
+**Decided-by:** agent
+**Justification:** Written because it caught a live mistake: the hint added for Q154 named `tailnet_organization_tailnets_list`, which does not exist — the tool is `..._tailnet_list`. A hint is read at the moment a call has already failed, so a wrong name there costs more than anywhere else, and nothing else in the suite would have found it. Doc comments are excluded deliberately: `//!` and `///` on private items name modules, such as `tailnet_keys` and `tailscale_rest`, which are not tools and do not claim to be.
+**Outcome:** applied
+**Ref:** (pending)

@@ -1014,6 +1014,69 @@ async fn deleting_a_tailnet_needs_a_confirmation_the_call_itself_carries() {
     harness.shutdown().await;
 }
 
+/// `-` is the one tailnet this tool will not delete.
+///
+/// Everywhere else in the API `-` means the tailnet the credential belongs to,
+/// and the control plane would read it that way here too — so a model that had
+/// picked up the convention could delete the tailnet it is working in while
+/// believing it had named one. The confirmation does not help: a caller who
+/// meant to delete *a* tailnet would confirm. So the refusal is on the name,
+/// before anything else, in the same spirit as refusing a device name that
+/// matches two devices rather than guessing between them.
+#[tokio::test]
+async fn a_tailnet_cannot_be_deleted_by_the_dash_that_means_our_own() {
+    let harness = Setup::new()
+        .toolsets("tailnet-org")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers("DELETE", "/api/v2/tailnet/-", Response::empty())
+        .await
+        .start()
+        .await;
+
+    // Even with the confirmation, which is the case that matters: the guard
+    // has to sit in front of a caller who has already said it meant it.
+    for given in ["-", " - "] {
+        let error = harness
+            .call_err(
+                "tailnet_organization_tailnet_delete",
+                json!({"tailnet": given, "confirm": true}),
+            )
+            .await;
+        assert_eq!(error["code"], "invalid_args", "for {given:?}: {error}");
+        assert!(
+            error["message"]
+                .as_str()
+                .is_some_and(|m| m.contains("Name the one you mean")),
+            "the refusal should say what to do instead: {error}"
+        );
+    }
+    assert_eq!(
+        harness.control_plane().request_count(),
+        0,
+        "and nothing should have reached the control plane"
+    );
+
+    // A tailnet named outright still goes through, so this refuses one thing
+    // rather than breaking the tool.
+    let harness2 = Setup::new()
+        .toolsets("tailnet-org")
+        .tier(tailscale_mcp::meta::Tier::Destructive)
+        .api_answers("DELETE", "/api/v2/tailnet/T111111CNTRL", Response::empty())
+        .await
+        .start()
+        .await;
+    let answer = harness2
+        .call_ok(
+            "tailnet_organization_tailnet_delete",
+            json!({"tailnet": "T111111CNTRL", "confirm": true}),
+        )
+        .await;
+    assert_eq!(answer["done"], json!("tailnet deleted"));
+
+    harness.shutdown().await;
+    harness2.shutdown().await;
+}
+
 #[tokio::test]
 async fn deleting_this_nodes_own_device_needs_the_call_to_say_so() {
     // The fake `tailscale status` names `n1111111CNTRL` as this node, so the

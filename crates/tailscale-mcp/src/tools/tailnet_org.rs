@@ -211,7 +211,9 @@ async fn organization_tailnet_create(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct OrganizationTailnetParams {
-    /// The tailnet to delete, by its id (`T123456CNTRL`) or its name.
+    /// The tailnet to delete, by its id (`T123456CNTRL`) or its name. `-`,
+    /// which everywhere else in this API means the tailnet the credential
+    /// belongs to, is refused here: this tool deletes what it is given.
     pub tailnet: String,
 }
 
@@ -223,6 +225,22 @@ async fn organization_tailnet_delete(
     // Named explicitly rather than taken from the session's default tailnet:
     // deleting whatever `TAILSCALE_TAILNET` happens to say is exactly the
     // accident the confirmation exists to prevent.
+    //
+    // Which is why `-` is refused rather than passed on. Every other path in
+    // this API takes it to mean the credential's own tailnet, and the control
+    // plane would take it that way here too; `path_segment` has no reason to
+    // object, since a dash is a legitimate identifier character everywhere
+    // else. So the refusal belongs here, at the one call where what `-` would
+    // mean is known — the same rule the device tools follow when a name could
+    // mean more than one thing: refuse rather than guess (Q143).
+    if params.tailnet.trim() == "-" {
+        return Err(ToolError::invalid_args(
+            "`-` means the tailnet this credential belongs to, and this tool deletes the \
+             tailnet it is given. Name the one you mean, by its id (`T123456CNTRL`) or its \
+             name.",
+        )
+        .with_hint("`tailnet_organization_tailnet_list` names the tailnets of an organisation."));
+    }
     let path = format!(
         "/api/v2/tailnet/{}",
         path_segment("tailnet", &params.tailnet)?

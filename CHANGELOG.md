@@ -3,6 +3,12 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.3.1 — 2026-09-07
+
+### Fixed
+
+- Prefer the shim the macOS applications install
+
 ## 1.3.0 — 2026-09-07
 
 ### Added

@@ -1,13 +1,14 @@
 # The dependency advisory check, on a clock rather than on a push.
 #
 # `ci.yml` already runs `cargo deny --all-features check`, and its `advisories`
-# half is the one check in this repository whose answer can change while the
-# tree does not: the RUSTSEC database is published elsewhere and grows without
-# anybody here committing anything. Triggered only by `push` and
-# `pull_request`, it therefore stops asking the moment the work stops — which
-# is exactly the period a finished project spends most of its life in, and
-# exactly when a new advisory against a dependency that is already in five
-# published artefacts would go unnoticed.
+# half is one of the two checks in this repository whose answer can change while
+# the tree does not: the RUSTSEC database is published elsewhere and grows
+# without anybody here committing anything. (`schema-drift.yml` is the other;
+# this file claimed to be the only one until that was written.) Triggered only
+# by `push` and `pull_request`, it therefore stops asking the moment the work
+# stops — which is exactly the period a finished project spends most of its
+# life in, and exactly when a new advisory against a dependency that is already
+# in five published artefacts would go unnoticed.
 #
 # So this asks weekly, and asks only that. The licence, bans and sources halves
 # of `deny.toml` are decided by the tree and belong where the tree changes;

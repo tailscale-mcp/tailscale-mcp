@@ -1,0 +1,111 @@
+# Ask whether the description we vendored is still the one being served.
+#
+# `crates/tailscale-rest/tests/schema_drift.rs` holds `tailscale_rest::models`
+# to `docs/research/tailscale-openapi.yaml` in both directions, and its own
+# header is exact about what that is: "a tripwire on a refresh". It fires when
+# somebody re-vendors the file, catching what the refresh broke. It asks
+# Tailscale nothing, so it cannot fire when the upstream moves.
+#
+# That leaves the second check in this repository whose answer changes while the
+# tree does not. `advisories.yml` makes the argument for the first and it holds
+# here, with one difference that makes this the worse of the two: an advisory
+# check on `push` at least fires whenever somebody pushes, whereas nothing in a
+# push changes the vendored file, so a tripwire on a refresh fires only when
+# somebody refreshes — which a finished project never does. Meanwhile the
+# vendored document says of itself that the schema "is unstable. It may change
+# or break without notice."
+#
+# So this asks weekly, and asks only that.
+#
+# **It needs no stored state, which is the good part.** Tailscale serves the
+# schema with an ETag that is the sha256 of the body, so the value this has to
+# send is one it computes from the file in the tree. There is no recorded ETag
+# to fall out of step with the file it describes: 304 means what is served is
+# what we vendored, and 200 hands back whatever replaced it.
+#
+# Reads the tree, writes nothing, reaches no secret — the same posture as
+# `advisories.yml` and every job in `ci.yml`. And like `advisories.yml` it is
+# subject to GitHub disabling a schedule after 60 days without repository
+# activity: this covers the quiet period after a release, not an indefinite one.
+name: Schema drift
+
+on:
+  schedule:
+    # Thursdays, away from `advisories.yml` on Monday so that a bad week does
+    # not arrive as two red mails at once, and off the hour, which is when
+    # GitHub's scheduler is most oversubscribed.
+    - cron: "23 7 * * 4"
+  # So the path can be exercised without waiting a week for it. A path whose
+  # only rehearsal is the real thing is one you learn about at the worst
+  # moment — the argument `release.yml` and `notify-tap.yml` both make.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Is the vendored description still the served one
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Where the vendored copy came from, recorded beside it in
+      # `docs/research/README.md`. A query parameter and not a path, which is
+      # the sort of thing that is guessed wrong.
+      SCHEMA_URL: "https://api.tailscale.com/api/v2?outputOpenapiSchema=true"
+      VENDORED: docs/research/tailscale-openapi.yaml
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Ask whether it moved
+        run: |
+          set -euo pipefail
+          vendored=$(sha256sum "$VENDORED" | cut -d' ' -f1)
+          echo "vendored sha256: $vendored"
+
+          # `--retry` so that one bad gateway is not reported as drift. A
+          # curl that fails every attempt leaves the status empty, which the
+          # last branch reports as not having been able to ask at all.
+          status=$(curl -sS --max-time 60 --retry 3 --retry-delay 5 \
+            -o /tmp/served.yaml -w '%{http_code}' \
+            -H "If-None-Match: \"$vendored\"" "$SCHEMA_URL") || status="000"
+
+          # A 200 is not drift on its own: a server that ignores the
+          # conditional request answers 200 with the identical body. The
+          # hashes settle it, and are what the message would have to quote
+          # anyway.
+          served=""
+          if [ "$status" = "200" ]; then
+            served=$(sha256sum /tmp/served.yaml | cut -d' ' -f1)
+            if [ "$served" = "$vendored" ]; then
+              status="304"
+            fi
+          fi
+
+          case "$status" in
+            304)
+              echo "unchanged: what is served is what is vendored"
+              ;;
+            200)
+              echo "served sha256:   $served"
+              {
+                echo "### The upstream description moved"
+                echo
+                echo "| | sha256 | lines |"
+                echo "|---|---|---|"
+                echo "| vendored | \`$vendored\` | $(wc -l < "$VENDORED") |"
+                echo "| served | \`$served\` | $(wc -l < /tmp/served.yaml) |"
+                echo
+                echo '```diff'
+                diff -u "$VENDORED" /tmp/served.yaml | head -200 || true
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              diff -u "$VENDORED" /tmp/served.yaml | head -60 || true
+              echo "::error::The vendored description is no longer what is served. Refresh it: curl -s '$SCHEMA_URL' > $VENDORED, update the ETag recorded in docs/research/README.md, then run 'cargo test -p tailscale-rest --test schema_drift' and model whatever it names."
+              exit 1
+              ;;
+            *)
+              echo "::error::Could not ask whether the description moved: HTTP $status from $SCHEMA_URL. This is not a drift finding — nothing is known either way until it can be asked."
+              exit 1
+              ;;
+          esac

@@ -2380,3 +2380,14 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Outcome:** applied
 **Ref:** (pending)
 **Supersedes:** Q4 — only its "no `rust-toolchain.toml`" clause; the lint set it chose is untouched.
+
+## Q156 — ticket-32/part-b — deviation
+
+**Question:** Should `audit_tailnet_access`'s `subject` complete device names, closing the gap between the completion and the parameter's own "a user, tag or device"?
+**Options considered:** leave it at users and tags (Q150) / add devices, ordered by name with everything else / add devices, ordered after users and tags
+**Chosen:** Add them, ordered last among equally good matches.
+**Decided-by:** human
+**Justification:** Supersedes Q150, whose reasoning was that devices would fill the hundred-value cap and crowd out the users and tags a subject usually is. That was a real risk and the answer is ordering rather than omission: candidates now carry a kind, and the sort is match quality first, kind second, name last. Kind therefore decides only an empty input — where everything matches equally and the cut would otherwise fall wherever the alphabet put it — so a tailnet of three hundred devices still offers its users first, while a caller who types a device's name is met by the device rather than by a user the letters happen to appear inside.
+**Outcome:** applied
+**Supersedes:** Q150 — the gap it left open is closed; its concern is answered by ordering rather than by leaving devices out.
+**Ref:** (pending)

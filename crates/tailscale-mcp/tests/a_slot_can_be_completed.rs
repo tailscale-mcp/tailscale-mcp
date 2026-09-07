@@ -263,9 +263,9 @@ async fn a_peer_is_offered_by_the_name_a_person_would_type() {
     harness.shutdown().await;
 }
 
-/// The subject slot draws on users and on tags from both ends.
+/// The subject slot offers what its own description promises.
 #[tokio::test]
-async fn a_subject_is_a_user_or_a_tag() {
+async fn a_subject_is_a_user_a_tag_or_a_device() {
     let harness = Setup::new()
         .api_answers(
             "GET",
@@ -297,15 +297,155 @@ async fn a_subject_is_a_user_or_a_tag() {
     assert_eq!(
         offered.values,
         vec![
+            // Users first, then tags, then devices — `Kind` order, which is
+            // what decides an empty input, where everything matches equally.
             "alice@example.com",
             "bob@example.com",
             // declared in the policy, worn by nothing
             "tag:redacted-ci",
             // worn by a device, whatever the policy says
             "tag:redacted-server",
+            // and the devices themselves, because the argument says "a user,
+            // tag or device" and a caller who reads that should be met.
+            "laptop.example-tailnet.ts.net",
+            "tablet.example-tailnet.ts.net",
+            "workstation.example-tailnet.ts.net",
         ],
-        "users, tags declared, and tags in use"
+        "users, tags from both ends, and devices"
     );
+
+    // Typing a device's name reaches it, which is the half that was missing.
+    let by_device = harness
+        .complete_prompt("audit_tailnet_access", "subject", "laptop")
+        .await;
+    assert_eq!(by_device.values, vec!["laptop.example-tailnet.ts.net"]);
+
+    // And match quality still beats kind: a device named exactly outranks a
+    // user whose address merely contains the letters.
+    let by_user = harness
+        .complete_prompt("audit_tailnet_access", "subject", "alice")
+        .await;
+    assert_eq!(by_user.values, vec!["alice@example.com"]);
+
+    harness.shutdown().await;
+}
+
+/// How well it matches decides before what sort of thing it is.
+///
+/// The two rules pull against each other and the order between them is the
+/// whole design: kind decides an empty input, where everything matches
+/// equally, but the moment somebody types something, a device named precisely
+/// has to beat a user whose address the letters merely appear inside. Reversed,
+/// a caller who typed a device's name would be shown users first.
+#[tokio::test]
+async fn a_precise_match_beats_a_kind_that_sorts_earlier() {
+    let harness = Setup::new()
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/users",
+            // Contains "ci" — l-u-`ci`-d-a — but is not about it.
+            Response::json(json!({"users": [{"loginName": "lucida@example.com"}]})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/acl",
+            Response::json(json!({"tagOwners": {"tag:redacted-ci": []}})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/devices",
+            Response::json(json!({"devices": [
+                {"nodeId": "n1111111CNTRL", "name": "ci.example-tailnet.ts.net",
+                 "hostname": "ci", "addresses": []}
+            ]})),
+        )
+        .await
+        .start()
+        .await;
+
+    let offered = harness
+        .complete_prompt("audit_tailnet_access", "subject", "ci")
+        .await;
+    assert_eq!(
+        offered.values,
+        vec![
+            // The device's name begins with what was typed.
+            "ci.example-tailnet.ts.net",
+            // These two only contain it, so they come after despite being
+            // kinds that sort earlier.
+            "lucida@example.com",
+            "tag:redacted-ci",
+        ],
+        "a prefix match should outrank a kind that sorts earlier"
+    );
+
+    harness.shutdown().await;
+}
+
+/// Devices never crowd the users and tags out of a subject.
+///
+/// This is the reason the ordering exists at all. A tailnet has a handful of
+/// users and can have thousands of devices; the protocol sends a hundred
+/// values. Ordered by name alone, an empty `subject` on a large tailnet would
+/// answer with a hundred devices whose names begin with `a` and never show a
+/// user — turning the coarse audit scopes, which are the ones somebody
+/// usually wants, into the ones they cannot reach.
+#[tokio::test]
+async fn a_tailnet_full_of_devices_still_offers_its_users_and_tags() {
+    // Named to sort before every user and tag, so that alphabetical order
+    // alone would bury them.
+    let many: Vec<Value> = (0..300)
+        .map(|n| {
+            json!({
+                "nodeId": format!("n{n:07}CNTRL"),
+                "name": format!("aaa-{n:03}.example-tailnet.ts.net"),
+                "hostname": format!("aaa-{n:03}"),
+                "addresses": [],
+                "tags": ["tag:redacted-fleet"]
+            })
+        })
+        .collect();
+    let harness = Setup::new()
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/users",
+            Response::json(json!({"users": [{"loginName": "zoe@example.com"}]})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/acl",
+            Response::json(json!({"tagOwners": {"tag:redacted-zz": []}})),
+        )
+        .await
+        .api_answers(
+            "GET",
+            "/api/v2/tailnet/-/devices",
+            Response::json(json!({"devices": many})),
+        )
+        .await
+        .start()
+        .await;
+
+    let offered = harness
+        .complete_prompt("audit_tailnet_access", "subject", "")
+        .await;
+    assert_eq!(offered.values.len(), 100, "the protocol's cap");
+    assert_eq!(
+        offered.values[0], "zoe@example.com",
+        "the only user should survive a tailnet of three hundred devices"
+    );
+    assert!(
+        offered.values.contains(&"tag:redacted-zz".to_owned())
+            && offered.values.contains(&"tag:redacted-fleet".to_owned()),
+        "and so should both tags: {:?}",
+        &offered.values[..5]
+    );
+    // 1 user + 2 tags + 300 devices, of which 97 fit in what is left.
+    assert_eq!(offered.total, Some(303));
+    assert_eq!(offered.has_more, Some(true));
 
     harness.shutdown().await;
 }

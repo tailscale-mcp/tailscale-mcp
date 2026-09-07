@@ -83,6 +83,20 @@ impl Slot {
     }
 }
 
+/// What sort of thing a candidate is.
+///
+/// Only the `subject` slot mixes them, and there it decides which get cut when
+/// there are more matches than the protocol's hundred: a tailnet has a handful
+/// of users and tags and can have thousands of devices, so ordering by name
+/// alone would answer an empty `subject` with a hundred devices beginning with
+/// `a` and never show a user at all. Declared in the order they should appear.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Kind {
+    User,
+    Tag,
+    Device,
+}
+
 /// One completable thing: the value offered, and everything it answers to.
 ///
 /// The distinction is the point. A device is found by its hostname or its
@@ -92,12 +106,13 @@ impl Slot {
 #[derive(Debug)]
 struct Candidate {
     value: String,
+    kind: Kind,
     /// Lowercased, including the value itself.
     known_as: Vec<String>,
 }
 
 impl Candidate {
-    fn new(value: impl Into<String>, also: impl IntoIterator<Item = String>) -> Self {
+    fn new(value: impl Into<String>, kind: Kind, also: impl IntoIterator<Item = String>) -> Self {
         let value = value.into();
         let mut known_as = vec![normalise(&value)];
         known_as.extend(
@@ -107,7 +122,11 @@ impl Candidate {
         );
         known_as.sort_unstable();
         known_as.dedup();
-        Self { value, known_as }
+        Self {
+            value,
+            kind,
+            known_as,
+        }
     }
 
     /// How well the candidate answers to what has been typed, smaller being
@@ -248,20 +267,30 @@ fn answer(ctx: &ToolContext, candidates: &[Candidate], typed: &str) -> CompleteR
     // fully qualified name out of `tailscale status` — root label and all —
     // is matched rather than told there is nothing.
     let typed = normalise(typed);
-    let mut matched: Vec<(u8, &str)> = candidates
+    let mut matched: Vec<(u8, Kind, &str)> = candidates
         .iter()
-        .filter_map(|candidate| Some((candidate.rank(&typed)?, candidate.value.as_str())))
+        .filter_map(|candidate| {
+            Some((
+                candidate.rank(&typed)?,
+                candidate.kind,
+                candidate.value.as_str(),
+            ))
+        })
         .collect();
-    // Rank first, then alphabetically, so that the order is the same every
-    // time the same thing is typed. A popup that reshuffles between keystrokes
-    // is one nobody can click.
+    // How well it matches first, so that typing a device's name puts that
+    // device above a user the letters merely appear in. What sort of thing it
+    // is second, which only decides between equally good matches — and so
+    // decides the whole of an empty input, where everything matches equally
+    // and the cut below would otherwise fall wherever the alphabet put it.
+    // Alphabetically last, so the same input gives the same order every time:
+    // a popup that reshuffles between keystrokes is one nobody can click.
     matched.sort_unstable();
 
     let total = matched.len();
     let values: Vec<String> = matched
         .into_iter()
         .take(CompletionInfo::MAX_VALUES)
-        .map(|(_, value)| ctx.redactor.apply(value).into_owned())
+        .map(|(_, _, value)| ctx.redactor.apply(value).into_owned())
         .collect();
     let has_more = total > values.len();
     let mut completion = CompletionInfo::new(values).unwrap_or_default();
@@ -300,7 +329,7 @@ async fn devices(ctx: &ToolContext) -> crate::error::ToolResult<Vec<Candidate>> 
                 device.node_id.clone(),
             ];
             also.extend(device.addresses.iter().cloned());
-            Candidate::new(device.name.clone(), also)
+            Candidate::new(device.name.clone(), Kind::Device, also)
         })
         .collect())
 }
@@ -345,7 +374,7 @@ fn peer_candidate(peer: &serde_json::Value) -> Option<Candidate> {
                 .filter_map(|address| Some(address.as_str()?.to_owned())),
         );
     }
-    Some(Candidate::new(value, also))
+    Some(Candidate::new(value, Kind::Device, also))
 }
 
 /// Who and what an audit can be narrowed to: the tailnet's users, and its tags.
@@ -357,7 +386,7 @@ fn peer_candidate(peer: &serde_json::Value) -> Option<Candidate> {
 /// ones visible at all.
 async fn subjects(ctx: &ToolContext) -> crate::error::ToolResult<Vec<Candidate>> {
     let client = ctx.tailnet()?;
-    let mut found: Vec<String> = Vec::new();
+    let mut found: Vec<(Kind, String)> = Vec::new();
 
     let users = client
         .get(client.tailnet_path(None, "/users"))
@@ -367,7 +396,7 @@ async fn subjects(ctx: &ToolContext) -> crate::error::ToolResult<Vec<Candidate>>
         found.extend(
             listed
                 .iter()
-                .filter_map(|user| Some(user["loginName"].as_str()?.to_owned())),
+                .filter_map(|user| Some((Kind::User, user["loginName"].as_str()?.to_owned()))),
         );
     }
 
@@ -381,26 +410,38 @@ async fn subjects(ctx: &ToolContext) -> crate::error::ToolResult<Vec<Candidate>>
     {
         Ok(policy) => {
             if let Some(owners) = policy["tagOwners"].as_object() {
-                found.extend(owners.keys().cloned());
+                found.extend(owners.keys().map(|tag| (Kind::Tag, tag.clone())));
             }
         }
         Err(why) => tracing::debug!(%why, "completion could not read the policy file for its tags"),
     }
 
+    // Devices carry both of the remaining kinds: the tags they actually wear,
+    // which the policy above may not declare, and their own names — because
+    // the argument says "a user, tag or device" and a caller who reads that
+    // and types a device name should be met with the device rather than with
+    // nothing. They come last in `Kind` for the reason given there.
     if let Ok(devices) = ctx.tailnet_devices().await {
-        found.extend(
-            devices
-                .iter()
-                .flat_map(|device| device.tags.iter().cloned()),
-        );
+        for device in devices.iter() {
+            found.extend(device.tags.iter().map(|tag| (Kind::Tag, tag.clone())));
+            if !device.name.is_empty() {
+                found.push((Kind::Device, device.name.clone()));
+            }
+        }
     }
 
-    found.sort_unstable();
-    found.dedup();
+    // By value first, so that the same name from two sources lands adjacent
+    // and `dedup_by` can see it: a tag the policy declares and the same tag
+    // worn by a device are one candidate. Ties break on `Kind`, so the
+    // survivor is the earliest-declared label for that name. The order here is
+    // not the order offered — `answer` sorts what matches — so this exists
+    // only to make the deduplication correct.
+    found.sort_unstable_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    found.dedup_by(|a, b| a.1 == b.1);
     Ok(found
         .into_iter()
-        .filter(|subject| !subject.is_empty())
-        .map(|subject| Candidate::new(subject, []))
+        .filter(|(_, subject)| !subject.is_empty())
+        .map(|(kind, subject)| Candidate::new(subject, kind, []))
         .collect())
 }
 

@@ -169,7 +169,9 @@ can actually take.
 Of the four argument slots those two surfaces expose, three are completed, so
 a client can offer the values rather than leave them to be guessed: the device
 template's identifier, `diagnose_connectivity`'s peer, and
-`audit_tailnet_access`'s subject. The fourth, `review_policy_change`'s goal, is
+`audit_tailnet_access`'s subject — which offers users, tags and devices, in
+that order, so that a tailnet of thousands of devices still shows its handful
+of users within the hundred values the protocol sends. The fourth, `review_policy_change`'s goal, is
 a sentence about intent, and completing it would be inventing one. Every value offered is one the server will
 accept back — a device is offered by its MagicDNS name, never by a hostname two
 machines might share — and a source that cannot answer completes to nothing

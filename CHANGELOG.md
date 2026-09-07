@@ -3,6 +3,12 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.2.2 — 2026-09-07
+
+### Fixed
+
+- Refuse to delete a tailnet named `-`
+
 ## 1.2.1 — 2026-09-06
 
 ### Fixed

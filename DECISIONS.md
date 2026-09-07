@@ -2391,3 +2391,13 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Outcome:** applied
 **Supersedes:** Q150 — the gap it left open is closed; its concern is answered by ordering rather than by leaving devices out.
 **Ref:** (pending)
+
+## Q157 — interactive/cli-discovery — gate-resolution
+
+**Question:** On a Mac with the standalone Tailscale application, discovery accepts the executable inside the application bundle, which under the environment `minimal_env` builds starts the GUI instead of running the command — printing its refusal on standard output and exiting 0. The local surface is therefore offered and every call fails. Prefer the shim the application installs, or verify a candidate by reading a version out of it before accepting it?
+**Options considered:** prefer the shim / verify every candidate / verify only the candidate that can lie / both
+**Chosen:** Both, with verification confined to the executable inside the bundle.
+**Decided-by:** agent
+**Justification:** The two answers fix different halves. Adding `/usr/local/bin/tailscale` ahead of the bundle fixes the machines, because the shim is what the application installs for command-line use and it behaves as the CLI whatever environment it is handed; it is looked for by absolute path because `/usr/local/bin` is absent from the environment a launcher hands a server started outside a login shell, which is how an MCP client starts one. Verification fixes the contract that `README.md` states in its own second paragraph — a missing binary means the tools are not offered — which today's code breaks by offering a surface it has already failed to read a version from. Verifying only the bundle candidate, rather than every candidate, keeps the cost at zero on every machine where anything earlier is found: the probe is reached only when the alternative is a surface on which every call fails. Exit status cannot carry the check, and neither can the choice of stream: measured on a live macsys 1.102.2, the GUI refusal arrives on standard output with status 0. Only the shape of the first line separates them.
+**Outcome:** applied
+**Ref:** (pending)

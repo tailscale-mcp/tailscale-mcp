@@ -14,13 +14,19 @@ tools that drive this node are not offered; no control-plane credential means th
 tools that drive the tailnet are not. `tailscale-mcp diagnose` says which of the
 two this machine has.
 
+On macOS that binary is the `tailscale` shim the Tailscale application installs
+into `/usr/local/bin`. The executable inside the application bundle is not a
+substitute and is not accepted as one: run outside a login shell it starts the
+GUI rather than answering, so the local tools would be offered and then fail on
+every call.
+
 ## Install
 
 | Channel | How |
 |---|---|
 | npm | `npx -y @tailscale-mcp/tailscale-mcp` — downloads the release binary for your machine and refuses to run it unless the release's own `SHA256SUMS` vouches for it |
 | Container | `docker run -i --rm -e TAILSCALE_API_KEY ghcr.io/tailscale-mcp/tailscale-mcp` |
-| Homebrew | `brew install tailscale-mcp/tap/tailscale-mcp` |
+| Homebrew | `brew trust tailscale-mcp/tap && brew install tailscale-mcp/tap/tailscale-mcp` — Homebrew 6 will not load a third-party tap until it is trusted, and reports that as an `Invalid formula` error once per platform it knows |
 | Bundle | Download the `.mcpb` for your platform from the [releases](https://github.com/tailscale-mcp/tailscale-mcp/releases) and open it — for MCP clients that install bundles, such as Claude Desktop |
 | From source | `cargo install tailscale-mcp` |
 

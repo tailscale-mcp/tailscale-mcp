@@ -3,6 +3,16 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.3.0 — 2026-09-07
+
+### Added
+
+- Offer devices as audit subjects, without burying the rest
+
+### Build and CI
+
+- Select the stable channel with rust-toolchain.toml
+
 ## 1.2.2 — 2026-09-07
 
 ### Fixed

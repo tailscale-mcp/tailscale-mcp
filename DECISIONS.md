@@ -2411,3 +2411,44 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Justification:** `advisories.yml` already makes the argument — a check whose answer changes while the tree does not stops asking exactly when a finished project goes quiet — and its header claimed to be the only such check, which was wrong; that claim is now corrected in place. Fetching is settled by `docs/research/README.md`, which records the schema as served by `api.tailscale.com/api/v2?outputOpenapiSchema=true` with an ETag; I had earlier reported no stable machine-readable source, having probed path shapes rather than reading the note beside the file. The mechanism turns out to need no stored state: the ETag is the sha256 of the body, so the value to send is computed from the file in the tree and cannot fall out of step with it — 304 is unchanged, 200 hands back the replacement. A 200 whose body hashes equal is treated as unchanged, since a server that ignores the conditional request would otherwise read as drift; a request that fails outright is reported as not having been asked, explicitly not as a finding. Failing rather than opening an issue matches the sibling, on that file's own argument that a job which behaves unlike its neighbour is one people misread. Both inherit GitHub's 60-day disabling of schedules on an inactive repository: this covers the quiet period after a release, not an indefinite one.
 **Outcome:** applied
 **Ref:** (pending)
+
+## Q159 — interactive/announce — irreversible-action
+
+**Question:** The ask was one line, "write a new post to introduce tailscale-mcp", with the browser open on Hacker News. What form and wording should the submission take?
+**Options considered:** Show HN with the repository URL plus an explanatory text body / a bare link submission / a text-only Ask-style post
+**Chosen:** A Show HN: title "Show HN: Tailscale-mcp – An MCP server for Tailscale, in Rust", the GitHub repository as the URL, and a first-person text body whose every claim is drawn from `README.md`, `docs/tools.md` and `Cargo.toml` (tool count, tiers and presets, `confirm`, redaction, optional surfaces, transports, offline test suite, `unsafe_code = "forbid"`, the weekly schema-drift check, the install channels).
+**Decided-by:** agent
+**Justification:** Posting itself was authorized by the ask; the format and wording were not specified. Show HN is HN's own format for sharing one's work and permits URL and text together (the submit page says so). Limiting the body to README-backed claims keeps the post honest if it is read against the repository. HN lets the author edit and delete a fresh submission, so the wording is correctable.
+**Outcome:** applied
+**Ref:** https://news.ycombinator.com/item?id=49605711
+
+## Q160 — interactive/announce — gate-resolution
+
+**Question:** The follow-up ask named Reddit with the browser on the user's own profile page. Which venue should the Reddit post go to?
+**Options considered:** r/Tailscale / the user's profile / r/mcp or r/selfhosted
+**Chosen:** A text post to r/Tailscale with the "Discussion" flair (flair is required there), body in Markdown with the same README-backed claims as Q159; the form was filled but not submitted, because the submit form carries a reCAPTCHA that is the user's to complete.
+**Decided-by:** agent
+**Justification:** A profile post introduces the project to nobody; r/Tailscale is the audience that runs tailnets. Its rule 4 bars unsolicited promotion; a free Apache-2.0 tool built for that community was judged on-topic rather than promotional, and the post asks for feedback rather than selling anything. The venue is the user's to revise before submitting.
+**Outcome:** assumed
+**Ref:** (pending — submitted by the user)
+
+## Q161 — interactive/announce — gate-resolution
+
+**Question:** Q160 left the Reddit venue as an assumption pending the user's submit. Where did the post go?
+**Options considered:** r/Tailscale as drafted / the user's profile / another subreddit
+**Chosen:** r/Tailscale, as drafted, with the "Discussion" flair.
+**Decided-by:** human
+**Justification:** The user completed the reCAPTCHA and submitted the prepared form themselves, then reported the live URL, which resolves the Q160 assumption in its favour.
+**Outcome:** applied
+**Ref:** https://old.reddit.com/r/Tailscale/comments/1waezpp/tailscalemcp_an_opensource_mcp_server_for/
+**Supersedes:** Q160 — the assumed venue was confirmed by the user's own submission.
+
+## Q162 — interactive/announce — tradeoff
+
+**Question:** The Show HN from Q159 is dead: the official API reports it killed, and it is absent from /newest and /shownew when logged out, though the author still sees it. How should that be handled?
+**Options considered:** email hn@ycombinator.com asking for a review / resubmit the same URL under a new title / leave it
+**Chosen:** A Gmail draft to hn@ycombinator.com asking for a review, left unsent for the user; no resubmission.
+**Decided-by:** agent
+**Justification:** HN's own guidance for a killed post is to email the moderators; a resubmission of the same URL is treated as a duplicate of the dead item and reads as working around the filter. The account has 0 karma and a story killed on 2026-08-12 as well, so the filter rather than user flags is the likelier cause, which is exactly what a review resolves. Sending mail is the user's act, so the draft stops short of it.
+**Outcome:** assumed
+**Ref:** https://news.ycombinator.com/item?id=49605711 (dead); Gmail draft to hn@ycombinator.com

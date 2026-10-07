@@ -172,7 +172,7 @@ pub const FLOW_PROTOCOLS: &[&str] = &[
 
 /// Every event the audit log can be filtered by.
 ///
-/// A hundred and thirty-eight of them, and the list that a  parameter
+/// A hundred and thirty-nine of them, and the list that a  parameter
 /// quotes. Kept whole rather than summarised because the caller has to spell one
 /// exactly, and a truncated list is worse than none.
 pub const AUDIT_EVENTS: &[&str] = &[
@@ -181,6 +181,7 @@ pub const AUDIT_EVENTS: &[&str] = &[
     "BILLING.UPDATE.ADDRESS", "BILLING.UPDATE.BILLING_OWNER", "BILLING.UPDATE.EMAIL",
     "BILLING.UPDATE.PAYMENT_INFO", "BILLING.UPDATE.STRIPE_CUSTOMER_ID",
     "BILLING.UPDATE.SUBSCRIPTION", "FAILED_REQUEST.UPDATE", "GROUP.PUSH_GROUP.ATTRIBUTES",
+    "GROUP.UPDATE.USER_ROLE",
     "INVITE.ACCEPT.FEATURE", "INVITE.ACCEPT.NODE_SHARE", "INVITE.ACCEPT.TAILNET_INVITE",
     "INVITE.CREATE.FEATURE", "INVITE.CREATE.NODE_SHARE", "INVITE.CREATE.TAILNET_INVITE",
     "INVITE.DELETE.NODE_SHARE", "INVITE.DELETE.TAILNET_INVITE", "INVITE.RESEND.NODE_SHARE",

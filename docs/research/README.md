@@ -8,7 +8,7 @@ longer exists; everything worth keeping from it was copied here.
 | File | What it is |
 |---|---|
 | `control-plane-api.md` | Every operation of the control-plane REST API v2 (93 operations, 60 paths), classified read / write / destructive, with scopes, quirks, and drift against the official Go client |
-| `tailscale-openapi.yaml` | The upstream OpenAPI 3.1 schema as served by `https://api.tailscale.com/api/v2?outputOpenapiSchema=true` on 2026-09-03 (ETag `30c73c46…ae0eb505`), kept verbatim for model generation and drift tests |
+| `tailscale-openapi.yaml` | The upstream OpenAPI 3.1 schema as served by `https://api.tailscale.com/api/v2?outputOpenapiSchema=true` on 2026-10-07 (ETag `0b9445c9…fabd97eb`), kept verbatim for model generation and drift tests |
 | `tailscale-cli.md` | Every command of the local `tailscale` CLI (1.102.2, 129 command nodes, hidden ones included) with flags, output shapes, risk class, blocking behaviour, privilege needs, and recommended exclusions |
 | `tailscale-cli/help/` | Verbatim `--help` output of every CLI command, one file per command path, plus `tailscale-cli/json-docs.json`, the visible command tree from the hidden `--json-docs` root flag |
 | `rmcp-sdk.md` | The official Rust MCP SDK (`rmcp` 3.2.0): feature flags, macros, transports, structured output, error model, verified probe code |

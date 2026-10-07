@@ -3,6 +3,24 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 1.3.2 — 2026-10-07
+
+### Fixed
+
+- Take rustls 0.23.45 for RUSTSEC-2026-0285
+
+### Documentation
+
+- Record the Show HN and r/Tailscale announcements (Q159-Q162)
+
+### Build and CI
+
+- Ask weekly whether the vendored description still matches the served one
+
+### Housekeeping
+
+- Re-vendor the API description served on 2026-10-07
+
 ## 1.3.1 — 2026-09-07
 
 ### Fixed

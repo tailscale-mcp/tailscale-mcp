@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Instructions for AI coding agents working in this repo. `CLAUDE.md` imports this file, so edit here rather than duplicating anything there.
+Instructions for AI coding agents working in this repo.
 
 ## Agent skills
 

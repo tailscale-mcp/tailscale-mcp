@@ -2567,3 +2567,23 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Re-running depends on the shared runner IPs getting under the limit again, and a release that stops at `image` has already published npm. A Docker Hub login needs a credential, which `release.yml` deliberately holds none of. On 2026-10-09 both registries served `rust:1-alpine` at the same digest (`sha256:0cce0a5e…1627`), so the build input does not change. The final stage, `gcr.io/distroless/static-debian12:nonroot`, never came from Docker Hub.
 **Outcome:** applied
 **Ref:** `Dockerfile`
+
+## Q175 — interactive/post-2.0.1 — orchestration
+
+**Question:** Of the five follow-ups after 2.0.1, which work runs in parallel, and where?
+**Options considered:** do all five in this session in order / hand the four weak-test fixes to a subagent in its own worktree and do the rest here
+**Chosen:** a subagent in a git worktree fixes the four tests that pass while broken (`docs_are_current` README counts, the tautological surface assert in `contract.rs`, the "file" substring check in `local_files.rs`, the vacuous secret assert in `tailnet_surface.rs`). This session does the macOS discovery fix, the 2.0.1 smoke test, the `.profraw` fix and the dead-code removal, and reviews the subagent's diff before it reaches `main`.
+**Decided-by:** agent
+**Justification:** The four tests touch only test files that the other items do not, so the worktree merges without conflict. The same split worked for the six test gaps closed before 2.0.1. Each fix must come with a mutation that the new test catches and the old one missed.
+**Outcome:** applied
+**Ref:** —
+
+## Q176 — interactive/post-2.0.1 — cli-discovery
+
+**Question:** A person who puts `/Applications/Tailscale.app/Contents/MacOS` on `PATH`, or links its executable into a `PATH` directory, gets the application's own executable believed on sight, and every local call fails with "The Tailscale GUI failed to start" (the Q157 symptom). How is that candidate recognised?
+**Options considered:** ask every `PATH` candidate to answer `version` / ask a `PATH` candidate whose path names a bundle / decide belief by where the file really lives, after following links
+**Chosen:** `belief()` canonicalises each candidate and asks it to answer when any component of the real path ends in `.app`; everything else is still believed on sight.
+**Decided-by:** agent
+**Justification:** Reproduced on 2026-10-09 with Tailscale 1.102.4: both the bundle directory on `PATH` and a symlink named `tailscale` to the bundle executable print the GUI error and exit 0 under the server's minimal environment. Following links is what catches the second route; a check on the path as written would miss it. Asking every candidate would add a process spawn to every start on every machine, which the plain `tailscale` and the shim never need. The rule is not gated to macOS because a `.app` directory on another system costs one `version` call at most.
+**Outcome:** applied
+**Ref:** `crates/tailscale-cli/src/exec.rs` (`belief`), `crates/tailscale-mcp/tests/a_bundle_on_the_search_path_still_has_to_answer.rs`

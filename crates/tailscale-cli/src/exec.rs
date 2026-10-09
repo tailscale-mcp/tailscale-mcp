@@ -368,10 +368,10 @@ fn first_usable(
 /// Whether a candidate is believed on sight, or only once it has answered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Believe {
-    /// A `tailscale` on `PATH`, or the shim beside it. Nothing else on a
-    /// machine is called that, and both are the command-line interface.
+    /// A `tailscale` outside any application bundle. Nothing else on a
+    /// machine is called that, and it is the command-line interface.
     OnSight,
-    /// The executable inside the application bundle: see [`answers_as_cli`].
+    /// The executable inside an application bundle: see [`answers_as_cli`].
     OnceItAnswers,
 }
 
@@ -383,9 +383,29 @@ enum Believe {
 fn candidates() -> Vec<(PathBuf, Believe)> {
     search_path_candidates()
         .chain(shim_candidates())
-        .map(|path| (path, Believe::OnSight))
-        .chain(bundle_candidates().map(|path| (path, Believe::OnceItAnswers)))
+        .chain(bundle_candidates())
+        .map(|path| {
+            let believe = belief(&path);
+            (path, believe)
+        })
         .collect()
+}
+
+/// Decided by where the file really lives rather than by which list found it,
+/// because a `PATH` entry or a link reaches the bundle's executable as surely
+/// as the bundle's own path does.
+fn belief(path: &Path) -> Believe {
+    let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    let in_a_bundle = real.components().any(|part| {
+        Path::new(part.as_os_str())
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("app"))
+    });
+    if in_a_bundle {
+        Believe::OnceItAnswers
+    } else {
+        Believe::OnSight
+    }
 }
 
 /// The shim the macOS applications install for command-line use.
@@ -443,7 +463,8 @@ fn answers_as_cli(path: &Path) -> bool {
 ///
 /// Tried last and only when it answers, because this is the one candidate that
 /// can be present, executable, and still not be a command-line interface:
-/// see [`answers_as_cli`]. Neither path is on `PATH` at all.
+/// see [`answers_as_cli`]. Neither path is on `PATH` unless a person puts it
+/// there, and then [`belief`] asks it all the same.
 fn bundle_candidates() -> impl Iterator<Item = PathBuf> {
     let paths: &[&str] = if cfg!(target_os = "macos") {
         &[
@@ -581,16 +602,22 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
-    fn only_the_executable_inside_the_bundle_has_to_answer_before_it_is_believed() {
-        let bundled: Vec<PathBuf> = bundle_candidates().collect();
-        for (path, believe) in candidates() {
-            assert_eq!(
-                believe == Believe::OnceItAnswers,
-                bundled.contains(&path),
-                "{} is believed the wrong way round",
-                path.display()
-            );
+    fn only_what_lives_inside_a_bundle_has_to_answer_before_it_is_believed() {
+        let bundle = tempfile::Builder::new()
+            .suffix(".app")
+            .tempdir()
+            .expect("a temp dir");
+        let elsewhere = tempfile::tempdir().expect("a temp dir");
+        let bundled = stub_named(&bundle, "tailscale", STARTS_THE_GUI);
+        let plain = stub_named(&elsewhere, "tailscale", "echo '1.102.2'");
+        let linked = elsewhere.path().join("linked");
+        std::os::unix::fs::symlink(&bundled, &linked).expect("the link is made");
+
+        for path in bundle_candidates().chain([bundled, linked]) {
+            assert_eq!(belief(&path), Believe::OnceItAnswers, "{}", path.display());
         }
+        assert_eq!(belief(&plain), Believe::OnSight);
     }
 }

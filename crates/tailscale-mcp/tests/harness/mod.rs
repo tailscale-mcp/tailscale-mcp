@@ -206,16 +206,22 @@ impl Setup {
     /// If the configuration or the server does not build, which is the test
     /// itself being wrong rather than a behaviour worth reporting.
     pub async fn start(self) -> Harness {
+        // A fake even when the test arranged no answers, so a call the test
+        // did not expect fails loudly instead of reaching the real API.
+        let control_plane = match self.control_plane {
+            Some(fake) => fake,
+            None => FakeControlPlane::start()
+                .await
+                .expect("a loopback socket for the fake control plane"),
+        };
         // Whatever the test asked for, and then the fake's address. The
         // test's own entry comes first so a test that sets the base URL
-        // itself is not overruled by a fake it also arranged.
+        // itself is not overruled by the fake.
         let mut env = self.env;
-        if let Some(fake) = self.control_plane.as_ref() {
-            env.push((
-                tailscale_mcp::config::API_BASE_URL_ENV.to_owned(),
-                fake.base_url().to_owned(),
-            ));
-        }
+        env.push((
+            tailscale_mcp::config::API_BASE_URL_ENV.to_owned(),
+            control_plane.base_url().to_owned(),
+        ));
         let config = Config::resolve_with(self.cli, |key| {
             env.iter()
                 .find(|(name, _)| name == key)
@@ -261,7 +267,7 @@ impl Setup {
         Harness {
             client,
             backend,
-            control_plane: self.control_plane,
+            control_plane,
             context,
             notes,
             serving,
@@ -273,7 +279,7 @@ impl Setup {
 pub struct Harness {
     client: RunningService<rmcp::RoleClient, ()>,
     pub backend: Arc<StubBackend>,
-    control_plane: Option<FakeControlPlane>,
+    control_plane: FakeControlPlane,
     /// What the handlers were given, for the parts of a session that are not
     /// reachable through a tool call.
     pub context: Arc<tailscale_mcp::context::ToolContext>,
@@ -284,13 +290,8 @@ pub struct Harness {
 
 impl Harness {
     /// The fake control plane, for asserting on what reached it.
-    ///
-    /// # Panics
-    /// If the test did not arrange one with [`Setup::api_answers`].
     pub fn control_plane(&self) -> &FakeControlPlane {
-        self.control_plane
-            .as_ref()
-            .expect("this test arranged no control-plane answers")
+        &self.control_plane
     }
 
     /// What the server said about itself during the handshake.

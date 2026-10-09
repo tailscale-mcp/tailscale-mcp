@@ -1526,6 +1526,18 @@ mod tests {
     }
 
     #[test]
+    fn a_tailnet_named_as_a_dot_segment_is_refused() {
+        for tailnet in [".", ".."] {
+            let mut config = ClientConfig::new(api_key());
+            config.tailnet = tailnet.to_owned();
+            assert!(
+                Client::new(config).is_err(),
+                "`{tailnet}` should have been refused"
+            );
+        }
+    }
+
+    #[test]
     fn a_name_in_a_path_cannot_reach_into_the_path_around_it() {
         let fake_config = ClientConfig::new(api_key());
         let client = Client::new(fake_config).expect("the default base URL is valid");

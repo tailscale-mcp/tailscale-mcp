@@ -66,6 +66,39 @@ mod tests {
     }
 
     #[test]
+    fn no_tool_schema_carries_a_boolean_items() {
+        // `items: true` is what schemars renders for a `serde_json::Value`
+        // field. It is valid JSON Schema, but strict tool-schema converters
+        // reject the whole request over it — llama.cpp answers
+        // `Unrecognized schema: true`, Moonshot answers `items must be an
+        // object` — so a single such field takes down every tool call, not
+        // just the tool that carries it (issue #1).
+        fn walk(node: &serde_json::Value, path: &str, offenders: &mut Vec<String>) {
+            if let Some(object) = node.as_object() {
+                for (key, value) in object {
+                    if key == "items" && value.is_boolean() {
+                        offenders.push(format!("{path}/items"));
+                    }
+                    walk(value, &format!("{path}/{key}"), offenders);
+                }
+            } else if let Some(array) = node.as_array() {
+                for (index, value) in array.iter().enumerate() {
+                    walk(value, &format!("{path}[{index}]"), offenders);
+                }
+            }
+        }
+
+        let mut offenders = Vec::new();
+        for entry in entries() {
+            let name = entry.meta.name;
+            let schema = (entry.schema)().expect("a valid schema");
+            let schema = serde_json::Value::Object((*schema).clone());
+            walk(&schema, name, &mut offenders);
+        }
+        assert!(offenders.is_empty(), "boolean `items` in: {offenders:?}");
+    }
+
+    #[test]
     fn every_tailnet_tool_ends_in_a_known_verb() {
         // `spec.md`: tailnet tools are named `tailnet_<resource>_<verb>` "with
         // a fixed verb vocabulary". Fixed means this list, and means a name

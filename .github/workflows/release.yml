@@ -222,7 +222,7 @@ jobs:
         run: |
           for archive in artifacts/*.tar.gz; do
             name=$(basename "$archive" .tar.gz)
-            target="${name#tailscale-mcp-$VERSION-}"
+            target="${name#"tailscale-mcp-$VERSION-"}"
             scripts/build-mcpb.sh "$target" "$archive" "artifacts/$name.mcpb"
           done
       # One `SHA256SUMS`, in the format `sha256sum -c` reads, so that anything
@@ -230,7 +230,7 @@ jobs:
       # fetch and one line to check.
       - name: Checksum
         working-directory: artifacts
-        run: sha256sum *.tar.gz *.mcpb > SHA256SUMS
+        run: sha256sum -- *.tar.gz *.mcpb > SHA256SUMS
       # The tap lives in another repository, so this renders the formula and
       # attaches it rather than pushing it: updating the tap is committing this
       # file there. It can only be written once the checksums exist, which is

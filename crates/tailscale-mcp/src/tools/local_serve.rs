@@ -1185,15 +1185,16 @@ mod tests {
     fn funnel_is_out_of_reach_until_the_destructive_tier_is_allowed() {
         // The acceptance criterion the tier model exists for: publishing to
         // the internet is never something a write-tier session can do.
-        for entry in entries() {
-            if entry.meta.name.starts_with("tailscale_funnel_") {
-                assert_eq!(
-                    entry.meta.tier,
-                    Tier::Destructive,
-                    "`{}` publishes to or unpublishes from the internet",
-                    entry.meta.name
-                );
-            }
+        for name in ["tailscale_funnel_set", "tailscale_funnel_off"] {
+            let entry = entries()
+                .into_iter()
+                .find(|e| e.meta.name == name)
+                .expect("the tool is declared");
+            assert_eq!(
+                entry.meta.tier,
+                Tier::Destructive,
+                "`{name}` publishes to or unpublishes from the internet"
+            );
         }
     }
 

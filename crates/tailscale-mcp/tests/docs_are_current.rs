@@ -334,24 +334,26 @@ fn the_counts_the_readme_quotes_are_the_counts() {
             .iter()
             .enumerate()
         {
-            let counted = offered(&tools, *preset, *tier).to_string();
+            let counted = offered(&tools, *preset, *tier);
             let written = row
                 .get(column + 1)
                 .unwrap_or_else(|| panic!("the {preset} row has no column for {tier:?}"));
-            assert!(
-                written.contains(&counted),
+            assert_eq!(
+                written.parse::<usize>().ok(),
+                Some(counted),
                 "the README says {written} tools for {preset} at the {} tier; there are {counted}",
                 tier.as_str()
             );
         }
         // The last column is how many toolsets the preset selects, which is
         // the other half of the same claim.
-        let counted = preset.toolsets().len().to_string();
+        let counted = preset.toolsets().len();
         let written = row
             .get(4)
             .unwrap_or_else(|| panic!("the {preset} row has no toolset column"));
-        assert!(
-            written.contains(&counted),
+        assert_eq!(
+            written.parse::<usize>().ok(),
+            Some(counted),
             "the README says {written} toolsets for {preset}; there are {counted}"
         );
     }

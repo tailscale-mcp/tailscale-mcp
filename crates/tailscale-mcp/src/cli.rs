@@ -421,6 +421,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_broken_pipe_or_an_unwritable_secret_file_is_a_cli_failure() {
+        let ctx = context(StubBackend::ok(""), None);
+        for error in [
+            ExecError::Io {
+                command: "tailscale up".to_owned(),
+                source: std::io::Error::other("broken pipe"),
+            },
+            ExecError::SecretFile(std::io::Error::other("no space left on device")),
+        ] {
+            let told = error.to_string();
+            assert_eq!(
+                exec_error(&ctx, "tailscale up", error).code,
+                ErrorCode::CliFailed,
+                "{told}"
+            );
+        }
+    }
+
     /// One reading of status, two answers out of it.
     #[tokio::test]
     async fn the_status_probe_names_this_node_and_its_peers() {

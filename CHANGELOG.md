@@ -3,6 +3,30 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 2.0.1 — 2026-10-09
+
+### Fixed
+
+- Refuse an argument to a tool that takes none
+
+### Documentation
+
+- Note the fields the API description gained by 2026-10-09
+
+### Tests
+
+- An update that changes nothing is refused before it is sent
+- A broken pipe or an unwritable secret file is a CLI failure
+- A tool name the protocol or our prefixes would not allow is refused
+- A lowercase bearer scheme is admitted like the capitalised one
+- A bounded transfer, certificate, watch, probe or wait bounds the process too
+- The funnel tier check names both funnel tools rather than a prefix
+
+### Build and CI
+
+- Quote the version in a pattern, end sha256sum's options
+- Skip the failing-test commit ahead of the 2.0.1 fix
+
 ## 2.0.0 — 2026-10-09
 
 ### Added

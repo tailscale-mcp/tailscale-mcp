@@ -242,15 +242,10 @@ pub async fn build(
 /// nobody is in. [`Gate::offers`] is the question the instructions already ask
 /// for exactly this reason, so the note asks it too.
 fn describe_toolsets(gate: &Gate) -> String {
-    let names: Vec<&str> = gate
-        .offered_toolsets()
+    gate.offered_toolsets()
         .map(|toolset| toolset.as_str())
-        .collect();
-    if names.is_empty() {
-        "no toolsets".to_owned()
-    } else {
-        names.join(", ")
-    }
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The MCP server.
@@ -273,10 +268,6 @@ impl TailscaleMcpServer {
             ctx,
             completions: completion::Limiter::new(),
         }
-    }
-
-    pub fn registry(&self) -> &Registry {
-        &self.registry
     }
 
     pub fn context(&self) -> &Arc<ToolContext> {

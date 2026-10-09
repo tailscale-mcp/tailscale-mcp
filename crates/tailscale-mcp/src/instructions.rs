@@ -55,18 +55,18 @@ pub fn render(gate: &Gate, ctx: &ToolContext, offered: Offered) -> String {
     // keep proposing tools that are not in the listing.
     let local = gate.offers(Surface::Local);
     let tailnet = gate.offers(Surface::Tailnet);
-    match (local, tailnet) {
-        (true, true) => {}
-        (true, false) => out.push_str(
+    if !tailnet {
+        out.push_str(
             "The tailnet surface is not available in this session, so no `tailnet_*` tool is \
              offered. Questions about other devices, users, keys or policy cannot be answered \
              here.\n\n",
-        ),
-        (false, true) => out.push_str(
+        );
+    }
+    if !local {
+        out.push_str(
             "The local surface is not available in this session, so no `tailscale_*` tool is \
              offered. Nothing can be read from or changed on this machine directly.\n\n",
-        ),
-        (false, false) => out.push_str("No tools are available in this session.\n\n"),
+        );
     }
 
     let _ = write!(out, "Permitted tier: {}. ", describe_tier(gate.max_tier()));

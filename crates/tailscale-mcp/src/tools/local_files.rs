@@ -1326,18 +1326,19 @@ mod tests {
         // writes the local filesystem says so where the tool is chosen, not
         // only where it fails.
         //
-        // `syspolicy_reload` is the one tool here that takes no path and
-        // touches no file of the caller's choosing — it reloads settings the
-        // node already has — so it is not asked to claim otherwise.
-        for entry in entries()
-            .iter()
-            .filter(|entry| entry.meta.name != "tailscale_syspolicy_reload")
-        {
+        // `syspolicy_reload` and `file_targets` are the two tools here that
+        // take no path and touch no file of the caller's choosing. One reloads
+        // settings the node already has, the other asks `tailscaled` which
+        // peers it may send to, so neither is asked to claim otherwise.
+        //
+        // A bare "file" is not a claim: `tailscale file cp` has it in its name.
+        const CLAIMS: [&str; 3] = ["local filesystem", "on disk", "configuration file"];
+        for entry in entries().iter().filter(|entry| {
+            !["tailscale_syspolicy_reload", "tailscale_file_targets"].contains(&entry.meta.name)
+        }) {
             let summary = entry.meta.summary.to_lowercase();
             assert!(
-                summary.contains("local filesystem")
-                    || summary.contains("file")
-                    || summary.contains("directories"),
+                CLAIMS.iter().any(|claim| summary.contains(claim)),
                 "`{}` does not say what it touches: {}",
                 entry.meta.name,
                 entry.meta.summary

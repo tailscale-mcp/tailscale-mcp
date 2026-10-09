@@ -2557,3 +2557,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** A major release whose changelog does not say what breaks leaves every reader to diff the API themselves. The changelog says "do not edit by hand" because it is regenerated in full, so a hand edit would not survive the next release. The dry run shows the template change touches no earlier section, since none had a breaking commit. Rewording the four commits would mean rewriting pushed history.
 **Outcome:** applied
 **Ref:** `cliff.toml`
+
+## Q174 — interactive/release-2.0 — build-infrastructure
+
+**Question:** CI's container-image job failed twice in a row with `429 Too Many Requests` from Docker Hub on `rust:1-alpine`, and the release's `image` job pulls the same image. How is the build kept off Docker Hub's anonymous pull limit before 2.0.0 is tagged?
+**Options considered:** re-run until it passes / log in to Docker Hub from the image jobs / pull the same official image from a mirror that needs no login
+**Chosen:** `FROM public.ecr.aws/docker/library/rust:1-alpine`, AWS's public mirror of Docker's official images.
+**Decided-by:** user (chose to fix the base image before tagging)
+**Justification:** Re-running depends on the shared runner IPs getting under the limit again, and a release that stops at `image` has already published npm. A Docker Hub login needs a credential, which `release.yml` deliberately holds none of. On 2026-10-09 both registries served `rust:1-alpine` at the same digest (`sha256:0cce0a5e…1627`), so the build input does not change. The final stage, `gcr.io/distroless/static-debian12:nonroot`, never came from Docker Hub.
+**Outcome:** applied
+**Ref:** `Dockerfile`

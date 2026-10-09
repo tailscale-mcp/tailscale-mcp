@@ -414,9 +414,13 @@ pub fn parse_params<T: serde::de::DeserializeOwned + schemars::JsonSchema + 'sta
     if let Ok(schema) = rmcp::handler::server::tool::schema_for_input::<T>() {
         let root = Value::Object(schema.as_ref().clone());
         if let Some((path, accepted)) = unknown_argument_in(&root, &args) {
-            return Err(ToolError::invalid_args(format!(
-                "`{tool}` takes no argument `{path}`; it takes {}",
+            let takes = if accepted.is_empty() {
+                "no arguments".to_owned()
+            } else {
                 accepted.join(", ")
+            };
+            return Err(ToolError::invalid_args(format!(
+                "`{tool}` takes no argument `{path}`; it takes {takes}"
             )));
         }
     }
@@ -450,7 +454,10 @@ fn unknown_argument(
                 .iter()
                 .filter_map(|b| b.get("properties")?.as_object())
                 .collect();
-            if open || properties.is_empty() {
+            // A struct with no fields declares an object and lists nothing; a
+            // free-form value declares neither.
+            let declared = !properties.is_empty() || branches.iter().any(|b| is_object_type(b));
+            if open || !declared {
                 return None;
             }
             fields.iter().find_map(|(key, field)| {
@@ -480,6 +487,15 @@ fn unknown_argument(
             })
         }
         _ => None,
+    }
+}
+
+/// Whether a schema says its value is an object.
+fn is_object_type(schema: &JsonObject) -> bool {
+    match schema.get("type") {
+        Some(Value::String(kind)) => kind == "object",
+        Some(Value::Array(kinds)) => kinds.iter().any(|kind| kind == "object"),
+        _ => false,
     }
 }
 

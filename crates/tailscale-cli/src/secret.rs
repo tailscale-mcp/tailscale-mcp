@@ -59,10 +59,7 @@ impl SecretFile {
 /// A scratch file inside a directory only this user can enter, removed when
 /// this value is dropped along with the directory holding it.
 ///
-/// Used for the two `serve` commands that exchange configuration through a
-/// file. The file itself may not exist: `serve get-config` refuses a path that
-/// is already taken, so the reserved form hands over a name and lets the client
-/// create it.
+/// Used for `serve set-config`, which reads its configuration from a file.
 #[derive(Debug)]
 pub struct PrivateFile {
     // Held, not read: dropping the directory is what removes whatever is
@@ -73,8 +70,8 @@ pub struct PrivateFile {
 }
 
 impl PrivateFile {
-    /// A name inside a new private directory, with nothing at it yet.
-    pub fn reserved(name: &str) -> Result<Self, ExecError> {
+    /// A file called `name` holding `contents`, inside a new private directory.
+    pub fn written(name: &str, contents: &[u8]) -> Result<Self, ExecError> {
         let mut builder = tempfile::Builder::new();
         builder.prefix("tailscale-mcp-");
         #[cfg(unix)]
@@ -84,14 +81,8 @@ impl PrivateFile {
         }
         let dir = builder.tempdir().map_err(ExecError::SecretFile)?;
         let path = dir.path().join(name);
+        std::fs::write(&path, contents).map_err(ExecError::SecretFile)?;
         Ok(Self { dir, path })
-    }
-
-    /// The same, with `contents` already written to it.
-    pub fn written(name: &str, contents: &[u8]) -> Result<Self, ExecError> {
-        let file = Self::reserved(name)?;
-        std::fs::write(&file.path, contents).map_err(ExecError::SecretFile)?;
-        Ok(file)
     }
 
     pub fn path(&self) -> &Path {
@@ -104,11 +95,6 @@ impl PrivateFile {
         self.path.display().to_string()
     }
 
-    /// What is at the path now. An error if the client wrote nothing.
-    pub fn read(&self) -> Result<Vec<u8>, ExecError> {
-        std::fs::read(&self.path).map_err(ExecError::SecretFile)
-    }
-
     /// The directory the file lives in, for the tests that check it is private.
     #[cfg(test)]
     fn directory(&self) -> &Path {
@@ -119,17 +105,6 @@ impl PrivateFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_reserved_name_is_free_for_the_client_to_create() {
-        let file = PrivateFile::reserved("serve-config.json").expect("a private directory");
-        assert!(
-            !file.path().exists(),
-            "the client refuses a path that is already taken"
-        );
-        std::fs::write(file.path(), b"{}").expect("the client can create it");
-        assert_eq!(file.read().expect("readable"), b"{}");
-    }
 
     #[cfg(unix)]
     #[test]

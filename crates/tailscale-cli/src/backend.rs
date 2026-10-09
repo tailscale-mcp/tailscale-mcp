@@ -33,9 +33,6 @@ pub struct Invocation {
     pub args: Vec<String>,
     pub concurrency: Concurrency,
     pub timeout: Duration,
-    /// Bytes to write to the child's standard input, for the few commands that
-    /// read a document rather than a flag.
-    pub stdin: Option<Vec<u8>>,
 }
 
 impl Invocation {
@@ -49,7 +46,6 @@ impl Invocation {
             args: args.into_iter().map(Into::into).collect(),
             concurrency: Concurrency::Shared,
             timeout: crate::exec::DEFAULT_TIMEOUT,
-            stdin: None,
         }
     }
 
@@ -84,12 +80,6 @@ impl Invocation {
     #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
-        self
-    }
-
-    #[must_use]
-    pub fn with_stdin(mut self, stdin: impl Into<Vec<u8>>) -> Self {
-        self.stdin = Some(stdin.into());
         self
     }
 

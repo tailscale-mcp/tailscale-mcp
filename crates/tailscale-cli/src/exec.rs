@@ -7,7 +7,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use thiserror::Error;
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+use tokio::io::AsyncReadExt as _;
 use tokio::sync::RwLock;
 
 use crate::backend::{BoxFuture, Concurrency, Invocation, LocalBackend, Output};
@@ -20,9 +20,6 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long a timed-out child is given to exit on its own before it is killed.
 pub const GRACE_PERIOD: Duration = Duration::from_secs(2);
-
-/// The environment variable that overrides binary discovery.
-pub const BINARY_ENV: &str = "TAILSCALE_MCP_CLI_PATH";
 
 /// Something went wrong before, or instead of, the command producing a result.
 ///
@@ -88,12 +85,6 @@ impl CliBackend {
     /// fallback to some other Tailscale on the machine. The bundle is last
     /// because it is the only candidate that can be present and not be a
     /// command-line interface; `bundle_candidates` says why.
-    pub fn discover() -> Result<Self, ExecError> {
-        Self::discover_with(std::env::var_os(BINARY_ENV).as_deref())
-    }
-
-    /// [`Self::discover`], with the override supplied rather than read from the
-    /// environment, so a test can drive every branch.
     pub fn discover_with(override_path: Option<&std::ffi::OsStr>) -> Result<Self, ExecError> {
         if let Some(path) = override_path.filter(|p| !p.is_empty()) {
             let path = PathBuf::from(path);
@@ -135,13 +126,9 @@ impl CliBackend {
         cmd.args(&invocation.args)
             .env_clear()
             .envs(minimal_env())
-            .stdin(if invocation.stdin.is_some() {
-                Stdio::piped()
-            } else {
-                // Closed, so a command that would prompt fails instead of
-                // hanging on a terminal that is not there.
-                Stdio::null()
-            })
+            // Closed, so a command that would prompt fails instead of hanging
+            // on a terminal that is not there.
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // If this future is dropped — a cancelled request, a shutdown —
@@ -153,10 +140,8 @@ impl CliBackend {
             source,
         })?;
 
-        let mut stdin_pipe = child.stdin.take();
         let mut stdout_pipe = child.stdout.take();
         let mut stderr_pipe = child.stderr.take();
-        let stdin_bytes = invocation.stdin;
 
         // Owned out here rather than inside the reading futures, so that a
         // child killed for taking too long still leaves behind whatever it had
@@ -166,15 +151,6 @@ impl CliBackend {
         let mut stderr_buf = Vec::new();
 
         let collected = {
-            let feed = async {
-                if let (Some(pipe), Some(bytes)) = (stdin_pipe.as_mut(), stdin_bytes.as_ref()) {
-                    pipe.write_all(bytes).await?;
-                    pipe.shutdown().await?;
-                }
-                // Closing the pipe is what tells the child there is no more.
-                drop(stdin_pipe.take());
-                Ok::<(), std::io::Error>(())
-            };
             let read_out = async {
                 if let Some(pipe) = stdout_pipe.as_mut() {
                     pipe.read_to_end(&mut stdout_buf).await?;
@@ -189,8 +165,7 @@ impl CliBackend {
             };
 
             let work = async {
-                let (fed, out, err, status) = tokio::join!(feed, read_out, read_err, child.wait());
-                fed?;
+                let (out, err, status) = tokio::join!(read_out, read_err, child.wait());
                 out?;
                 err?;
                 status

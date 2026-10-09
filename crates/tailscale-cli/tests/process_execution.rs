@@ -88,17 +88,6 @@ async fn a_failure_carries_its_exit_code_and_its_stderr() {
 }
 
 #[tokio::test]
-async fn a_document_can_be_handed_over_on_standard_input() {
-    let out = stub()
-        .run(stub_call(&["cat"]).with_stdin("// a policy file\n{}\n"))
-        .await
-        .expect("the stub runs");
-
-    assert!(out.success());
-    assert_eq!(out.stdout_str(), "// a policy file\n{}\n");
-}
-
-#[tokio::test]
 async fn standard_input_is_closed_when_there_is_nothing_to_send() {
     // `cat` with no input must see end-of-file immediately rather than block
     // on a terminal that is not there.

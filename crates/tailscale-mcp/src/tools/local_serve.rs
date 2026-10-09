@@ -1095,7 +1095,8 @@ mod tests {
         let read = parse_config(printed).expect("the client printed JSON");
         let file = config_file(&read).expect("the document is written");
         let written: Value =
-            serde_json::from_slice(&file.read().expect("the file reads back")).unwrap();
+            serde_json::from_slice(&std::fs::read(file.path()).expect("the file reads back"))
+                .unwrap();
         assert_eq!(written, read);
     }
 

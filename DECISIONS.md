@@ -2517,3 +2517,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** `settings` is free-form by design (ADR-0004): the tool names no individual setting today, and the control plane is the authority on which ones may be combined, so its refusal reaches the caller through the usual error mapping. A local check would be the first per-setting rule in the tool and would go stale at the next change upstream. `tailnet_settings_get` already returns `routeSelection`, because the model keeps unknown fields.
 **Outcome:** applied
 **Ref:** `crates/tailscale-rest/src/models/tailnet.rs`
+
+## Q170 — interactive/remove-unused-api — semver-labelling
+
+**Question:** Removing public items nothing calls from `tailscale-cli` and `tailscale-rest` breaks semver. Are the commits marked breaking, given that `cliff.toml` (`breaking_always_bump_major`) then makes the default next version 2.0.0 while the release call is still open?
+**Options considered:** mark them breaking (`!`) / leave them unmarked and decide at release / hold the removals until the release is decided
+**Chosen:** Mark both commits `!`. Remove `Invocation::with_stdin` and `Invocation::stdin`, `PrivateFile::reserved` (folded into `written`) and `PrivateFile::read`, `CliBackend::discover` and `BINARY_ENV`, and `RequestBuilder::budget`. Keep `CliBackend::binary`, because `the_binary_override_is_honoured` still reads it.
+**Decided-by:** agent
+**Justification:** The changelog has to name a break, and an unmarked one is filed as an ordinary change. The marking does not decide the release: `scripts/prepare-release.sh --version <x.y.z>` overrides the computed bump. `cargo semver-checks` 0.51.0 against the published 1.3.2 finds exactly these removals, plus one break that was not marked when it landed: `f52082f` added `TailnetSettings.route_selection` and `Device.posture_status` to structs that callers can build field by field (`constructible_struct_adds_field`). That one alone already requires a major version for `tailscale-rest`.
+**Outcome:** applied
+**Ref:** `crates/tailscale-cli/src/{backend,exec,secret}.rs`, `crates/tailscale-rest/src/client.rs`

@@ -32,6 +32,7 @@ history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
 - Exempt 9fff35e from the commit-message check
 - Mark breaking entries, skip four test-first commits
+- Pull the Rust base image from AWS's mirror of Docker Hub
 
 ### Housekeeping
 

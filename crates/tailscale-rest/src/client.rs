@@ -647,8 +647,9 @@ fn retry_after(response: &reqwest::Response) -> Option<Duration> {
 /// three things asked of one are the three that keep it from being a way to
 /// send them somewhere in the clear: the transport is `https`, or the host is
 /// this machine, which is how the fake in this crate is reached; there is no
-/// path, because a base URL is a host and nothing more; and there is no
-/// userinfo, because a credential in a URL is a credential that gets printed.
+/// path, query or fragment, because a base URL is a host and nothing more;
+/// and there is no userinfo, because a credential in a URL is a credential
+/// that gets printed.
 ///
 /// What this does not do is name the host. `https://api.tailscale.com` is the
 /// default, and the guarantee here is about how a credential travels rather
@@ -673,9 +674,12 @@ pub fn checked_base_url(base_url: &str) -> Result<String, ApiError> {
              control-plane credential is not sent anywhere else"
         )));
     }
-    if !parsed.path().is_empty() && parsed.path() != "/" {
+    if (!parsed.path().is_empty() && parsed.path() != "/")
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
         return Err(ApiError::Config(format!(
-            "`{base_url}` has a path; the base URL is a host and nothing more"
+            "`{base_url}` has a path, query or fragment; the base URL is a host and nothing more"
         )));
     }
     // The URL is deliberately not echoed back here: the objection to userinfo

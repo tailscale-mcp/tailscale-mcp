@@ -199,7 +199,6 @@ impl Client {
             query: Vec::new(),
             headers: Vec::new(),
             body: None,
-            budget: self.inner.budget,
             broken: None,
         }
     }
@@ -214,7 +213,6 @@ pub struct RequestBuilder<'a> {
     query: Vec<(String, String)>,
     headers: Vec<(String, String)>,
     body: Option<Body>,
-    budget: Duration,
     /// A failure that happened while the call was being built, kept until
     /// there is somewhere to return it from.
     broken: Option<ApiError>,
@@ -281,19 +279,6 @@ impl RequestBuilder<'_> {
             content_type: content_type.to_owned(),
             text: body.into(),
         });
-        self
-    }
-
-    /// The whole of this call, retries and backoff included: past it the call
-    /// ends as a timeout whatever it was doing.
-    ///
-    /// The default is the client's, which is the tool timeout; a tool that
-    /// waits on something slower passes its own. One attempt is separately
-    /// capped at the client's budget, so raising this raises how long a call
-    /// may spend across attempts rather than how long one may stall.
-    #[must_use]
-    pub fn budget(mut self, budget: Duration) -> Self {
-        self.budget = budget;
         self
     }
 
@@ -372,7 +357,7 @@ impl RequestBuilder<'_> {
     /// when the budget is already spent.
     async fn send_raw(self) -> Result<RawBody, ApiError> {
         let request = self.describe_request();
-        let budget = self.budget;
+        let budget = self.client.inner.budget;
         match tokio::time::timeout(budget, self.attempts()).await {
             Ok(answer) => answer,
             Err(_) => Err(ApiError::Timeout { request, budget }),
@@ -386,7 +371,7 @@ impl RequestBuilder<'_> {
         }
         let request = self.describe_request();
         let idempotence = idempotence(&self.method);
-        let deadline = Instant::now() + self.budget;
+        let deadline = Instant::now() + self.client.inner.budget;
         let inner = &self.client.inner;
         let url = format!("{}{}", inner.base_url, self.path);
 
@@ -476,7 +461,7 @@ impl RequestBuilder<'_> {
             if source.is_timeout() {
                 ApiError::Timeout {
                     request: request.to_owned(),
-                    budget: self.budget,
+                    budget: self.client.inner.budget,
                 }
             } else {
                 ApiError::Transport {
@@ -1166,9 +1151,8 @@ mod tests {
         };
 
         let patient = fake().await.on("GET", DEVICES, refusal("300"));
-        let error = client(&patient, api_key())
+        let error = client_with(&patient, api_key(), |c| c.budget = budget)
             .get(DEVICES)
-            .budget(budget)
             .send()
             .await
             .expect_err("it never works");
@@ -1181,9 +1165,8 @@ mod tests {
         );
 
         let impatient = fake().await.on("GET", DEVICES, refusal("0"));
-        client(&impatient, api_key())
+        client_with(&impatient, api_key(), |c| c.budget = budget)
             .get(DEVICES)
-            .budget(budget)
             .send()
             .await
             .expect_err("it never works");

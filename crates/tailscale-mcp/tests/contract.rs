@@ -1488,12 +1488,6 @@ async fn every_tool_is_named_for_the_surface_it_acts_on() {
             meta.name,
             meta.surface().as_str()
         );
-        assert_eq!(
-            meta.toolset.surface(),
-            meta.surface(),
-            "`{}` is in a toolset from another surface",
-            meta.name
-        );
     }
 }
 

@@ -633,6 +633,31 @@ mod tests {
     }
 
     #[test]
+    fn a_name_the_protocol_or_our_prefixes_would_not_allow_is_refused() {
+        let too_long: &'static str =
+            Box::leak(format!("tailscale_{}", "a".repeat(MAX_NAME_LEN)).into_boxed_str());
+        for (name, reason) in [
+            ("", "empty"),
+            (too_long, "128 characters"),
+            ("tailscale_ping peer", "outside [A-Za-z0-9_.-]"),
+            ("ping", "does not begin"),
+            ("tailscaleping", "does not begin"),
+        ] {
+            match validate_name(name) {
+                Err(RegistryError::BadName {
+                    name: refused,
+                    reason: said,
+                }) => {
+                    assert_eq!(refused, name);
+                    assert!(said.contains(reason), "`{name}` {said}");
+                }
+                other => panic!("`{name}` should be refused: {other:?}"),
+            }
+        }
+        assert_eq!(validate_name("tailnet_split-dns.v2"), Ok(()));
+    }
+
+    #[test]
     fn a_confirming_tool_refuses_until_the_caller_says_so() {
         let registry = registry();
         let gate = open_gate();

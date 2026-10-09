@@ -2587,3 +2587,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Reproduced on 2026-10-09 with Tailscale 1.102.4: both the bundle directory on `PATH` and a symlink named `tailscale` to the bundle executable print the GUI error and exit 0 under the server's minimal environment. Following links is what catches the second route; a check on the path as written would miss it. Asking every candidate would add a process spawn to every start on every machine, which the plain `tailscale` and the shim never need. The rule is not gated to macOS because a `.app` directory on another system costs one `version` call at most.
 **Outcome:** applied
 **Ref:** `crates/tailscale-cli/src/exec.rs` (`belief`), `crates/tailscale-mcp/tests/a_bundle_on_the_search_path_still_has_to_answer.rs`
+
+## Q177 — interactive/post-2.0.1 — test-strength
+
+**Question:** Four tests could pass while what they claim was broken (Q175). What does each one now require?
+**Options considered:** per test, tighten the assertion / delete the part that cannot fail / rename so the test claims only what it checks
+**Chosen:** `docs_are_current` parses each README preset count and compares it for equality, so `137` no longer passes for 37. The second assert in `every_tool_is_named_for_the_surface_it_acts_on` is deleted: `ToolMeta::surface()` is `self.toolset.surface()`, so it compared one call with itself. `every_description_says_which_files_it_touches` now needs one of "local filesystem", "on disk" or "configuration file", and excludes `tailscale_file_targets` beside `tailscale_syspolicy_reload`, because it lists peers and reads no file. The posture secret test drops its "never answered with" half and is renamed to claim only that the secret reaches the control plane as `clientSecret`.
+**Decided-by:** agent
+**Justification:** Each change was checked against a planted defect: a README count of 137, a `file_cp` summary that only names its command, and a fake that echoes the secret. The old test passed on each, and the new one fails where it should. A bare "file" was not a claim, because `tailscale file cp` contains it. The tool does pass a successful answer on unchanged (`integration_create` returns the raw body, and the redactor covers only CLI output and errors). So the old assert passed only because the fixture held no secret. Whether the real API ever echoes `clientSecret` is not known; no scrubbing was added.
+**Outcome:** applied
+**Ref:** commits `8e0a45e`, `2082e3a`, `49887f3`, `9186188`

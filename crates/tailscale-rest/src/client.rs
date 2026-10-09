@@ -1498,6 +1498,9 @@ mod tests {
             // A base URL is a host; a path here would silently prefix every
             // call, which is a different server wearing the same name.
             "https://api.tailscale.com/api/v2",
+            // A query or fragment would be prefixed to every call the same way.
+            "https://api.tailscale.com/?tailnet=other",
+            "https://api.tailscale.com#fragment",
             // Userinfo is a secret written where secrets get printed, and
             // this server sends its credential as a header regardless. The
             // host is `example.com`, which is accepted bare just above, so

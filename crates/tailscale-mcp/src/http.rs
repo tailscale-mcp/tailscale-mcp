@@ -622,6 +622,22 @@ mod tests {
     }
 
     #[test]
+    fn a_lowercase_bearer_scheme_is_admitted_like_the_capitalised_one() {
+        let guard = guard(Some("s3cret-token-value"), &[]);
+        assert_eq!(
+            guard.admit(
+                &headers(&[
+                    ("host", "localhost"),
+                    ("authorization", "bearer s3cret-token-value")
+                ]),
+                here(),
+                Instant::now()
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn comparing_a_secret_folds_the_length_in_rather_than_checking_it_first() {
         assert!(same_secret(b"abc", b"abc"));
         assert!(!same_secret(b"abc", b"abd"));

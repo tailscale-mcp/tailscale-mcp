@@ -16,6 +16,11 @@ set -euo pipefail
 # `Continuous integration, and the Linux bug it found (ticket 27)`.
 BASELINE=993c15a74280e8cfa0e6b50378239c41cc09c2ae
 
+# Commits after the baseline that reached `main` unconventional, and can only
+# be reworded by rewriting published history (Q168). Each has its own row in
+# `cliff.toml`, so the changelog still files it.
+EXEMPT='9fff35ede68ec116ef0cd04507e68d0a1d836105'
+
 # `type(scope)!: subject`, with the types `cliff.toml` gives a group to. A
 # merge commit's subject is git's, not an author's, so merges are left out.
 PATTERN='(feat|fix|perf|refactor|docs|test|ci|build|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
@@ -27,8 +32,11 @@ if ! git cat-file -e "$BASELINE^{commit}" 2> /dev/null; then
     exit 1
 fi
 
-offences=$(git log --no-merges --format='%h %s' "$BASELINE..HEAD" |
+offences=$(git log --no-merges --format='%H %s' "$BASELINE..HEAD" |
     grep -vE "^[0-9a-f]+ $PATTERN" || true)
+for sha in $EXEMPT; do
+    offences=$(grep -v "^$sha " <<< "$offences" || true)
+done
 
 if [ -n "$offences" ]; then
     echo "these commit subjects are not in the conventional form:" >&2

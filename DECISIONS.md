@@ -2497,3 +2497,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** The agent first pushed a branch, following its standing rule to branch before committing on the default branch; the user then asked for the commit to land on `main` directly and the branch to go, which matches how this repository has always taken commits.
 **Outcome:** applied
 **Ref:** commit `test: prune the 150 tests the test-audit bar marks least useful`
+
+## Q168 — interactive/ci-commit-check — gate-resolution
+
+**Question:** `9fff35e` ("Drop CLAUDE.md; Claude Code reads AGENTS.md natively") reached `main` in prose, so the commit-message job (Q110) now fails on every push. How is `main` made green again?
+**Options considered:** reword it by rewriting and force-pushing `main` / move the baseline past it / exempt that one commit by full SHA and file it in `cliff.toml`
+**Chosen:** Exempt it by full SHA in `scripts/check-commit-messages.sh`, and give it a `sha` row in `cliff.toml` that files it under Housekeeping, where `chore:` would have put it.
+**Decided-by:** agent
+**Justification:** Rewriting `main` breaks every clone and every citation of the SHAs after it. Moving the baseline would also stop checking `e640e8f`. An exemption by full SHA covers exactly one commit. Without the `cliff.toml` row, the catch-all parser would still file the commit under "Changes", which is the loss Q110 exists to prevent; git-cliff 2.8.0 renders it under Housekeeping with the row and under Changes without. A scratch-worktree run showed the check still rejects a new prose subject, and rejects `9fff35e` once the exemption is removed.
+**Outcome:** applied
+**Ref:** `scripts/check-commit-messages.sh`, `cliff.toml`

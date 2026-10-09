@@ -45,6 +45,9 @@ tag_pattern = "v[0-9]*"
 # comment before printing. Without them the sections come out alphabetical,
 # which would put the catch-all in the middle rather than at the end.
 commit_parsers = [
+  # Unconventional subjects that reached `main` after the convention (Q168),
+  # filed where their conventional form would have put them.
+  { sha = "9fff35ede68ec116ef0cd04507e68d0a1d836105", group = "<!-- 7 -->Housekeeping" },
   { message = "^feat", group = "<!-- 0 -->Added" },
   { message = "^fix", group = "<!-- 1 -->Fixed" },
   { message = "^refactor", group = "<!-- 2 -->Changed" },

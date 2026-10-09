@@ -727,15 +727,15 @@ async fn the_two_validation_modes_are_told_apart_by_what_was_given() {
 }
 
 #[tokio::test]
-async fn a_posture_integration_secret_is_sent_and_never_answered_with() {
+async fn a_posture_integration_secret_reaches_the_control_plane_as_client_secret() {
     let harness = Setup::new()
         .toolsets("tailnet-posture")
         .tier(tailscale_mcp::meta::Tier::Write)
         .api_answers(
             "POST",
             "/api/v2/tailnet/-/posture/integrations",
-            // What the control plane really does: the secret it was given is
-            // absent from the answer.
+            // The tool passes this answer on unchanged, so a secret echoed in
+            // it would reach the caller. Only the request is checked here.
             Response::json(json!({"id": "pi-example", "provider": "falcon"})),
         )
         .await
@@ -750,16 +750,10 @@ async fn a_posture_integration_secret_is_sent_and_never_answered_with() {
         .await;
 
     assert_eq!(answer["id"], json!("pi-example"));
-    assert!(
-        !serde_json::to_string(&answer)
-            .expect("the answer serialises")
-            .contains("example-secret-value"),
-        "the answer should not carry the secret back: {answer:#?}"
-    );
     assert_eq!(
         harness.control_plane().only_request().json()["clientSecret"],
         json!("example-secret-value"),
-        "and it should have reached the control plane"
+        "the secret should have reached the control plane as `clientSecret`"
     );
 
     harness.shutdown().await;

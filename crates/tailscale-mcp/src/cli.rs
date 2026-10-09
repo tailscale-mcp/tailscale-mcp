@@ -157,7 +157,7 @@ fn is_unrecognised(stderr: &str) -> bool {
 fn needs_operator(stderr: &str) -> bool {
     const MARKERS: &[&str] = &[
         "access denied",
-        "operator",
+        "--operator=",
         "must be run as root",
         "permission denied",
         "you must be root",

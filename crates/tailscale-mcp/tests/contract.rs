@@ -1085,10 +1085,10 @@ fn contracts() -> Vec<Contract> {
         ),
         api_contract!(
             "tailnet_device_invite_create",
-            ok: {"device_id": "n1111111CNTRL", "invites": [{"multi_use": true}]}
+            ok: {"device_id": "n1111111CNTRL", "invites": [{"multiUse": true}]}
                 on "POST" "/api/v2/device/n1111111CNTRL/device-invites" =>
                 Response::json(json!([{"id": "di-example"}])),
-            err: {"device_id": "n1111111CNTRL", "invites": [{"multi_use": true}]}
+            err: {"device_id": "n1111111CNTRL", "invites": [{"multiUse": true}]}
         ),
         api_contract!(
             "tailnet_device_invite_get",

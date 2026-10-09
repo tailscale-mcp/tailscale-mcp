@@ -3,6 +3,41 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 2.0.0 — 2026-10-09
+
+### Added
+
+- **Breaking:** Refuse an argument a tool does not take
+
+### Fixed
+
+- Match the operator hint, not the bare word
+- Refuse a base URL with a query or fragment
+- Refuse a tailnet named . or ..
+
+### Changed
+
+- **Breaking:** Remove the stdin, discovery and file-reading API nothing calls
+- **Breaking:** Remove RequestBuilder::budget
+- **Breaking:** Make every model non-exhaustive, with Default
+
+### Tests
+
+- Prune the 150 tests the test-audit bar marks least useful
+- Send multiUse, the name the invite parameter has
+- A refusal by name reaches no control plane
+- Give every session a fake control plane
+
+### Build and CI
+
+- Exempt 9fff35e from the commit-message check
+- Mark breaking entries, skip four test-first commits
+
+### Housekeeping
+
+- Drop CLAUDE.md; Claude Code reads AGENTS.md natively
+- Re-vendor the API description served on 2026-10-09
+
 ## 1.3.2 — 2026-10-07
 
 ### Fixed

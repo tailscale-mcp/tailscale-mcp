@@ -54,6 +54,7 @@ commit_parsers = [
   { sha = "207b64443c2eaa8ca93a461311a3f7d6e63d9d66", skip = true },
   { sha = "fb217cf9aac96866e53ecd4833d999e3d9873e62", skip = true },
   { sha = "babfa2d28f2664239afeca62a8b6139b857e5a59", skip = true },
+  { sha = "0f9b1a98f94b1b52cd29312193b3b10b6e1a4611", skip = true },
   { message = "^feat", group = "<!-- 0 -->Added" },
   { message = "^fix", group = "<!-- 1 -->Fixed" },
   { message = "^refactor", group = "<!-- 2 -->Changed" },

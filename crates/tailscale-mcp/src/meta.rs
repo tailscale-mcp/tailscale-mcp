@@ -167,9 +167,9 @@ pub enum Toolset {
 }
 
 impl Toolset {
-    /// Every toolset, in listing order. Adding a variant without adding it here
-    /// is caught by `all_is_exhaustive`, which is a test and so cannot be linked
-    /// from documentation built without `cfg(test)`.
+    /// Every toolset, in listing order. A variant missing here cannot be parsed
+    /// from `--toolsets`, so the contract tests, which enable each tool's
+    /// toolset by name, fail on it.
     pub const ALL: &'static [Toolset] = &[
         Self::LocalStatus,
         Self::LocalPrefs,
@@ -238,9 +238,6 @@ impl Toolset {
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.iter().copied().find(|t| t.as_str() == s)
     }
-
-    #[cfg(test)]
-    fn all_is_exhaustive() {}
 }
 
 impl fmt::Display for Toolset {
@@ -352,96 +349,5 @@ impl ToolMeta {
             // Both surfaces reach a network the server does not control.
             open_world: true,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn toolset_all_covers_every_variant() {
-        // A cheap stand-in for exhaustiveness: every name round-trips, and the
-        // list has no duplicates. A new variant missing from ALL fails the
-        // count assertions in the registry tests.
-        let mut names: Vec<&str> = Toolset::ALL.iter().map(|t| t.as_str()).collect();
-        names.sort_unstable();
-        let before = names.len();
-        names.dedup();
-        assert_eq!(before, names.len(), "duplicate toolset name");
-
-        for t in Toolset::ALL {
-            assert_eq!(Toolset::parse(t.as_str()), Some(*t));
-        }
-        Toolset::all_is_exhaustive();
-    }
-
-    #[test]
-    fn toolset_names_are_prefixed_by_surface() {
-        for t in Toolset::ALL {
-            let expected = match t.surface() {
-                Surface::Local => "local-",
-                Surface::Tailnet => "tailnet-",
-            };
-            assert!(
-                t.as_str().starts_with(expected),
-                "{t} does not carry its surface prefix"
-            );
-        }
-    }
-
-    #[test]
-    fn tiers_order_from_least_to_most_dangerous() {
-        assert!(Tier::Read < Tier::Write);
-        assert!(Tier::Write < Tier::Destructive);
-    }
-
-    #[test]
-    fn annotations_follow_the_tier() {
-        let read = ToolMeta {
-            name: "tailscale_status",
-            toolset: Toolset::LocalStatus,
-            tier: Tier::Read,
-            summary: "",
-            self_severing: false,
-            severs_local_node: false,
-            requires_confirmation: false,
-            idempotent: true,
-            varying_tier: false,
-            min_version: None,
-            platforms: None,
-        };
-        assert!(read.annotations().read_only);
-        assert!(!read.annotations().destructive);
-        assert!(read.annotations().open_world);
-
-        let destructive = ToolMeta {
-            tier: Tier::Destructive,
-            ..read
-        };
-        assert!(!destructive.annotations().read_only);
-        assert!(destructive.annotations().destructive);
-    }
-
-    #[test]
-    fn a_varying_tier_is_annotated_at_its_worst_case() {
-        // The passthrough sits at the read tier so that a read-only session can
-        // still reach the commands it may run, but a client must not be told
-        // that calling it changes nothing.
-        let passthrough = ToolMeta {
-            name: "tailscale_run",
-            toolset: Toolset::LocalPassthrough,
-            tier: Tier::Read,
-            summary: "",
-            self_severing: false,
-            severs_local_node: false,
-            requires_confirmation: false,
-            idempotent: false,
-            varying_tier: true,
-            min_version: None,
-            platforms: None,
-        };
-        assert!(!passthrough.annotations().read_only);
-        assert!(passthrough.annotations().destructive);
     }
 }

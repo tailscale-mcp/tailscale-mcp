@@ -733,22 +733,6 @@ mod tests {
     }
 
     #[test]
-    fn every_code_has_a_distinct_stable_name() {
-        let mut names: Vec<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
-        assert_eq!(names.len(), 14, "the code vocabulary is fixed at fourteen");
-        names.sort_unstable();
-        let before = names.len();
-        names.dedup();
-        assert_eq!(before, names.len(), "duplicate error code name");
-        for name in names {
-            assert!(
-                name.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
-                "{name} is not snake_case"
-            );
-        }
-    }
-
-    #[test]
     fn codes_serialise_as_their_documented_strings() {
         for code in ErrorCode::ALL {
             let json = serde_json::to_string(code).expect("codes serialise");
@@ -847,15 +831,6 @@ mod tests {
     }
 
     #[test]
-    fn several_secrets_in_one_string_are_all_removed() {
-        let out = redact("old tskey-auth-example-1 new tskey-auth-example-2 done");
-        assert_eq!(
-            out,
-            "old tskey-auth-[redacted] new tskey-auth-[redacted] done"
-        );
-    }
-
-    #[test]
     fn prose_that_merely_mentions_a_key_survives() {
         // No token follows, so there is nothing to remove.
         assert_eq!(
@@ -864,11 +839,6 @@ mod tests {
         );
         // A word ending in the prefix is not the start of a token.
         assert_eq!(redact("see mytskey-auth-notes"), "see mytskey-auth-notes");
-    }
-
-    #[test]
-    fn clean_strings_are_borrowed_not_copied() {
-        assert!(matches!(redact("nothing to see here"), Cow::Borrowed(_)));
     }
 
     #[test]

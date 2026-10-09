@@ -346,15 +346,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_clean_exit_is_not_an_error() {
-        let ctx = context(StubBackend::ok("1.102.2\n"), None);
-        let text = run_text(&ctx, &meta(None), Invocation::read(["version"]))
-            .await
-            .expect("should succeed");
-        assert_eq!(text.trim(), "1.102.2");
-    }
-
-    #[tokio::test]
     async fn an_unknown_subcommand_reports_the_minimum_version() {
         let ctx = context(
             StubBackend::failure(1, "tailscale service: unknown subcommand \"list\"\n"),
@@ -401,63 +392,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_known_minimum_is_checked_before_the_command_runs() {
-        let ctx = context(StubBackend::ok(""), Some(Version::new(1, 78, 0)));
-        let err = version_permits(&ctx, &meta(Some("1.94"))).expect_err("should refuse");
-        assert_eq!(err.code, ErrorCode::UnsupportedVersion);
-        version_permits(&ctx, &meta(Some("1.72"))).expect("older requirement is met");
-        version_permits(&ctx, &meta(None)).expect("no requirement is always met");
-    }
-
-    #[tokio::test]
-    async fn a_permission_refusal_is_reported_as_needing_an_operator() {
-        let ctx = context(
-            StubBackend::failure(
-                1,
-                "Access denied: this operation requires the operator to be set\n",
-            ),
-            None,
-        );
-        let err = run(&ctx, &meta(None), Invocation::read(["up"]))
-            .await
-            .expect_err("should fail");
-        assert_eq!(err.code, ErrorCode::NeedsOperator);
-        assert!(
-            err.hint.is_some(),
-            "an operator error should say what to do"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_missing_target_is_reported_as_not_found() {
-        let ctx = context(StubBackend::failure(1, "no such peer: laptop\n"), None);
-        let err = run(&ctx, &meta(None), Invocation::read(["ping", "laptop"]))
-            .await
-            .expect_err("should fail");
-        assert_eq!(err.code, ErrorCode::NotFound);
-    }
-
-    #[tokio::test]
-    async fn anything_else_is_a_plain_command_failure() {
-        let ctx = context(StubBackend::failure(2, "something went wrong\n"), None);
-        let err = run(&ctx, &meta(None), Invocation::read(["status"]))
-            .await
-            .expect_err("should fail");
-        assert_eq!(err.code, ErrorCode::CliFailed);
-        assert_eq!(err.exit_code, Some(2));
-        assert_eq!(err.stderr.as_deref(), Some("something went wrong"));
-    }
-
-    #[tokio::test]
-    async fn a_missing_binary_disables_the_surface_rather_than_failing_the_command() {
-        let ctx = context(StubBackend::missing(), None);
-        let err = run(&ctx, &meta(None), Invocation::read(["status"]))
-            .await
-            .expect_err("should fail");
-        assert_eq!(err.code, ErrorCode::BackendUnavailable);
-    }
-
-    #[tokio::test]
     async fn a_secret_in_the_error_stream_does_not_reach_the_caller() {
         let ctx = context(
             StubBackend::failure(1, "bad key tskey-auth-example1CNTRL-secretpart\n"),
@@ -473,19 +407,6 @@ mod tests {
                 .contains("secretpart"),
             "{err:?}"
         );
-    }
-
-    #[tokio::test]
-    async fn the_version_probe_reads_the_first_line() {
-        let backend = StubBackend::ok("1.102.2\n  go version: go1.24.1\n");
-        assert_eq!(probe_version(&backend).await, Some(Version::new(1, 102, 2)));
-    }
-
-    #[tokio::test]
-    async fn the_version_probe_gives_up_quietly() {
-        assert_eq!(probe_version(&StubBackend::missing()).await, None);
-        assert_eq!(probe_version(&StubBackend::failure(1, "no")).await, None);
-        assert_eq!(probe_version(&StubBackend::ok("not a version")).await, None);
     }
 
     /// One reading of status, two answers out of it.

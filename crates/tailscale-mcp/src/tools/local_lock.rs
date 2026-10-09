@@ -172,18 +172,6 @@ pub struct LockInitParams {
     pub gen_disablement_for_support: bool,
 }
 
-/// Hand-written rather than derived so that the empty value matches the schema:
-/// a derived default would mint zero disablements, which this tool refuses.
-impl Default for LockInitParams {
-    fn default() -> Self {
-        Self {
-            trusted_keys: Vec::new(),
-            gen_disablements: default_gen_disablements(),
-            gen_disablement_for_support: false,
-        }
-    }
-}
-
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 pub struct LockKeysParams {
     /// The tailnet-lock keys to trust, each beginning with `tlpub:`.
@@ -760,7 +748,8 @@ mod tests {
             |ctx, p| async move { lock_init(&ctx, p).await },
             LockInitParams {
                 trusted_keys: vec![TLPUB.to_owned()],
-                ..LockInitParams::default()
+                gen_disablements: 1,
+                gen_disablement_for_support: false,
             },
         )
         .await;
@@ -778,13 +767,6 @@ mod tests {
                 .is_some_and(|text| text.contains(HEX)),
             "the client's own text is kept as well: {answer}"
         );
-    }
-
-    /// The struct's empty value has to agree with the schema's, or a caller that
-    /// omits the field gets a refusal the schema said would not happen.
-    #[test]
-    fn the_default_number_of_disablements_is_the_one_the_schema_advertises() {
-        assert_eq!(LockInitParams::default().gen_disablements, 1);
     }
 
     #[tokio::test]
@@ -1074,24 +1056,6 @@ mod tests {
         )
         .await;
         assert_eq!(error.code, ErrorCode::InvalidArgs);
-    }
-
-    #[tokio::test]
-    async fn disabling_this_node_only_says_so() {
-        let (answer, argv) = against(
-            Reply::ok(""),
-            |ctx, p| async move { lock_local_disable(&ctx, p).await },
-            NoParams {},
-        )
-        .await;
-
-        assert_eq!(only(&argv), ["lock", "local-disable"]);
-        assert!(
-            answer["outcome"]
-                .as_str()
-                .is_some_and(|text| text.contains("this node")),
-            "{answer}"
-        );
     }
 
     // -- revoke-keys --------------------------------------------------------

@@ -796,32 +796,6 @@ mod tests {
     }
 
     #[test]
-    fn the_parser_accepts_the_flags_the_help_documents() {
-        let cli = Cli::try_parse_from([
-            "tailscale-mcp",
-            "--preset",
-            "full",
-            "--toolsets",
-            "+local-debug",
-            "--allow-destructive",
-            "--no-local",
-            "--cli-path",
-            "/opt/tailscale",
-            "--max-result-bytes",
-            "2048",
-            "--log",
-            "debug",
-        ])
-        .expect("the flags parse");
-        assert_eq!(cli.preset.as_deref(), Some("full"));
-        assert_eq!(cli.toolsets.as_deref(), Some("+local-debug"));
-        assert!(cli.allow_destructive);
-        assert!(cli.no_local);
-        assert_eq!(cli.cli_path, Some(PathBuf::from("/opt/tailscale")));
-        assert_eq!(cli.max_result_bytes, Some(2048));
-    }
-
-    #[test]
     fn a_leading_minus_in_a_toolset_list_is_not_read_as_a_flag() {
         let cli = Cli::try_parse_from(["tailscale-mcp", "--toolsets", "-tailnet-dns"])
             .expect("a removal parses");

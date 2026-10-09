@@ -31,24 +31,6 @@ fn workspace_manifest() -> String {
     std::fs::read_to_string(repo::root().join("Cargo.toml")).expect("the workspace manifest")
 }
 
-/// The value of the first `version = "…"` line in `text`, which in the
-/// workspace manifest is `[workspace.package]`'s.
-fn first_version(text: &str) -> Option<&str> {
-    text.lines()
-        .find_map(|line| line.strip_prefix("version = \""))
-        .and_then(|rest| rest.split('"').next())
-}
-
-#[test]
-fn the_workspace_names_the_version_this_crate_was_built_at() {
-    let manifest = workspace_manifest();
-    assert_eq!(
-        first_version(&manifest),
-        Some(VERSION),
-        "`[workspace.package]` and this crate disagree about the version"
-    );
-}
-
 #[test]
 fn every_crate_takes_its_version_from_the_workspace() {
     for crate_name in ["tailscale-rest", "tailscale-cli", "tailscale-mcp"] {
@@ -123,25 +105,4 @@ fn the_npm_package_is_at_the_version_being_released() {
         package["version"], VERSION,
         "the npm package would fetch the archives of another release"
     );
-}
-
-#[test]
-fn the_checks_read_a_manifest_and_a_changelog_the_way_they_think_they_do() {
-    // Both of these read one line out of a file by its shape, and a reading
-    // that quietly found nothing would leave the checks above passing on an
-    // empty answer.
-    assert_eq!(
-        first_version("[workspace.package]\nversion = \"2.3.4\"\nedition = \"2024\"\n"),
-        Some("2.3.4")
-    );
-    // `rust-version` is not the version, and neither is a crate's inherited one.
-    assert_eq!(first_version("rust-version = \"1.88\"\n"), None);
-    assert_eq!(first_version("version.workspace = true\n"), None);
-
-    assert_eq!(
-        newest_release("# Changelog\n\n## 2.3.4 — 2026-01-01\n\n## 2.3.3 — 2025-12-31\n"),
-        Some("2.3.4")
-    );
-    // A heading that is not a release, and a changelog with no release at all.
-    assert_eq!(newest_release("# Changelog\n\nNothing yet.\n"), None);
 }

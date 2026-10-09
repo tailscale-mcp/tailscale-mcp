@@ -451,24 +451,6 @@ mod tests {
 
     use super::*;
 
-    /// The reserve is spent, and then refused.
-    #[test]
-    fn a_burst_is_allowed_up_to_the_reserve_and_then_refused() {
-        let limiter = Limiter::new();
-        for spent in 0..Limiter::BURST as usize {
-            assert!(
-                limiter.allow(),
-                "the reserve is {} and this is request {}",
-                Limiter::BURST,
-                spent + 1
-            );
-        }
-        assert!(
-            !limiter.allow(),
-            "the reserve is spent, so the next one waits"
-        );
-    }
-
     /// And comes back, at the rate it says.
     ///
     /// The clock is moved rather than waited on: a test that sleeps for a
@@ -529,40 +511,5 @@ mod tests {
     #[test]
     fn a_nameless_peer_is_not_offered() {
         assert!(peer_candidate(&serde_json::json!({"TailscaleIPs": ["100.64.0.9"]})).is_none());
-    }
-
-    /// And one with no MagicDNS name falls back to its hostname.
-    #[test]
-    fn a_peer_without_a_magicdns_name_is_offered_as_its_hostname() {
-        let peer = serde_json::json!({"HostName": "printer", "DNSName": ""});
-        assert_eq!(peer_candidate(&peer).expect("a peer").value, "printer");
-    }
-
-    /// Only the four slots, and only under the names the prompts declare.
-    #[test]
-    fn a_slot_is_recognised_by_its_reference_and_its_argument() {
-        let device = Reference::for_resource(DEVICE_TEMPLATE);
-        assert_eq!(slot_for(&device, "device_id"), Some(Slot::Device));
-        assert_eq!(slot_for(&device, "id"), None);
-        assert_eq!(
-            slot_for(&Reference::for_prompt("diagnose_connectivity"), "peer"),
-            Some(Slot::Peer)
-        );
-        assert_eq!(
-            slot_for(&Reference::for_prompt("audit_tailnet_access"), "subject"),
-            Some(Slot::Subject)
-        );
-        // Free text, and so nothing to draw on.
-        assert_eq!(
-            slot_for(&Reference::for_prompt("review_policy_change"), "goal"),
-            None
-        );
-        assert_eq!(
-            slot_for(
-                &Reference::for_resource("tailnet://device/{other}"),
-                "other"
-            ),
-            None
-        );
     }
 }

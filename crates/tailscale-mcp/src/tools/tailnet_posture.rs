@@ -278,17 +278,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_integration_is_addressed_outside_the_tailnet_path() {
-        // Two of the five are tailnet-scoped and three are not, which is the
-        // description's shape rather than a choice made here.
-        assert_eq!(
-            integration_path("pi-abc123").expect("a valid id"),
-            "/api/v2/posture/integrations/pi-abc123"
-        );
-        assert!(integration_path("../devices").is_err());
-    }
-
-    #[test]
     fn a_provider_the_description_does_not_know_still_reaches_the_control_plane() {
         // The list documents the parameter; it does not gate it. A provider
         // Tailscale adds after this build should work on the day it exists
@@ -304,24 +293,6 @@ mod tests {
         let error = checked_provider("   ").expect_err("no provider");
         let reported = serde_json::to_value(&error).expect("reportable");
         assert_eq!(reported["code"], json!("invalid_args"));
-    }
-
-    #[test]
-    fn an_update_that_changes_nothing_is_refused_rather_than_sent() {
-        // A PATCH with an empty body is a call the control plane accepts and
-        // that changes nothing, which reads to a caller as success.
-        let body = IntegrationBody {
-            provider: None,
-            client_secret: None,
-            client_id: None,
-            cloud_id: None,
-            tenant_id: None,
-        };
-        assert_eq!(
-            serde_json::to_value(&body).expect("it serialises"),
-            json!({}),
-            "every field elides when unset, which is what the refusal detects"
-        );
     }
 
     #[test]

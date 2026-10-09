@@ -152,10 +152,6 @@ impl Registry {
         self.entries.iter().map(|e| e.meta).collect()
     }
 
-    pub fn entries(&self) -> &[ToolEntry] {
-        &self.entries
-    }
-
     pub fn get(&self, name: &str) -> Option<&ToolEntry> {
         self.by_name.get(name).map(|index| &self.entries[*index])
     }
@@ -504,16 +500,6 @@ mod tests {
     }
 
     #[test]
-    fn a_self_severing_tool_requires_confirmation_without_being_told_twice() {
-        let down = registry().get("tailscale_down").expect("declared").meta;
-        assert!(down.self_severing);
-        assert!(
-            down.requires_confirmation,
-            "severing must imply confirmation"
-        );
-    }
-
-    #[test]
     fn optional_settings_land_where_they_are_given() {
         let delete = registry()
             .get("tailnet_device_delete")
@@ -525,30 +511,6 @@ mod tests {
     }
 
     #[test]
-    fn every_tool_has_exactly_one_row_and_a_usable_name() {
-        let registry = registry();
-        let mut names: Vec<&str> = registry.entries().iter().map(|e| e.meta.name).collect();
-        let before = names.len();
-        names.sort_unstable();
-        names.dedup();
-        assert_eq!(before, names.len(), "a tool appears twice");
-
-        for name in names {
-            assert!(!name.is_empty());
-            assert!(name.len() <= MAX_NAME_LEN, "{name} is too long");
-            assert!(
-                name.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'),
-                "{name} uses a character the protocol does not allow"
-            );
-            assert!(
-                name.starts_with("tailscale_") || name.starts_with("tailnet_"),
-                "{name} does not say which surface it acts on"
-            );
-        }
-    }
-
-    #[test]
     fn a_duplicate_name_is_refused_at_construction() {
         let mut entries = declared::entries();
         entries.push(entries[0].clone());
@@ -556,84 +518,6 @@ mod tests {
             Registry::new(entries).err(),
             Some(RegistryError::DuplicateName("tailscale_status"))
         );
-    }
-
-    #[test]
-    fn annotations_are_derived_from_the_tier_not_declared_beside_it() {
-        let registry = registry();
-        let status = registry
-            .get("tailscale_status")
-            .expect("declared")
-            .describe()
-            .expect("a valid schema");
-        let a = status.annotations.expect("annotations are set");
-        assert_eq!(a.read_only_hint, Some(true));
-        assert_eq!(a.destructive_hint, Some(false));
-        assert_eq!(a.idempotent_hint, Some(true));
-        assert_eq!(a.open_world_hint, Some(true));
-
-        let down = registry
-            .get("tailscale_down")
-            .expect("declared")
-            .describe()
-            .expect("a valid schema");
-        let a = down.annotations.expect("annotations are set");
-        assert_eq!(a.read_only_hint, Some(false));
-        assert_eq!(a.destructive_hint, Some(true));
-    }
-
-    #[test]
-    fn both_naming_conventions_survive_schema_generation() {
-        let tool = registry()
-            .get("tailnet_device_delete")
-            .expect("declared")
-            .describe()
-            .expect("a valid schema");
-        let properties = tool
-            .input_schema
-            .get("properties")
-            .and_then(Value::as_object)
-            .expect("an object schema with properties");
-
-        // Ours, in the casing we chose.
-        assert!(
-            properties.contains_key("include_peers"),
-            "server-owned parameters stay snake_case: {properties:?}"
-        );
-        // Theirs, in the casing they chose.
-        assert!(
-            properties.contains_key("keyExpiryDisabled"),
-            "control-plane fields keep their own shape: {properties:?}"
-        );
-    }
-
-    #[test]
-    fn the_confirmation_flag_appears_only_where_it_is_required() {
-        let registry = registry();
-        let confirming = registry
-            .get("tailscale_down")
-            .expect("declared")
-            .describe()
-            .expect("a valid schema");
-        let properties = confirming
-            .input_schema
-            .get("properties")
-            .and_then(Value::as_object)
-            .expect("properties");
-        assert!(properties.contains_key(CONFIRM_PARAM));
-
-        let plain = registry
-            .get("tailscale_status")
-            .expect("declared")
-            .describe()
-            .expect("a valid schema");
-        // A parameterless tool need not have a `properties` key at all; what
-        // matters is that nothing added one behind our back.
-        let properties = plain
-            .input_schema
-            .get("properties")
-            .and_then(Value::as_object);
-        assert!(properties.is_none_or(|p| !p.contains_key(CONFIRM_PARAM)));
     }
 
     #[test]
@@ -667,55 +551,5 @@ mod tests {
             .resolve("tailscale_down", args, &open_gate())
             .expect_err("`yes` is not a boolean");
         assert_eq!(err.code, crate::error::ErrorCode::InvalidArgs);
-    }
-
-    #[test]
-    fn the_router_is_the_table_filtered_by_the_gate() {
-        let registry = registry();
-        let gate = Gate::unchecked(
-            BTreeSet::from([Toolset::LocalStatus, Toolset::LocalPrefs]),
-            Tier::Read,
-            BTreeSet::new(),
-        );
-        let visible: Vec<&str> = registry
-            .visible(&gate)
-            .iter()
-            .map(|e| e.meta.name)
-            .collect();
-        assert_eq!(visible, ["tailscale_status"]);
-
-        // Hidden, but a call still gets a reasoned refusal rather than a
-        // confusing "no such tool".
-        let err = registry
-            .resolve("tailscale_down", JsonObject::new(), &gate)
-            .expect_err("hidden tools do not run");
-        assert_eq!(err.code, crate::error::ErrorCode::NotPermitted);
-        assert!(
-            err.hint
-                .as_deref()
-                .is_some_and(|h| h.contains("--allow-destructive")),
-            "{err:?}"
-        );
-    }
-
-    #[test]
-    fn an_unknown_name_is_not_found() {
-        let err = registry()
-            .resolve("tailscale_nonesuch", JsonObject::new(), &open_gate())
-            .expect_err("no such tool");
-        assert_eq!(err.code, crate::error::ErrorCode::NotFound);
-    }
-
-    #[test]
-    fn visible_tools_are_listed_in_a_stable_order() {
-        let registry = registry();
-        let names: Vec<&str> = registry
-            .visible(&open_gate())
-            .iter()
-            .map(|e| e.meta.name)
-            .collect();
-        let mut sorted = names.clone();
-        sorted.sort_unstable();
-        assert_eq!(names, sorted);
     }
 }

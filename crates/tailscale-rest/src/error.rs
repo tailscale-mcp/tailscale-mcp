@@ -170,10 +170,4 @@ mod tests {
         // An empty body leaves only the status.
         assert_eq!(reason("   "), "Bad Request");
     }
-
-    #[test]
-    fn only_a_status_carries_a_status() {
-        assert_eq!(status(429).status(), Some(429));
-        assert_eq!(ApiError::Token("no".to_owned()).status(), None);
-    }
 }

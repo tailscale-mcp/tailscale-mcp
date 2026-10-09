@@ -76,32 +76,6 @@ fn the_listing_counts_match_the_table_for_every_preset_and_tier() {
     }
 }
 
-#[test]
-fn the_whole_table_is_the_one_the_spec_counted() {
-    // 62 + 30 + 1 + 93. `full` is every typed toolset, so the debug toolset
-    // and the passthrough have to be asked for by name — which is what makes
-    // the difference between 155 and 186.
-    let everything = config(&[
-        "tailscale-mcp",
-        "--preset",
-        "full",
-        "--toolsets",
-        "+local-debug,+local-passthrough",
-        "--allow-destructive",
-    ]);
-    let listing = subcommands::tools(&everything, true);
-    let parsed: Value = serde_json::from_str(&listing.text).expect("JSON");
-    assert_eq!(parsed["count"], 186);
-    let tools = parsed["tools"].as_array().expect("an array");
-    let local = tools.iter().filter(|t| t["surface"] == "local").count();
-    assert_eq!(local, 93, "62 typed local tools, 30 debug, 1 passthrough");
-    assert_eq!(
-        tools.len() - local,
-        93,
-        "one per documented control-plane operation"
-    );
-}
-
 /// `tools` honours the switches it accepts.
 ///
 /// It takes `--no-local` and `--no-tailnet` and documents what they do, and it

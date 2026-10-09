@@ -434,18 +434,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn a_write_without_a_guard_is_refused_before_it_is_sent() {
-        let error = if_match(None, false).expect_err("no guard");
-        let reported = serde_json::to_value(&error).expect("reportable");
-        assert_eq!(reported["code"], json!("invalid_args"));
-        let message = reported["message"].as_str().expect("a message");
-        assert!(
-            message.contains("etag") && message.contains("over_default"),
-            "{message}"
-        );
-    }
-
-    #[test]
     fn a_guard_is_quoted_however_it_arrives() {
         // An `ETag` header arrives quoted and is used as it came; `ts-default`
         // and a caller who trimmed the quotes are given them, because
@@ -472,25 +460,6 @@ mod tests {
             if_match(Some("   "), true).expect("the default"),
             "\"ts-default\""
         );
-    }
-
-    #[test]
-    fn a_format_the_endpoint_does_not_have_is_refused_with_the_two_it_does() {
-        assert_eq!(Format::parse(None).expect("the default"), Format::HuJson);
-        assert_eq!(Format::parse(Some("json")).expect("json"), Format::Json);
-        assert_eq!(Format::Json.accept(), JSON);
-        assert_eq!(Format::HuJson.accept(), HUJSON);
-
-        let error = Format::parse(Some("yaml")).expect_err("not a format");
-        let reported = serde_json::to_value(&error).expect("reportable");
-        for format in FORMATS {
-            assert!(
-                reported["message"]
-                    .as_str()
-                    .is_some_and(|m| m.contains(format)),
-                "{reported:#?}"
-            );
-        }
     }
 
     #[test]

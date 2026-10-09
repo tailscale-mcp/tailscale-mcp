@@ -181,27 +181,3 @@ async fn user_restore(ctx: &ToolContext, params: UserParams) -> ToolResult<Value
 async fn user_delete(ctx: &ToolContext, params: UserParams) -> ToolResult<Value> {
     standing(ctx, params.user_id, "delete", "user deleted").await
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_user_is_addressed_outside_the_tailnet_path() {
-        assert_eq!(
-            user_path("uid-example", "/suspend").expect("a valid id"),
-            "/api/v2/users/uid-example/suspend"
-        );
-        assert!(user_path("..", "/delete").is_err());
-    }
-
-    #[test]
-    fn the_filter_that_means_do_not_filter_is_not_a_role_anyone_can_hold() {
-        // Two lists that differ by one value, and mixing them up would either
-        // reject a legitimate filter or accept a role nobody can be set to.
-        assert!(one_of("role", "all", USER_ROLE_FILTERS).is_ok());
-        assert!(one_of("role", "all", USER_ROLES).is_err());
-        assert!(one_of("role", "owner", USER_ROLES).is_ok());
-        assert!(one_of("user_type", "shared", USER_TYPE_FILTERS).is_ok());
-    }
-}

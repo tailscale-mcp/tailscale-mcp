@@ -496,11 +496,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_identity_matches_nothing() {
-        assert!(!SelfIdentity::default().matches("anything"));
-    }
-
-    #[test]
     fn a_context_with_no_credential_names_the_variables_that_would_give_it_one() {
         // Reachable only when a session has the tailnet surface but no client:
         // startup switches the surface off when there is no credential, so the

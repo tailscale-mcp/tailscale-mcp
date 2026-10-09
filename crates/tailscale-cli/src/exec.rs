@@ -494,18 +494,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_child_environment_is_an_allow_list() {
-        let env = minimal_env();
-        assert!(!env.contains_key(std::ffi::OsStr::new("TAILSCALE_API_KEY")));
-        assert!(!env.contains_key(std::ffi::OsStr::new("TS_DEBUG_MUCK")));
-        assert_eq!(
-            env.get(std::ffi::OsStr::new("LC_ALL"))
-                .map(|v| v.as_os_str()),
-            Some(std::ffi::OsStr::new("C"))
-        );
-    }
-
-    #[test]
     fn a_named_binary_that_is_not_there_is_an_error_not_a_fallback() {
         let err =
             CliBackend::discover_with(Some(std::ffi::OsStr::new("/definitely/not/here/tailscale")))
@@ -541,18 +529,6 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
             .expect("make the stub executable");
         path
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_candidate_that_starts_the_gui_does_not_answer_as_the_cli() {
-        // Verbatim what the standalone application's own executable does when
-        // it is handed the environment `minimal_env` builds: that message, on
-        // standard output, and a zero exit. Neither the status nor the stream
-        // it chose tells it apart from a version, so only the shape can.
-        let dir = tempfile::tempdir().expect("a temp dir");
-        let path = stub_named(&dir, "tailscale", STARTS_THE_GUI);
-        assert!(!answers_as_cli(&path));
     }
 
     #[cfg(unix)]
@@ -641,12 +617,5 @@ mod tests {
                 path.display()
             );
         }
-    }
-
-    #[test]
-    fn an_invocation_renders_without_a_shell_anywhere_near_it() {
-        let inv = Invocation::read(["ping", "--c=1", "host with spaces"]);
-        assert_eq!(inv.display(), "tailscale ping --c=1 host with spaces");
-        assert_eq!(inv.args.len(), 3, "the arguments stay separate");
     }
 }

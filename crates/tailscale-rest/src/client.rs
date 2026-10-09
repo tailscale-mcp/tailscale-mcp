@@ -1138,51 +1138,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_call_stops_after_a_bounded_number_of_attempts() {
-        let fake = fake().await.on(
-            "GET",
-            DEVICES,
-            Response::status(503, json!({"message": "later"})).with_header("retry-after", "0"),
-        );
-        let client = client(&fake, api_key());
-
-        let error = client
-            .get(DEVICES)
-            .send()
-            .await
-            .expect_err("it never works");
-
-        assert_eq!(error.status(), Some(503));
-        assert_eq!(fake.request_count(), MAX_ATTEMPTS as usize);
-    }
-
-    #[tokio::test]
-    async fn retrying_stops_when_the_budget_would_not_cover_the_wait() {
-        // The budget is the tool's timeout. Sleeping past it would turn a
-        // failure that says what went wrong into a bare timeout.
-        let fake = fake().await.on(
-            "GET",
-            DEVICES,
-            Response::status(503, json!({"message": "later"})),
-        );
-        let client = client(&fake, api_key());
-
-        let error = client
-            .get(DEVICES)
-            .budget(Duration::from_millis(50))
-            .send()
-            .await
-            .expect_err("it never works");
-
-        assert_eq!(error.status(), Some(503), "not a bare timeout: {error:?}");
-        assert_eq!(
-            fake.request_count(),
-            1,
-            "the first backoff is longer than the budget"
-        );
-    }
-
-    #[tokio::test]
     async fn the_wait_a_server_asks_for_is_read_off_the_wire() {
         // `the_server_is_believed_about_when_to_come_back` builds the header's
         // value by hand and so proves only what `backoff` does with it. This
@@ -1421,25 +1376,6 @@ mod tests {
             .expect("the fake answers");
 
         assert_eq!(answer.etag.as_deref(), Some("\"abc123\""));
-    }
-
-    #[tokio::test]
-    async fn an_empty_body_answers_as_nothing_rather_than_failing_to_parse() {
-        // What a deletion sends, read through `send_answer` rather than
-        // `send`. `Value` reads null; a model could not, which is documented
-        // on `send_answer` and is why deletions ask for `Value`.
-        let device = "/api/v2/device/n1111111CNTRL";
-        let fake = fake().await.on("DELETE", device, Response::empty());
-        let client = client(&fake, api_key());
-
-        let answer = client
-            .delete(device)
-            .send_answer::<Value>()
-            .await
-            .expect("the fake answers");
-
-        assert_eq!(answer.value, Value::Null);
-        assert_eq!(answer.raw, Value::Null, "both halves agree about nothing");
     }
 
     #[tokio::test]

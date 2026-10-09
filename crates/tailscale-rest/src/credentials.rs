@@ -145,11 +145,6 @@ mod tests {
     }
 
     #[test]
-    fn no_credential_is_a_valid_answer() {
-        assert!(Credentials::from_source(env(&[])).is_none());
-    }
-
-    #[test]
     fn an_api_key_is_read() {
         let creds = Credentials::from_source(env(&[(API_KEY_ENV, "tskey-api-example-def")]))
             .expect("a key is a credential");

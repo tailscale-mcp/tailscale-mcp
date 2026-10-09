@@ -816,24 +816,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn each_platform_preference_is_offered_only_where_it_exists() {
-        for (setting, platforms) in [
-            ("snat_subnet_routes", LINUX_ONLY),
-            ("stateful_filtering", LINUX_ONLY),
-            ("netfilter_mode", LINUX_ONLY),
-            ("unattended", WINDOWS_ONLY),
-        ] {
-            let allowed = platforms.contains(&std::env::consts::OS);
-            assert_eq!(
-                only_on(setting, platforms).is_ok(),
-                allowed,
-                "{setting} on {}",
-                std::env::consts::OS
-            );
-        }
-    }
-
     // -- secrets --------------------------------------------------------------
 
     #[tokio::test]
@@ -1114,24 +1096,6 @@ mod tests {
     }
 
     // -- the toolset itself ---------------------------------------------------
-
-    #[test]
-    fn the_toolset_holds_the_eight_commands_that_change_this_node() {
-        let names: Vec<_> = entries().iter().map(|e| e.meta.name).collect();
-        assert_eq!(
-            names,
-            [
-                "tailscale_prefs_get",
-                "tailscale_prefs_set",
-                "tailscale_up",
-                "tailscale_down",
-                "tailscale_login",
-                "tailscale_logout",
-                "tailscale_switch_profile",
-                "tailscale_switch_remove",
-            ]
-        );
-    }
 
     #[test]
     fn everything_that_can_cut_the_connection_asks_first() {

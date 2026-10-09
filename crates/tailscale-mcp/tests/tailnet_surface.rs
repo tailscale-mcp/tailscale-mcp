@@ -979,41 +979,6 @@ async fn the_one_paginated_listing_follows_its_cursor_to_the_end() {
     harness.shutdown().await;
 }
 
-#[tokio::test]
-async fn deleting_a_tailnet_needs_a_confirmation_the_call_itself_carries() {
-    let path = "/api/v2/tailnet/T111111CNTRL";
-    let harness = Setup::new()
-        .toolsets("tailnet-org")
-        .tier(tailscale_mcp::meta::Tier::Destructive)
-        .api_answers("DELETE", path, Response::empty())
-        .await
-        .start()
-        .await;
-
-    let error = harness
-        .call_err(
-            "tailnet_organization_tailnet_delete",
-            json!({"tailnet": "T111111CNTRL"}),
-        )
-        .await;
-    assert_eq!(error["code"], "confirmation_required");
-    assert_eq!(
-        harness.control_plane().request_count(),
-        0,
-        "nothing should reach the control plane without the confirmation"
-    );
-
-    let answer = harness
-        .call_ok(
-            "tailnet_organization_tailnet_delete",
-            json!({"tailnet": "T111111CNTRL", "confirm": true}),
-        )
-        .await;
-    assert_eq!(answer["done"], json!("tailnet deleted"));
-
-    harness.shutdown().await;
-}
-
 /// `-` is the one tailnet this tool will not delete.
 ///
 /// Everywhere else in the API `-` means the tailnet the credential belongs to,

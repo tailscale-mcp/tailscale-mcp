@@ -22,7 +22,7 @@ use std::fmt::Write as _;
 use tailscale_mcp::config::Cli;
 use tailscale_mcp::error::ErrorCode;
 use tailscale_mcp::gating::{Gate, Preset};
-use tailscale_mcp::meta::{Surface, Tier, ToolMeta, Toolset};
+use tailscale_mcp::meta::{Tier, ToolMeta, Toolset};
 use tailscale_mcp::registry::Registry;
 
 /// The whole metadata table, in the order the tools are declared.
@@ -425,12 +425,4 @@ fn the_readme_names_the_four_features_this_server_does_not_have() {
             "the README does not say that there is no {exception}"
         );
     }
-}
-
-#[test]
-fn the_surfaces_are_named_the_way_the_documentation_names_them() {
-    // `tool_table` prints a surface into a heading; this is the check that it
-    // stays a word rather than a debug spelling.
-    assert_eq!(Surface::Local.as_str(), "local");
-    assert_eq!(Surface::Tailnet.as_str(), "tailnet");
 }

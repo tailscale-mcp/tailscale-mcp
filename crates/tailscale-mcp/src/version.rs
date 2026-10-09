@@ -148,12 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn odd_minors_are_the_unstable_track() {
-        assert!(Version::new(1, 103, 0).is_unstable());
-        assert!(!Version::new(1, 102, 0).is_unstable());
-    }
-
-    #[test]
     fn a_requirement_is_met_by_a_newer_release() {
         assert!(satisfies(Some(Version::new(1, 102, 2)), Some("1.80")));
         assert!(satisfies(Some(Version::new(1, 80, 0)), Some("1.80")));

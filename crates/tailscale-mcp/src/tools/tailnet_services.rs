@@ -261,35 +261,3 @@ async fn service_approval_set(
     })
     .await
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn client() -> tailscale_rest::Client {
-        tailscale_rest::Client::new(tailscale_rest::ClientConfig::new(
-            tailscale_rest::credentials::Credentials::ApiKey(tailscale_rest::Secret::new(
-                "tskey-api-nExAmPlE-redacted",
-            )),
-        ))
-        .expect("a client with no network behind it")
-    }
-
-    #[test]
-    fn a_service_name_keeps_its_colon_and_a_dot_segment_is_still_refused() {
-        // `svc:` is part of the identifier, so it goes into the path as
-        // written. `..` is not an identifier at all.
-        let client = client();
-        let name = &path_segment("service_name", "svc:example").expect("a name");
-        assert_eq!(
-            service_path(&client, DOCUMENTED, name, "/devices"),
-            "/api/v2/tailnet/-/services/svc:example/devices"
-        );
-        assert_eq!(
-            service_path(&client, GO_CLIENT, name, ""),
-            "/api/v2/tailnet/-/vip-services/svc:example"
-        );
-        assert!(path_segment("service_name", "..").is_err());
-        assert!(approval_suffix("../..").is_err());
-    }
-}

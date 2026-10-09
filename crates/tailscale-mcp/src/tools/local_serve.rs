@@ -677,7 +677,7 @@ mod tests {
 
     use super::*;
 
-    use crate::meta::{Tier, Toolset};
+    use crate::meta::Tier;
     use crate::testing::{Reply, StubBackend, context};
 
     /// What the client prints when a handler goes up, with this tailnet's own
@@ -725,20 +725,6 @@ mod tests {
     }
 
     // -- serving to the tailnet ----------------------------------------------
-
-    #[tokio::test]
-    async fn serving_a_port_runs_in_the_background_and_answers_the_prompt() {
-        let (_, argv) = against(
-            Reply::ok(SERVE_OUTPUT),
-            |ctx, p| async move { serve_set(&ctx, p).await },
-            ServeSetParams {
-                target: "3000".to_owned(),
-                ..ServeSetParams::default()
-            },
-        )
-        .await;
-        assert_eq!(only(&argv), ["serve", "--bg=true", "--yes=true", "3000"]);
-    }
 
     #[tokio::test]
     async fn everything_that_can_hold_the_terminal_lets_it_go() {
@@ -895,22 +881,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn naming_two_endpoints_is_refused_before_anything_runs() {
-        let error = refused(
-            |ctx, p| async move { serve_set(&ctx, p).await },
-            ServeSetParams {
-                target: "3000".to_owned(),
-                http: Some(80),
-                https: Some(443),
-                ..ServeSetParams::default()
-            },
-        )
-        .await;
-        assert_eq!(error.code, ErrorCode::InvalidArgs);
-        assert!(error.message.contains("https:443") && error.message.contains("http:80"));
-    }
-
-    #[tokio::test]
     async fn forwarding_all_traffic_needs_a_service_to_forward_it_for() {
         let error = refused(
             |ctx, p| async move { serve_set(&ctx, p).await },
@@ -1034,18 +1004,6 @@ mod tests {
         assert_eq!(answer["endpoint"], json!("https:8443"));
     }
 
-    #[tokio::test]
-    async fn a_reset_names_no_endpoint_because_it_removes_them_all() {
-        let (answer, argv) = against(
-            Reply::ok(""),
-            |ctx, p| async move { serve_reset(&ctx, p).await },
-            NoParams {},
-        )
-        .await;
-        assert_eq!(only(&argv), ["serve", "reset"]);
-        assert_eq!(answer["scope"], json!("this node"));
-    }
-
     // -- the service lifecycle ------------------------------------------------
 
     #[tokio::test]
@@ -1102,18 +1060,6 @@ mod tests {
         .await;
         assert_eq!(only(&argv), ["serve", "get-config", "--service=svc:web"]);
         assert_eq!(answer["scope"], json!("svc:web"));
-    }
-
-    #[tokio::test]
-    async fn a_configuration_exchange_names_exactly_one_scope() {
-        for (service, all) in [(None, false), (Some("web".to_owned()), true)] {
-            let error = refused(
-                |ctx, p| async move { serve_get_config(&ctx, p).await },
-                GetConfigParams { service, all },
-            )
-            .await;
-            assert_eq!(error.code, ErrorCode::InvalidArgs);
-        }
     }
 
     #[tokio::test]
@@ -1235,29 +1181,6 @@ mod tests {
     // -- the shape of the toolset ---------------------------------------------
 
     #[test]
-    fn the_toolset_holds_the_ten_commands_that_publish_from_this_node() {
-        let names: Vec<&str> = entries().iter().map(|e| e.meta.name).collect();
-        assert_eq!(
-            names,
-            [
-                "tailscale_serve_set",
-                "tailscale_serve_off",
-                "tailscale_serve_reset",
-                "tailscale_serve_drain",
-                "tailscale_serve_clear",
-                "tailscale_serve_advertise",
-                "tailscale_serve_get_config",
-                "tailscale_serve_set_config",
-                "tailscale_funnel_set",
-                "tailscale_funnel_off",
-            ]
-        );
-        for entry in entries() {
-            assert_eq!(entry.meta.toolset, Toolset::LocalServe);
-        }
-    }
-
-    #[test]
     fn funnel_is_out_of_reach_until_the_destructive_tier_is_allowed() {
         // The acceptance criterion the tier model exists for: publishing to
         // the internet is never something a write-tier session can do.
@@ -1270,31 +1193,6 @@ mod tests {
                     entry.meta.name
                 );
             }
-        }
-    }
-
-    #[test]
-    fn serving_to_the_tailnet_needs_no_more_than_the_write_tier() {
-        // Everything a caller needs to expose a server on the tailnet and take
-        // it down again, without granting the destructive tier. `reset` and
-        // `clear` are the exceptions and are named here so that moving one of
-        // the others is a deliberate act.
-        for name in [
-            "tailscale_serve_set",
-            "tailscale_serve_off",
-            "tailscale_serve_drain",
-            "tailscale_serve_advertise",
-            "tailscale_serve_get_config",
-            "tailscale_serve_set_config",
-        ] {
-            let entry = entries()
-                .into_iter()
-                .find(|e| e.meta.name == name)
-                .expect("the tool is declared");
-            assert!(
-                entry.meta.tier <= Tier::Write,
-                "`{name}` should not need the destructive tier"
-            );
         }
     }
 

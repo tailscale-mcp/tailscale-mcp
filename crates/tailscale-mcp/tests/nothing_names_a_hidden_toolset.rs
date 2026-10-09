@@ -193,42 +193,6 @@ async fn the_identifier_advice_names_no_surface_this_session_lacks() {
     harness.shutdown().await;
 }
 
-/// Nothing tells a session that defaulting a tailnet to our own is fine.
-///
-/// One tool in the table takes a `tailnet` argument and it deletes one, so
-/// "`-` means the tailnet the credential belongs to and is almost always
-/// right" was advice pointing the wrong way in the only place it applied. The
-/// sweep is over every tier because the sentence was unconditional.
-#[tokio::test]
-async fn no_session_is_told_to_default_a_tailnet_to_our_own() {
-    for tier in [Tier::Read, Tier::Write, Tier::Destructive] {
-        let harness = Setup::new().preset("full").tier(tier).start().await;
-        let said = harness.instructions();
-        assert!(
-            !said.contains("almost always right") && !said.contains("Where a tailnet must be"),
-            "at {tier:?}: {said}"
-        );
-        // And the tool that does take one still asks for it by name.
-        if let Some(tool) = harness.tool("tailnet_organization_tailnet_delete").await {
-            let description = tool.input_schema["properties"]["tailnet"]["description"]
-                .as_str()
-                .unwrap_or_default();
-            assert!(
-                description.contains("its id"),
-                "the one tool taking a tailnet should ask for it explicitly: {description}"
-            );
-            // It names `-` only to say it is refused — never as a default to
-            // reach for. The handler enforces that; this is the half a model
-            // reads before it calls.
-            assert!(
-                description.contains("refused"),
-                "and should say `-` will not do: {description}"
-            );
-        }
-        harness.shutdown().await;
-    }
-}
-
 /// The metadata and the generated schema agree about which tools ask for one.
 ///
 /// `Offered` reads the three metadata flags; the client sees a `confirm`

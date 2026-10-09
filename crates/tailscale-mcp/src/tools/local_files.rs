@@ -749,7 +749,7 @@ mod tests {
     use super::*;
     use crate::context::PathPolicy;
 
-    use crate::meta::{Tier, Toolset};
+    use crate::meta::Tier;
     use crate::testing::{Reply, StubBackend, context};
 
     /// What `file cp --targets` prints, with this tailnet's own names replaced
@@ -867,20 +867,6 @@ mod tests {
             "Go stops reading flags at the first positional: {args:?}"
         );
         assert_eq!(&args[first_path..], ["/tmp/a", "/tmp/b", "laptop:"]);
-    }
-
-    #[tokio::test]
-    async fn standard_input_is_not_a_file_a_tool_call_can_send() {
-        let error = refused(
-            |ctx, p| async move { file_cp(&ctx, p).await },
-            FileCpParams {
-                files: vec!["-".to_owned()],
-                target: "laptop".to_owned(),
-                ..FileCpParams::default()
-            },
-        )
-        .await;
-        assert_eq!(error.code, ErrorCode::InvalidArgs);
     }
 
     #[tokio::test]
@@ -1081,28 +1067,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn the_key_never_appears_in_the_answer() {
-        // Whatever the client prints reaches `printed`; what is reported for
-        // the key is its path and nothing else.
-        let (answer, _) = against(
-            Reply::ok(""),
-            |ctx, p| async move { cert(&ctx, p).await },
-            CertParams {
-                domain: "workstation.example-tailnet.ts.net".to_owned(),
-                cert_file: "/etc/ssl/node.crt".to_owned(),
-                key_file: "/etc/ssl/node.key".to_owned(),
-                ..CertParams::default()
-            },
-        )
-        .await;
-        assert_eq!(answer["key_file"], json!("/etc/ssl/node.key"));
-        assert!(
-            !answer.to_string().contains("PRIVATE KEY"),
-            "{answer:?} carries key material"
-        );
-    }
-
     // -- local configuration -------------------------------------------------
 
     #[tokio::test]
@@ -1168,13 +1132,6 @@ mod tests {
 
     // -- The path allow-list seam -------------------------------------------
 
-    /// Unrestricted is what ships, so the seam costs a caller nothing today.
-    #[test]
-    fn any_path_is_allowed_while_the_allow_list_is_off() {
-        let ctx = context(Arc::new(StubBackend::ok("")));
-        assert!(real_path(&ctx, "path", "/anywhere/at/all").is_ok());
-    }
-
     /// Populating the policy is the whole of switching it on: every tool that
     /// takes a path already asks it.
     #[test]
@@ -1196,11 +1153,6 @@ mod tests {
 
         let refused = real_path(&ctx, "path", "/srv/exports/../../etc/shadow").unwrap_err();
         assert_eq!(refused.code, ErrorCode::NotPermitted);
-    }
-
-    #[test]
-    fn an_empty_share_table_is_an_empty_list() {
-        assert!(parse_shares("name    path    as\n----    ----    --\n").is_empty());
     }
 
     /// On a platform that cannot share as another user the client leaves the
@@ -1309,49 +1261,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn a_build_without_taildrive_says_so_rather_than_failing() {
-        // The macOS GUI packaging carries the subcommands and refuses them.
-        // That is a fact about the build, so it is not reported as though the
-        // request were wrong (DECISIONS Q31).
-        let backend = Arc::new(StubBackend::always(Reply::failed(
-            1,
-            "Taildrive CLI commands are not supported when using the macOS GUI app.",
-        )));
-        let ctx = context(Arc::clone(&backend));
-        let error = drive_list(&ctx, NoParams {})
-            .await
-            .expect_err("the handler refuses");
-        assert_eq!(error.code, ErrorCode::UnsupportedPlatform);
-    }
-
-    #[tokio::test]
-    async fn an_ordinary_taildrive_failure_is_still_a_failure() {
-        let backend = Arc::new(StubBackend::always(Reply::failed(
-            1,
-            "share \"docs\" does not exist",
-        )));
-        let ctx = context(Arc::clone(&backend));
-        let error = drive_unshare(
-            &ctx,
-            DriveUnshareParams {
-                name: "docs".to_owned(),
-            },
-        )
-        .await
-        .expect_err("the handler refuses");
-        assert_eq!(error.code, ErrorCode::NotFound);
-    }
-
     // -- the table -----------------------------------------------------------
-
-    #[test]
-    fn the_toolset_is_the_size_it_was_scoped_to() {
-        assert_eq!(entries().len(), 11);
-        for entry in entries() {
-            assert_eq!(entry.meta.toolset, Toolset::LocalFiles);
-        }
-    }
 
     #[test]
     fn nothing_here_is_reachable_from_a_read_only_session_except_the_two_readers() {

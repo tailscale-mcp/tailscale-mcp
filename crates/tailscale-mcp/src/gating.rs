@@ -308,65 +308,10 @@ mod tests {
     }
 
     #[test]
-    fn presets_nest_from_minimal_to_full() {
-        let minimal = Preset::Minimal.toolsets();
-        let core = Preset::Core.toolsets();
-        let full = Preset::Full.toolsets();
-        assert!(minimal.is_subset(&core), "core should contain minimal");
-        assert!(core.is_subset(&full), "full should contain core");
-        assert_eq!(minimal.len(), 4);
-        assert_eq!(core.len(), 13);
-        assert_eq!(full.len(), Toolset::ALL.len() - 2);
-    }
-
-    #[test]
-    fn full_withholds_the_two_opt_in_toolsets() {
-        let full = Preset::Full.toolsets();
-        assert!(!full.contains(&LocalDebug));
-        assert!(!full.contains(&LocalPassthrough));
-    }
-
-    #[test]
-    fn preset_names_round_trip() {
-        for p in Preset::ALL {
-            assert_eq!(Preset::parse(p.as_str()).expect("known preset"), *p);
-        }
-        assert!(matches!(
-            Preset::parse("everything"),
-            Err(ConfigError::UnknownPreset(_))
-        ));
-    }
-
-    #[test]
-    fn a_bare_list_replaces_the_preset() {
-        let got = apply_toolset_modifiers(Preset::Core.toolsets(), "local-status,tailnet-dns")
-            .expect("a valid list");
-        assert_eq!(got, BTreeSet::from([LocalStatus, TailnetDns]));
-    }
-
-    #[test]
-    fn a_prefixed_list_adjusts_the_preset() {
-        let got = apply_toolset_modifiers(Preset::Minimal.toolsets(), "+local-debug,-tailnet-dns")
-            .expect("a valid list");
-        assert_eq!(
-            got,
-            BTreeSet::from([LocalStatus, TailnetDevices, TailnetPolicy, LocalDebug])
-        );
-    }
-
-    #[test]
     fn a_mixed_list_is_refused_rather_than_guessed_at() {
         assert_eq!(
             apply_toolset_modifiers(Preset::Core.toolsets(), "local-status,-tailnet-dns"),
             Err(ConfigError::MixedToolsetSyntax)
-        );
-    }
-
-    #[test]
-    fn an_unknown_toolset_name_is_refused() {
-        assert_eq!(
-            apply_toolset_modifiers(Preset::Core.toolsets(), "+local-stats"),
-            Err(ConfigError::UnknownToolset("local-stats".to_owned()))
         );
     }
 
@@ -394,21 +339,6 @@ mod tests {
         assert!(!gate.permits(&tool("d", LocalServe, Tier::Read)));
         // Surface unavailable, even though the toolset is selected.
         assert!(!gate.permits(&tool("e", TailnetDevices, Tier::Read)));
-    }
-
-    #[test]
-    fn a_configuration_offering_nothing_is_a_startup_error() {
-        let all = [tool("a", LocalDebug, Tier::Read)];
-        assert_eq!(
-            Gate::new(
-                Preset::Minimal.toolsets(),
-                Tier::Read,
-                BTreeSet::new(),
-                &all
-            )
-            .err(),
-            Some(ConfigError::NoToolsEnabled)
-        );
     }
 
     #[test]

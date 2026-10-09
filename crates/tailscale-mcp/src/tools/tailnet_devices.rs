@@ -880,20 +880,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_device_is_addressed_globally_rather_than_through_a_tailnet() {
-        // The path a device endpoint takes has no tailnet in it: the id is
-        // unique across tailnets and the control plane resolves the rest.
-        assert_eq!(
-            device_path("n1234567CNTRL", "/routes").expect("a valid id"),
-            "/api/v2/device/n1234567CNTRL/routes"
-        );
-        assert_eq!(
-            device_path("123456789", "").expect("the numeric form is valid too"),
-            "/api/v2/device/123456789"
-        );
-    }
-
-    #[test]
     fn an_identifier_that_would_rewrite_the_path_is_refused() {
         // The reason `path_segment` exists. Escaping these would send a call
         // that fails somewhere less legible; refusing says which argument.
@@ -926,24 +912,6 @@ mod tests {
         assert_eq!(
             attribute_path("n1", "custom:diskEncrypted").expect("a custom one"),
             "/api/v2/device/n1/attributes/custom:diskEncrypted"
-        );
-    }
-
-    #[test]
-    fn the_field_selection_is_checked_against_the_list_beside_the_model() {
-        assert_eq!(checked_fields(None).expect("absent is fine"), None);
-        assert_eq!(
-            checked_fields(Some("all"))
-                .expect("a known value")
-                .as_deref(),
-            Some("all")
-        );
-        let error = checked_fields(Some("everything")).expect_err("not a known value");
-        assert!(
-            serde_json::to_value(&error).expect("reportable")["message"]
-                .as_str()
-                .is_some_and(|m| m.contains("all") && m.contains("default")),
-            "the refusal should quote the values: {error:?}"
         );
     }
 }

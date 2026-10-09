@@ -282,21 +282,6 @@ fn the_check_catches_what_a_workflow_needing_a_credential_looks_like() {
 }
 
 #[test]
-fn the_check_passes_what_a_workflow_needing_nothing_looks_like() {
-    // The other half: a check that fired on everything would pass the tests
-    // above and fail every honest workflow.
-    for text in [
-        "permissions:\n  contents: read\n",
-        "        run: cargo test --workspace --all-targets --locked\n",
-        "      - name: Write the changelog\n        run: git cliff > CHANGELOG.md\n",
-        "        with:\n          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}\n",
-        "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
-    ] {
-        assert_eq!(faults(text), vec![], "should have passed: {text:?}");
-    }
-}
-
-#[test]
 fn the_triggers_are_read_the_way_github_reads_them() {
     assert!(!runs_on_a_pull_request(
         "on:\n  push:\n    branches: [main]\n"

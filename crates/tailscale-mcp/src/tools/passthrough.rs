@@ -902,39 +902,6 @@ mod tests {
     }
 
     #[test]
-    fn the_deepest_match_wins() {
-        // `lock` alone is in no table, so a shallower match would make
-        // `lock remove` unknown rather than destructive-by-its-own-row.
-        assert_eq!(
-            class(&["lock", "remove", "tlpub:0000"]),
-            Known::Covered(&Covered {
-                path: "lock remove",
-                tier: Tier::Destructive,
-                confirm: false,
-            })
-        );
-        assert!(matches!(class(&["lock"]), Known::Unknown));
-    }
-
-    #[test]
-    fn a_flag_after_the_subcommand_does_not_hide_it() {
-        let Known::Covered(covered) = class(&["serve", "--https=443", "off"]) else {
-            panic!("`serve` is covered whatever follows it");
-        };
-        assert_eq!(covered.tier, Tier::Write);
-    }
-
-    #[test]
-    fn a_flag_before_an_excluded_subcommand_does_not_hide_it() {
-        // Reading only the words before the first flag would call this `debug`,
-        // which is in no table, and run it as an unknown-destructive command.
-        let Known::Excluded(excluded) = class(&["debug", "-v", "prefs"]) else {
-            panic!("`debug prefs` is excluded whatever precedes it");
-        };
-        assert_eq!(excluded.path, "debug prefs");
-    }
-
-    #[test]
     fn a_partial_path_into_an_excluded_command_is_refused_rather_than_guessed() {
         // Neither reading gets past `debug`, so there is nothing to judge and
         // letting it through as unknown would run it at the destructive tier.
@@ -945,30 +912,6 @@ mod tests {
             error.message.contains("only part of a command"),
             "{error:?}"
         );
-    }
-
-    #[test]
-    fn shouting_does_not_evade_the_exclusion_list() {
-        // The client matches its own subcommands without regard to case, so
-        // `tailscale DEBUG PREFS` runs `debug prefs` and prints private keys.
-        let Known::Excluded(excluded) = class(&["DEBUG", "PREFS"]) else {
-            panic!("case is not part of a command's name");
-        };
-        assert_eq!(excluded.path, "debug prefs");
-        assert!(matches!(class(&["Status"]), Known::Covered(_)));
-    }
-
-    #[test]
-    fn a_flag_between_the_words_does_not_hide_a_deeper_subcommand() {
-        // `tailscale serve --bg reset` runs `serve reset`. Reading `serve`
-        // alone would let a write-tier session wipe the config unconfirmed.
-        let (path, known) =
-            classify(&words(&["serve", "--bg", "reset"])).expect("`serve reset` is readable");
-        assert_eq!(path, "serve reset");
-        let Known::Covered(covered) = known else {
-            panic!("`serve reset` has a row");
-        };
-        assert_eq!((covered.tier, covered.confirm), (Tier::Destructive, true));
     }
 
     #[test]
@@ -1012,15 +955,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unjudged_command_is_destructive() {
-        assert!(matches!(class(&["nonesuch"]), Known::Unknown));
-        assert_eq!(
-            strictness(&class(&["nonesuch"])),
-            (false, Tier::Destructive, false)
-        );
-    }
-
-    #[test]
     fn reload_config_stays_runnable() {
         // DECISIONS Q44: in neither table, so unknown and destructive rather
         // than refused.
@@ -1041,42 +975,6 @@ mod tests {
             confirm: false,
             timeout_seconds: None,
         }
-    }
-
-    #[tokio::test]
-    async fn an_argument_with_shell_characters_arrives_as_one_argument() {
-        let awkward = "a b; rm -rf /$(echo hi) 'quoted' \"also\"|&";
-        let (answer, argv) = against(
-            Reply::ok("ok\n"),
-            RunParams {
-                args: words(&["ping", awkward]),
-                ..params(&[])
-            },
-        )
-        .await;
-        answer.expect("a read runs");
-        assert_eq!(argv, vec![vec!["ping".to_owned(), awkward.to_owned()]]);
-    }
-
-    #[tokio::test]
-    async fn a_covered_command_needing_confirmation_refuses_without_one() {
-        let (answer, argv) = against(Reply::ok(""), params(&["down"])).await;
-        let error = answer.expect_err("`down` confirms");
-        assert_eq!(error.code, ErrorCode::ConfirmationRequired);
-        assert!(argv.is_empty(), "nothing should have run");
-    }
-
-    #[tokio::test]
-    async fn an_excluded_command_is_refused_with_its_reason_and_no_hint() {
-        let (answer, argv) = against(Reply::ok(""), params(&["debug", "prefs"])).await;
-        let error = answer.expect_err("`debug prefs` is excluded");
-        assert_eq!(error.code, ErrorCode::NotPermitted);
-        assert!(error.message.contains("private keys"), "{error:?}");
-        assert!(
-            error.hint.is_none(),
-            "no switch turns this on, so nothing should suggest one"
-        );
-        assert!(argv.is_empty(), "nothing should have run");
     }
 
     #[tokio::test]

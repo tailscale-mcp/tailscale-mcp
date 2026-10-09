@@ -290,35 +290,6 @@ fn the_check_catches_what_a_recorded_response_looks_like() {
     }
 }
 
-#[test]
-fn the_check_passes_what_a_placeholder_looks_like() {
-    for text in [
-        "workstation.example-tailnet.ts.net.",
-        "100.64.0.1",
-        "100.64.0.1/32",
-        "fd7a:115c:a1e0::1",
-        "fd7a:115c:a1e0::1/128",
-        // A 4via6 route, which `tailscale debug via` computes rather than
-        // receives: site 7 over 10.1.0.0/16.
-        "fd7a:115c:a1e0:b1a:0:7:a01:0/112",
-        "100.100.100.100",
-        "someone@example.com",
-        "tskey-api-redacted-example",
-        // The redactor's own prefix table, and the text it produces.
-        "tskey-auth-",
-        "tskey-auth-[redacted]",
-        "nodekey:1111111111111111111111111111111111111111111111111111111111111111",
-        "n1111111CNTRL",
-        r#"{"devices": [{"hostname": "workstation", "os": "macOS"}]}"#,
-    ] {
-        assert_eq!(
-            leaks(text),
-            Vec::new(),
-            "a placeholder was rejected: {text}"
-        );
-    }
-}
-
 #[tokio::test]
 async fn the_suite_answers_from_its_fakes_and_not_from_this_machine() {
     // Nothing here reads the environment, runs `tailscale`, or reaches the

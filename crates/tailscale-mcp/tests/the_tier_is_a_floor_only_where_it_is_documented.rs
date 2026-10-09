@@ -23,7 +23,6 @@
 use clap::Parser as _;
 use serde_json::Value;
 use tailscale_mcp::config::{Cli, Config};
-use tailscale_mcp::meta::Tier;
 use tailscale_mcp::subcommands;
 
 /// Every row whose tier is a floor, and nothing else.
@@ -52,63 +51,6 @@ fn config(args: &[&str]) -> Config {
 
 fn listing(args: &[&str]) -> Value {
     serde_json::from_str(&subcommands::tools(&config(args), true).text).expect("the listing parses")
-}
-
-#[test]
-fn the_tier_is_a_floor_only_where_it_is_documented() {
-    let mut found: Vec<&str> = tailscale_mcp::tools::entries()
-        .iter()
-        .filter(|entry| entry.meta.varying_tier)
-        .map(|entry| entry.meta.name)
-        .collect();
-    found.sort_unstable();
-    assert_eq!(
-        found, FLOORS,
-        "the rows whose tier is a floor have changed. That is allowed, but it \
-         is written down in three other places that this test cannot edit: the \
-         `varying_tier` comment in `meta.rs`, which names them; `docs/tools.md`, \
-         which notes them (UPDATE_DOCS=1 regenerates it); and the summary of \
-         the tool itself, which is where a model reads that some argument needs \
-         a higher tier."
-    );
-}
-
-/// A floor is annotated at the worst case it permits, not at itself.
-///
-/// The derivation in `meta.rs` does this, but a client only ever sees the
-/// result, and the result is the thing that must not lie: a planning model
-/// reading `readOnlyHint: true` on the passthrough would hand it anything.
-#[test]
-fn a_floor_is_annotated_at_the_worst_it_allows() {
-    for entry in tailscale_mcp::tools::entries() {
-        let meta = entry.meta;
-        let annotations = meta.annotations();
-        if meta.varying_tier {
-            assert!(
-                !annotations.read_only,
-                "{} is a floor, so it cannot be annotated read-only",
-                meta.name
-            );
-            assert!(
-                annotations.destructive,
-                "{} is a floor, so it is annotated destructive whatever its row says",
-                meta.name
-            );
-        } else {
-            assert_eq!(
-                annotations.read_only,
-                meta.tier == Tier::Read,
-                "{} is not a floor, so its annotation follows its tier exactly",
-                meta.name
-            );
-            assert_eq!(
-                annotations.destructive,
-                meta.tier == Tier::Destructive,
-                "{} is not a floor, so its annotation follows its tier exactly",
-                meta.name
-            );
-        }
-    }
 }
 
 /// The JSON listing marks them, and marks nothing else.

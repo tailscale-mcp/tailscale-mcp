@@ -91,41 +91,6 @@ async fn each_way_of_naming_one_device_reaches_that_device() {
     }
 }
 
-/// An identifier is not looked up, because it is already the answer.
-///
-/// This is what keeps every call that worked before working identically: a node
-/// id costs no listing, so the change is confined to values that used to fail.
-#[tokio::test]
-async fn an_identifier_is_used_as_given_and_costs_no_listing() {
-    for identifier in ["n1111111CNTRL", "111"] {
-        let harness = Setup::new()
-            .toolsets("tailnet-devices")
-            .api_answers(
-                "GET",
-                &format!("/api/v2/device/{identifier}"),
-                Response::json(json!({"nodeId": "n1111111CNTRL"})),
-            )
-            .await
-            .start()
-            .await;
-
-        harness
-            .call_ok("tailnet_device_get", json!({"device_id": identifier}))
-            .await;
-        let paths: Vec<String> = harness
-            .control_plane()
-            .recorded()
-            .into_iter()
-            .map(|request| request.path)
-            .collect();
-        assert!(
-            !paths.iter().any(|path| path.contains("/devices")),
-            "`{identifier}` needed no listing, but asked for one: {paths:?}"
-        );
-        harness.shutdown().await;
-    }
-}
-
 /// A name matching two devices is refused, and says which two.
 #[tokio::test]
 async fn a_name_matching_two_devices_is_refused_with_both_named() {

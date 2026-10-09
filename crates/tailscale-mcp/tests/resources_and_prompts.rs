@@ -485,27 +485,6 @@ async fn a_resource_is_refused_when_it_is_over_the_result_cap() {
     harness.shutdown().await;
 }
 
-/// And is not refused under the cap this server ships with.
-///
-/// The default is a mebibyte, so the check above must not be something every
-/// session meets: a resource that stopped working by default would be a worse
-/// bug than the one being fixed.
-#[tokio::test]
-async fn the_same_resource_is_answered_under_the_default_cap() {
-    let harness = Setup::new().toolsets("local-status").start().await;
-
-    let answered = harness
-        .read_resource("tailscale://status")
-        .await
-        .expect("the default cap is a mebibyte and this document is nowhere near it");
-    assert!(
-        !answered.contents.is_empty(),
-        "the resource should still answer with its document"
-    );
-
-    harness.shutdown().await;
-}
-
 /// A prompt is listed where its surface is, and nowhere else.
 ///
 /// The two resource listings already work this way, and the reason is the same

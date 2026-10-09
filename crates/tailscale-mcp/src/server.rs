@@ -6,7 +6,6 @@
 //! configurations rather than degraded ones. What is not permitted is offering
 //! nothing, which is a configuration mistake and is reported as one.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use rmcp::model::{
@@ -276,10 +275,6 @@ impl TailscaleMcpServer {
         }
     }
 
-    pub fn gate(&self) -> &Gate {
-        &self.gate
-    }
-
     pub fn registry(&self) -> &Registry {
         &self.registry
     }
@@ -522,11 +517,6 @@ impl ServerHandler for TailscaleMcpServer {
     }
 }
 
-/// The name a client sees. Kept here so the tests can assert on it.
-pub fn server_name() -> Cow<'static, str> {
-    Cow::Borrowed(env!("CARGO_PKG_NAME"))
-}
-
 #[cfg(test)]
 mod tests {
     use rmcp::schemars::JsonSchema;
@@ -537,8 +527,6 @@ mod tests {
     use super::*;
     use crate::config::Cli;
     use crate::error::ErrorCode;
-    use crate::meta::Tier;
-    use crate::registry::CONFIRM_PARAM;
     use crate::testing::{Reply, StubBackend};
 
     /// A table standing in for the real one, so that these tests exercise the
@@ -557,14 +545,6 @@ mod tests {
             tailscale_fixture_read => NoParams, run_local,
                 toolset: LocalStatus, tier: Read, idempotent: true;
 
-            /// Change something about this node.
-            tailscale_fixture_write => NoParams, run_local,
-                toolset: LocalPrefs, tier: Write;
-
-            /// Disconnect this node, which cuts off this server.
-            tailscale_fixture_sever => NoParams, run_local,
-                toolset: LocalPrefs, tier: Destructive, severing: true;
-
             /// Something only a much newer binary has.
             tailscale_fixture_new => NoParams, run_local,
                 toolset: LocalStatus, tier: Read, since: "1.94";
@@ -576,10 +556,6 @@ mod tests {
             /// Read something about the tailnet.
             tailnet_fixture_read => NoParams, run_tailnet,
                 toolset: TailnetDevices, tier: Read, idempotent: true;
-
-            /// Delete something from the tailnet.
-            tailnet_fixture_delete => NoParams, run_tailnet,
-                toolset: TailnetDevices, tier: Destructive, confirm: true;
         }
 
         async fn run_local(ctx: &ToolContext, _params: NoParams) -> ToolResult<Value> {
@@ -673,17 +649,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_server_with_both_surfaces_offers_both() {
-        let startup = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        let names = names(&startup);
-        assert!(
-            names.iter().any(|n| n.starts_with("tailscale_")),
-            "{names:?}"
-        );
-        assert!(names.iter().any(|n| n.starts_with("tailnet_")), "{names:?}");
-    }
-
-    #[tokio::test]
     async fn without_a_binary_the_local_tools_are_hidden_and_the_tailnet_tools_remain() {
         let startup = server(Cli::default(), backends(None, true)).await;
         let names = names(&startup);
@@ -700,42 +665,6 @@ mod tests {
                 .notes
                 .iter()
                 .any(|n| n.contains("`tailscale` binary")),
-            "{:?}",
-            startup.notes
-        );
-    }
-
-    #[tokio::test]
-    async fn without_a_credential_the_tailnet_tools_are_hidden_and_the_local_tools_remain() {
-        let startup = server(Cli::default(), backends(Some(healthy_node()), false)).await;
-        let names = names(&startup);
-        assert!(
-            !names.is_empty(),
-            "the local surface should still be offered"
-        );
-        assert!(
-            names.iter().all(|n| n.starts_with("tailscale_")),
-            "a tailnet tool survived a missing credential: {names:?}"
-        );
-        assert!(
-            startup.notes.iter().any(|n| n.contains("credential")),
-            "{:?}",
-            startup.notes
-        );
-    }
-
-    #[tokio::test]
-    async fn a_surface_switched_off_is_reported_as_a_choice_not_a_failure() {
-        let startup = server(
-            Cli {
-                no_tailnet: true,
-                ..Cli::default()
-            },
-            backends(Some(healthy_node()), true),
-        )
-        .await;
-        assert!(
-            startup.notes.iter().any(|n| n.contains("switched off")),
             "{:?}",
             startup.notes
         );
@@ -830,39 +759,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_loopback_address_is_the_one_thing_that_may_stand_in_for_it() {
-        // The other half of the pair, and what the whole suite rides on: the
-        // fake control plane is reachable because it is on this machine, and
-        // for no other reason. Same scheme, same everything, different host.
-        let fake = tailscale_rest::fake::FakeControlPlane::start()
-            .await
-            .expect("a loopback socket");
-
-        let startup = build_pointed_at(fake.base_url())
-            .await
-            .expect("a fake on this machine is a place a credential may go");
-        assert!(startup.server.context().tailnet().is_ok());
-    }
-
-    #[tokio::test]
-    async fn an_old_binary_is_warned_about_and_hides_nothing() {
-        let old = StubBackend::ok("").on(["version"], Reply::ok("1.72.0\n"));
-        let startup = server(Cli::default(), backends(Some(old), true)).await;
-        assert!(
-            startup
-                .notes
-                .iter()
-                .any(|n| n.contains("1.72.0") && n.contains("Nothing is hidden")),
-            "{:?}",
-            startup.notes
-        );
-        assert!(
-            names(&startup).iter().any(|n| n.starts_with("tailscale_")),
-            "an old binary should hide nothing"
-        );
-    }
-
-    #[tokio::test]
     async fn an_unstable_build_is_not_warned_about() {
         let unstable = StubBackend::ok("").on(["version"], Reply::ok("1.77.0\n"));
         let startup = server(Cli::default(), backends(Some(unstable), true)).await;
@@ -889,30 +785,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_server_information_names_this_server_and_carries_instructions() {
-        let startup = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        let info = startup.server.get_info();
-        assert_eq!(info.server_info.name, server_name());
-        assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
-        assert!(
-            info.capabilities.tools.is_some(),
-            "tools must be advertised"
-        );
-        let instructions = info.instructions.expect("instructions are sent");
-        assert!(instructions.contains("tailscale_*"), "{instructions}");
-        assert!(instructions.contains("1.102.2"), "{instructions}");
-    }
-
-    #[tokio::test]
-    async fn the_identity_probe_fills_in_who_we_are() {
-        let startup = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        let identity = startup.server.context().identity.last_known();
-        assert!(identity.matches("n1234567CNTRL"));
-        assert!(identity.matches("100.64.0.1"));
-        assert!(identity.matches("workstation"));
-    }
-
-    #[tokio::test]
     async fn without_a_local_surface_we_claim_no_identity() {
         let startup = server(Cli::default(), backends(None, true)).await;
         let identity = startup.server.context().identity.last_known();
@@ -933,78 +805,6 @@ mod tests {
                 .is_some_and(|h| h.contains("local-debug")),
             "the refusal should say what to change: {error}"
         );
-    }
-
-    #[tokio::test]
-    async fn a_tool_nobody_declared_is_not_found() {
-        let startup = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        let error = error_of(&call(&startup.server, "tailscale_invented", json!({})).await);
-        assert_eq!(error["code"], ErrorCode::NotFound.as_str());
-    }
-
-    #[tokio::test]
-    async fn a_write_tool_is_hidden_until_writing_is_permitted() {
-        let read_only = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        assert!(!names(&read_only).contains(&"tailscale_fixture_write".to_owned()));
-        assert_eq!(read_only.server.gate().max_tier(), Tier::Read);
-
-        let writable = server(
-            Cli {
-                allow_write: true,
-                ..Cli::default()
-            },
-            backends(Some(healthy_node()), true),
-        )
-        .await;
-        assert!(names(&writable).contains(&"tailscale_fixture_write".to_owned()));
-        assert!(
-            !names(&writable).contains(&"tailscale_fixture_sever".to_owned()),
-            "writing does not permit destruction"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_tool_that_fails_answers_with_a_result_not_a_protocol_error() {
-        let broken = StubBackend::failure(1, "something went wrong")
-            .on(["version"], Reply::ok("1.102.2\n"))
-            .on(["status", "--json"], Reply::ok("{}"));
-        let startup = server(Cli::default(), backends(Some(broken), true)).await;
-        let error = error_of(&call(&startup.server, "tailscale_fixture_read", json!({})).await);
-        assert_eq!(error["code"], ErrorCode::CliFailed.as_str());
-        assert_eq!(error["exit_code"], 1);
-    }
-
-    #[tokio::test]
-    async fn a_tool_that_succeeds_answers_with_structured_content() {
-        let startup = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        let result = call(&startup.server, "tailnet_fixture_read", json!({})).await;
-        assert_eq!(result.is_error, Some(false));
-        assert_eq!(
-            result.structured_content.expect("structured content")["ok"],
-            true
-        );
-    }
-
-    #[tokio::test]
-    async fn a_confirmable_tool_refuses_until_it_is_confirmed() {
-        let startup = server(
-            Cli {
-                allow_destructive: true,
-                ..Cli::default()
-            },
-            backends(Some(healthy_node()), true),
-        )
-        .await;
-        let error = error_of(&call(&startup.server, "tailnet_fixture_delete", json!({})).await);
-        assert_eq!(error["code"], ErrorCode::ConfirmationRequired.as_str());
-
-        let result = call(
-            &startup.server,
-            "tailnet_fixture_delete",
-            json!({ CONFIRM_PARAM: true }),
-        )
-        .await;
-        assert_eq!(result.is_error, Some(false), "{result:?}");
     }
 
     #[tokio::test]
@@ -1035,65 +835,6 @@ mod tests {
         .await;
         let error = error_of(&call(&startup.server, "tailnet_fixture_read", json!({})).await);
         assert_eq!(error["code"], ErrorCode::ResultTooLarge.as_str());
-    }
-
-    #[tokio::test]
-    async fn the_listing_is_stable_and_every_entry_is_annotated() {
-        let startup = server(
-            Cli {
-                allow_destructive: true,
-                ..Cli::default()
-            },
-            backends(Some(healthy_node()), true),
-        )
-        .await;
-        let first = names(&startup);
-        assert_eq!(first, names(&startup), "the listing order must not vary");
-        let mut sorted = first.clone();
-        sorted.sort();
-        assert_eq!(first, sorted, "tools are listed in name order");
-
-        for tool in startup.server.tools().expect("describe") {
-            let annotations = tool.annotations.expect("every tool is annotated");
-            assert_eq!(annotations.open_world_hint, Some(true), "{}", tool.name);
-            let destructive = tool.name.contains("sever") || tool.name.contains("delete");
-            assert_eq!(
-                annotations.destructive_hint,
-                Some(destructive),
-                "{}",
-                tool.name
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn a_selection_naming_only_hidden_surfaces_does_not_start() {
-        let err = build(
-            &config(Cli {
-                toolsets: Some("tailnet-devices".to_owned()),
-                ..Cli::default()
-            }),
-            fixture::entries(),
-            backends(Some(healthy_node()), false),
-        )
-        .await
-        .expect_err("nothing would be offered");
-        assert!(matches!(
-            err,
-            StartupError::Config(ConfigError::NoToolsEnabled)
-        ));
-    }
-
-    #[tokio::test]
-    async fn the_notes_say_what_is_on_offer() {
-        let startup = server(Cli::default(), backends(Some(healthy_node()), true)).await;
-        let summary = startup
-            .notes
-            .last()
-            .expect("a summary is always the last note");
-        assert!(summary.contains("Offering"), "{summary}");
-        assert!(summary.contains("local-status"), "{summary}");
-        assert!(summary.contains("read"), "{summary}");
     }
 
     /// The count and the list are one sentence and have to agree.

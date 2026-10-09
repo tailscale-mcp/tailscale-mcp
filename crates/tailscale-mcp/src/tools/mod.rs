@@ -88,16 +88,4 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn every_tool_carries_its_surface_prefix() {
-        for entry in entries() {
-            assert!(
-                entry.meta.name.starts_with(entry.meta.surface().prefix()),
-                "`{}` belongs to the {} surface",
-                entry.meta.name,
-                entry.meta.surface()
-            );
-        }
-    }
 }

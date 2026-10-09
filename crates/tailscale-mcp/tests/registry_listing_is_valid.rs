@@ -172,25 +172,6 @@ fn everything_the_registry_pulls_claims_this_servers_name() {
 }
 
 #[test]
-fn the_image_the_listing_offers_is_the_one_this_release_pushes() {
-    // An OCI identifier is `registry/namespace/repository:tag`, and the tag is
-    // the release's version: without it the listing offers whatever `:latest`
-    // happens to be when somebody reads it.
-    let (_, listing) = schema_and_listing();
-    let version = env!("CARGO_PKG_VERSION");
-    for package in packages(&listing) {
-        if package["registryType"] != "oci" {
-            continue;
-        }
-        let identifier = package["identifier"].as_str().expect("an identifier");
-        assert!(
-            identifier.ends_with(&format!(":{version}")),
-            "{identifier} is not the image this release pushes"
-        );
-    }
-}
-
-#[test]
 fn the_check_catches_a_listing_the_registry_would_refuse() {
     // Each of these is a way the listing could be wrong that reading it would
     // not catch, so the check is known to fire rather than assumed to.

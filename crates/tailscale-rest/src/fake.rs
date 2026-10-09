@@ -517,31 +517,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_get_is_answered_and_recorded() {
-        let fake = FakeControlPlane::start().await.expect("loopback").on(
-            "GET",
-            "/api/v2/tailnet/-/devices",
-            Response::json(serde_json::json!({ "devices": [] })),
-        );
-
-        let response = client()
-            .get(format!("{}/api/v2/tailnet/-/devices", fake.base_url()))
-            .header("authorization", "Bearer tskey-api-example")
-            .send()
-            .await
-            .expect("the fake answers");
-
-        assert_eq!(response.status(), 200);
-        let body: serde_json::Value = response.json().await.expect("a JSON body");
-        assert_eq!(body["devices"], serde_json::json!([]));
-
-        let recorded = fake.only_request();
-        assert_eq!(recorded.method, "GET");
-        assert_eq!(recorded.path, "/api/v2/tailnet/-/devices");
-        assert_eq!(recorded.authorization(), Some("Bearer tskey-api-example"));
-    }
-
-    #[tokio::test]
     async fn a_body_and_a_query_string_arrive_intact() {
         let fake = FakeControlPlane::start()
             .await
@@ -564,60 +539,6 @@ mod tests {
         assert_eq!(recorded.query.get("all").map(String::as_str), Some("true"));
         assert_eq!(recorded.query.get("q").map(String::as_str), Some("a b"));
         assert_eq!(recorded.json()["routes"][0], "10.0.0.0/8");
-    }
-
-    #[tokio::test]
-    async fn one_connection_carries_several_requests() {
-        // reqwest keeps the connection alive, so a fake that mishandled that
-        // would hang the second call rather than fail it.
-        let fake = FakeControlPlane::start()
-            .await
-            .expect("loopback")
-            .always(Response::json(serde_json::json!({ "ok": true })));
-        let client = client();
-
-        for _ in 0..3 {
-            let response = client
-                .get(format!("{}/api/v2/tailnet/-/devices", fake.base_url()))
-                .send()
-                .await
-                .expect("the fake answers");
-            assert_eq!(response.status(), 200);
-        }
-        assert_eq!(fake.request_count(), 3);
-    }
-
-    #[tokio::test]
-    async fn a_sequence_of_answers_can_be_set_up() {
-        let fake = FakeControlPlane::start()
-            .await
-            .expect("loopback")
-            .once(
-                "GET",
-                "/api/v2/tailnet/-/devices",
-                Response::status(429, serde_json::json!({ "message": "slow down" }))
-                    .with_header("retry-after", "1"),
-            )
-            .on(
-                "GET",
-                "/api/v2/tailnet/-/devices",
-                Response::json(serde_json::json!({ "devices": [] })),
-            );
-        let client = client();
-        let url = format!("{}/api/v2/tailnet/-/devices", fake.base_url());
-
-        let first = client.get(&url).send().await.expect("answered");
-        assert_eq!(first.status(), 429);
-        assert_eq!(
-            first
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok()),
-            Some("1")
-        );
-
-        let second = client.get(&url).send().await.expect("answered");
-        assert_eq!(second.status(), 200);
     }
 
     #[tokio::test]

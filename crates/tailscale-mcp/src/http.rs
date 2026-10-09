@@ -586,38 +586,6 @@ mod tests {
     }
 
     #[test]
-    fn a_browser_origin_is_refused_unless_it_was_listed() {
-        let closed = guard(None, &[]);
-        assert_eq!(
-            closed.admit(
-                &headers(&[("host", "localhost"), ("origin", "https://app.example")]),
-                here(),
-                Instant::now()
-            ),
-            Err(Refusal::ForbiddenOrigin)
-        );
-
-        let opened = guard(None, &["https://app.example"]);
-        assert_eq!(
-            opened.admit(
-                &headers(&[("host", "localhost"), ("origin", "https://app.example")]),
-                here(),
-                Instant::now()
-            ),
-            Ok(())
-        );
-        // Listing one origin does not list another.
-        assert_eq!(
-            opened.admit(
-                &headers(&[("host", "localhost"), ("origin", "https://other.example")]),
-                here(),
-                Instant::now()
-            ),
-            Err(Refusal::ForbiddenOrigin)
-        );
-    }
-
-    #[test]
     fn the_token_has_to_match_and_a_missing_one_is_the_same_answer_as_a_wrong_one() {
         let guard = guard(Some("s3cret-token-value"), &[]);
         let host = ("host", "localhost");
@@ -707,17 +675,6 @@ mod tests {
     }
 
     #[test]
-    fn neither_the_guard_nor_the_settings_print_the_token() {
-        // The one rule `Secret` exists for: `Config` derives `Debug`, and a
-        // derived `Debug` on a `String` is how a token reaches a log.
-        let guard = guard(Some("s3cret-token-value"), &[]);
-        assert!(
-            !format!("{guard:?}").contains("s3cret-token-value"),
-            "the guard printed its token: {guard:?}"
-        );
-    }
-
-    #[test]
     fn an_origin_is_compared_as_an_origin_and_not_as_a_string() {
         // What a browser sends and what an operator typed are the same origin
         // written two ways, and RFC 6454 says so.
@@ -747,18 +704,6 @@ mod tests {
             ),
             Ok(()),
             "listing an origin lists it however a browser spells it"
-        );
-    }
-
-    #[test]
-    fn a_host_header_is_matched_without_its_port_or_its_case() {
-        assert_eq!(normalise_host("LocalHost:8449"), "localhost");
-        assert_eq!(normalise_host("127.0.0.1"), "127.0.0.1");
-        assert_eq!(normalise_host("[::1]:8449"), "[::1]");
-        assert_eq!(normalise_host("[FD7A:115C:A1E0::1]"), "[fd7a:115c:a1e0::1]");
-        assert_eq!(
-            normalise_host("  example-tailnet.ts.net  "),
-            "example-tailnet.ts.net"
         );
     }
 }

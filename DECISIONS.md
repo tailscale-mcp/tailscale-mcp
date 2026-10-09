@@ -2452,3 +2452,48 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Justification:** HN's own guidance for a killed post is to email the moderators; a resubmission of the same URL is treated as a duplicate of the dead item and reads as working around the filter. The account has 0 karma and a story killed on 2026-08-12 as well, so the filter rather than user flags is the likelier cause, which is exactly what a review resolves. Sending mail is the user's act, so the draft stops short of it.
 **Outcome:** assumed
 **Ref:** https://news.ycombinator.com/item?id=49605711 (dead); Gmail draft to hn@ycombinator.com
+
+## Q164 — interactive/test-audit — gate-resolution
+
+**Question:** The goal asks to remove "20% of the least useful tests" with code coverage dropping "not more than 2%". What is counted, and what is the coverage floor?
+**Options considered:** count `cargo test` results or `#[test]`/`#[tokio::test]` declarations / measure line, region or function coverage / read "2%" as percentage points or as a relative drop
+**Chosen:** Count test declarations: 704 at `9fff35e`, so at least 141 deletions, each one meeting the test-audit bar. Measure line coverage from `cargo llvm-cov --workspace --all-targets --locked` over `src/` (base 94.98%, 14461/15225 lines). Hold the stricter reading of "2%": the result must stay at or above 93.08% (a 2% relative drop), which also holds the 2-point reading. Report region coverage alongside.
+**Decided-by:** agent
+**Justification:** The workspace has no parameterized test macros, so declarations equal the 704 tests `cargo test` runs. Line coverage is the default figure `cargo llvm-cov` reports. Holding the stricter reading of "2%" satisfies both readings at once.
+**Outcome:** assumed
+**Ref:** commit `test: prune the 150 tests the test-audit bar marks least useful`
+
+## Q165 — interactive/test-audit — gate-resolution
+
+**Question:** On the coverage baseline, `fixtures_are_redacted::no_fixture_or_test_carries_a_real_identity` fails. Is this a product bug for the campaign to fix?
+**Options considered:** fix the test or product code / treat as a coverage-run artifact and measure around it
+**Chosen:** A coverage-run artifact. The CLI tests start instrumented child processes with a cleared environment, so the children write `default_*.profraw` into `crates/tailscale-cli/`, and the redaction test rejects any non-text file in the tree. Every coverage run deletes those files before and after, and uses `--ignore-run-fail`. Plain `cargo test` is the pass/fail gate.
+**Decided-by:** agent
+**Justification:** The failure message names a `.profraw` file that only `cargo llvm-cov` creates. The test covers no `src/` lines, so measuring past it does not change the coverage figure.
+**Outcome:** applied
+**Ref:** commit `test: prune the 150 tests the test-audit bar marks least useful`
+
+## Q166 — interactive/test-audit — tradeoff
+
+**Question:** Seven read-only lane audits marked 194 tests delete and 32 consolidate, out of 704. Which of them go?
+**Options considered:** take every mark / take the lowest-scored marks up to the 141 floor / take the lowest-scored marks with a margin, minus anything a second lane relies on
+**Chosen:** 150 deletions: 109 marks at score 1 plus 41 at score 2 whose keeper sits in the same crate or file. The consolidations, which would mean editing keeper tests, are skipped. Also kept despite a delete mark:
+- tests another lane names as its keeper: `secret.rs:157` with `local_prefs.rs:880`, `local_serve.rs:1144`, `error.rs:892`, `tools/mod.rs:62`, `contract.rs:1465`;
+- the only test that reaches a branch: `tailnet_invites.rs:446`;
+- tests of the published `tailscale-rest` and `tailscale-cli` crates whose only keeper is in `tailscale-mcp`: `client.rs:780/1306/1480`, `secret.rs:124/147`, `process_execution.rs:239`;
+- `trusted_publishing_matches.rs:315` and `docs_are_current.rs:413`, which guard a security contract and a documented one.
+Test-only seams that the deletions left without a caller are removed: `server::server_name`, `TailscaleMcpServer::gate`, `Offered::with_confirmable`, `impl Default for LockInitParams`, `Toolset::all_is_exhaustive`, three server fixture rows, and helpers and imports. Public items of the two published library crates stay, even where only tests call them.
+**Decided-by:** agent
+**Justification:** The test-audit bar says "don't delete for the count" and "uncertain candidates stay"; a margin of nine over the floor leaves room to restore any test the coverage diff shows was a sole guard. A library crate published on its own should prove its own contract rather than borrow proof from a crate that depends on it. Entries Q59, Q129, Q133 and Q139 name tests deleted here as guards; each contract keeps a named keeper, given in the audit hand-off.
+**Outcome:** assumed
+**Ref:** commit `test: prune the 150 tests the test-audit bar marks least useful`
+
+## Q167 — interactive/test-audit — gate-resolution
+
+**Question:** The user asked to commit and push the test prune. This repository commits straight to `main`. Should the commit go there or on a branch?
+**Options considered:** commit and push to `main` / commit on a branch and push the branch
+**Chosen:** `main`, by fast-forward; the branch it was first pushed on is deleted.
+**Decided-by:** human
+**Justification:** The agent first pushed a branch, following its standing rule to branch before committing on the default branch; the user then asked for the commit to land on `main` directly and the branch to go, which matches how this repository has always taken commits.
+**Outcome:** applied
+**Ref:** commit `test: prune the 150 tests the test-audit bar marks least useful`

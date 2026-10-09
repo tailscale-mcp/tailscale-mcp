@@ -1151,7 +1151,6 @@ mod tests {
     use super::*;
 
     use crate::error::ErrorCode;
-    use crate::meta::{Tier, Toolset};
     use crate::testing::{Reply, StubBackend, context};
 
     /// Run a handler against a scripted client and report both what it answered
@@ -1193,68 +1192,6 @@ mod tests {
             initial_outgoing_files: None,
             initial_status: None,
             initial_suggested_exit_node: None,
-        }
-    }
-
-    #[test]
-    fn the_toolset_is_twenty_two_readers_and_eight_knobs() {
-        let all = entries();
-        assert_eq!(all.len(), 30, "the debug toolset is thirty tools");
-
-        let readers = all.iter().filter(|e| e.meta.tier == Tier::Read).count();
-        let knobs = all.iter().filter(|e| e.meta.tier == Tier::Write).count();
-        assert_eq!(readers, 22, "twenty-two readers");
-        assert_eq!(knobs, 8, "eight knobs");
-        assert_eq!(
-            readers + knobs,
-            all.len(),
-            "a debug tool is a reader or a knob"
-        );
-    }
-
-    #[test]
-    fn every_tool_is_in_the_debug_toolset() {
-        for entry in entries() {
-            assert_eq!(
-                entry.meta.toolset,
-                Toolset::LocalDebug,
-                "`{}` is declared elsewhere",
-                entry.meta.name
-            );
-        }
-    }
-
-    #[test]
-    fn nothing_here_needs_a_confirmation() {
-        // A confirmation is for an operation that cannot be undone. Every knob
-        // here is undone by the daemon's next restart, so asking for one would
-        // spend the caller's attention on the wrong tools.
-        for entry in entries() {
-            assert!(
-                !entry.meta.requires_confirmation,
-                "`{}` asks for a confirmation it does not need",
-                entry.meta.name
-            );
-        }
-    }
-
-    #[test]
-    fn no_excluded_command_is_also_declared_as_a_tool() {
-        let declared: BTreeSet<String> = entries()
-            .iter()
-            .map(|e| {
-                e.meta
-                    .name
-                    .replace("tailscale_debug_", "debug ")
-                    .replace('_', "-")
-            })
-            .collect();
-        for excluded in EXCLUDED {
-            assert!(
-                !declared.contains(excluded.path),
-                "`{}` is both excluded and offered",
-                excluded.path
-            );
         }
     }
 
@@ -1323,11 +1260,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_empty_stream_is_no_events_rather_than_an_error() {
-        assert!(notifications("").is_empty());
-    }
-
     // -- the event watcher always returns ------------------------------------
 
     #[tokio::test]
@@ -1355,39 +1287,6 @@ mod tests {
         );
         assert_eq!(value["asked_for"], MAX_EVENTS);
         assert_eq!(value["seconds"], MAX_WATCH_SECONDS);
-    }
-
-    #[tokio::test]
-    async fn a_count_of_zero_is_refused_rather_than_run() {
-        // Zero is the client's spelling of "never stop", and a tool call that
-        // never stops is the one thing a bounded form exists to prevent.
-        let error = refusal(
-            Reply::ok(""),
-            |ctx, p| async move { watch_ipn(&ctx, p).await },
-            watching(0, None),
-        )
-        .await;
-        assert_eq!(error.code, ErrorCode::InvalidArgs);
-    }
-
-    #[tokio::test]
-    async fn a_quiet_node_reaches_the_bound_and_the_call_still_answers() {
-        // The client has no timeout of its own here, so the bound is this
-        // server's. Reaching it is reported, not waited through.
-        let error = refusal(
-            Reply::TimedOut {
-                printed: "{\"Version\":\"1.102.2\"}".to_owned(),
-            },
-            |ctx, p| async move { watch_ipn(&ctx, p).await },
-            watching(5, Some(1)),
-        )
-        .await;
-        assert_eq!(error.code, ErrorCode::Timeout);
-        assert!(
-            error.message.contains("1.102.2"),
-            "what did arrive is handed back: {}",
-            error.message
-        );
     }
 
     // -- what the rest of them run -------------------------------------------
@@ -1545,26 +1444,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_flags_that_are_rust_keywords_still_reach_the_schema_under_their_own_names() {
-        // `--type` is `debug portmap`'s flag and ADR-0004 says a parameter
-        // carries the flag's own name, which here collides with a keyword. A
-        // raw identifier keeps the name; this asserts that serde and schemars
-        // both drop the `r#`, because a silent `r#type` in the schema would be
-        // a parameter no caller could guess and no client could send.
-        let schema =
-            rmcp::handler::server::tool::schema_for_input::<PortmapParams>().expect("a schema");
-        let properties = schema["properties"]
-            .as_object()
-            .expect("the schema lists properties");
-        assert!(properties.contains_key("type"), "got {properties:#?}");
-        assert!(!properties.keys().any(|k| k.starts_with("r#")));
-
-        let parsed: PortmapParams = serde_json::from_value(json!({"type": "upnp"}))
-            .expect("`type` is the name on the wire too");
-        assert_eq!(parsed.r#type.as_deref(), Some("upnp"));
-    }
-
     #[tokio::test]
     async fn turning_component_logging_off_says_so_rather_than_saying_how_long_for() {
         let (value, argv) = against(
@@ -1629,26 +1508,6 @@ mod tests {
             value["outcome"]
                 .as_str()
                 .is_some_and(|o| o.contains("region 2"))
-        );
-    }
-
-    #[tokio::test]
-    async fn a_knob_that_prints_nothing_still_reports_what_it_did() {
-        let (value, argv) = against(
-            Reply::ok(""),
-            |ctx, p| async move { restun(&ctx, p).await },
-            NoParams {},
-        )
-        .await;
-        assert_eq!(argv, [["debug", "restun"]]);
-        assert!(
-            value["outcome"]
-                .as_str()
-                .is_some_and(|o| o.contains("re-learn"))
-        );
-        assert!(
-            value.get("printed").is_none(),
-            "nothing printed, nothing reported"
         );
     }
 

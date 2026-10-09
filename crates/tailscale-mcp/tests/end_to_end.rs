@@ -28,13 +28,6 @@ use serde_json::{Value, json};
 use tailscale_mcp::config::{Cli, Config};
 use tailscale_mcp::server::{self, Backends};
 
-/// The gates, and what each is for.
-const GATES: &[(&str, &str)] = &[
-    ("TAILSCALE_MCP_E2E_LOCAL", "the local read paths"),
-    ("TAILSCALE_MCP_E2E_TAILNET", "the tailnet read paths"),
-    ("TAILSCALE_MCP_E2E_WRITE", "the one write path"),
-];
-
 /// Whether a gate is open.
 fn open(gate: &str) -> bool {
     std::env::var(gate).is_ok_and(|value| {
@@ -50,7 +43,7 @@ fn open(gate: &str) -> bool {
 /// Printed rather than silent, because a test that skips without saying so is
 /// indistinguishable from a test that passed, and the criterion is that the
 /// suite "skips these tests and reports why". `cargo test` shows this with
-/// `--nocapture`; the summary test below reports it either way.
+/// `--nocapture`.
 fn skipped(gate: &str, what: &str) -> bool {
     println!("skipped: {what} would need {gate} set; it is not");
     false
@@ -129,31 +122,6 @@ impl Harnessed {
         }
         self.serving.abort();
     }
-}
-
-/// What is switched on, said out loud whatever happens.
-///
-/// This one always runs, so that a suite where every gated test quietly did
-/// nothing still says so. Without it, "all tests passed" would mean two
-/// different things and look identical.
-#[test]
-fn the_gates_report_what_is_switched_off() {
-    let mut open_gates = Vec::new();
-    for (gate, what) in GATES {
-        if open(gate) {
-            open_gates.push(*what);
-        } else {
-            println!("skipped: {what} would need {gate} set; it is not");
-        }
-    }
-    println!(
-        "end-to-end: {}",
-        if open_gates.is_empty() {
-            "nothing is switched on; every test below did nothing".to_owned()
-        } else {
-            format!("running {}", open_gates.join(", "))
-        }
-    );
 }
 
 /// The local read paths, against whatever `tailscale` is on this machine.

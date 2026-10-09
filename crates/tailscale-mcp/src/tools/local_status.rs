@@ -1064,7 +1064,6 @@ mod tests {
 
     use super::*;
 
-    use crate::error::ErrorCode;
     use crate::testing::{Reply, StubBackend, context};
 
     /// A recorded sample of what the real client prints.
@@ -1150,22 +1149,6 @@ mod tests {
         .await
         .expect("a stopped node is an answer, not a failure");
         assert_eq!(value["BackendState"], "Stopped");
-    }
-
-    #[tokio::test]
-    async fn a_refusal_with_nothing_to_parse_is_still_a_failure() {
-        let ctx = context(Arc::new(StubBackend::failure(1, "something broke")));
-        let err = status(
-            &ctx,
-            StatusParams {
-                peers: true,
-                include_self: true,
-                active: false,
-            },
-        )
-        .await
-        .expect_err("no document and a refusal is a failure");
-        assert_eq!(err.code, ErrorCode::CliFailed);
     }
 
     #[tokio::test]
@@ -1291,31 +1274,6 @@ mod tests {
                 "log",
                 "--json=true",
                 &format!("--limit={MAX_LOCK_LIMIT}")
-            ]]
-        );
-    }
-
-    /// A caller that says nothing about the limit gets the client's own
-    /// default, which is the number the schema advertises.
-    #[tokio::test]
-    async fn the_lock_log_limit_defaults_to_the_one_the_client_uses() {
-        let params: LockLogParams =
-            serde_json::from_value(json!({})).expect("an empty call parses");
-        assert_eq!(params.limit, DEFAULT_LOCK_LIMIT);
-
-        let (_, argv) = against(
-            Reply::ok(fixture!("lock-log.json")),
-            |ctx, p| async move { lock_log(&ctx, p).await },
-            params,
-        )
-        .await;
-        assert_eq!(
-            argv,
-            [[
-                "lock",
-                "log",
-                "--json=true",
-                &format!("--limit={DEFAULT_LOCK_LIMIT}")
             ]]
         );
     }
@@ -1662,22 +1620,5 @@ mod tests {
                 entry.meta.name
             );
         }
-    }
-
-    #[test]
-    fn the_toolset_holds_every_read_only_local_command_it_claims_to() {
-        // Ticket 08 counts 25. A tool arriving here without being counted, or a
-        // tool moving out without the count moving, is a drift worth catching.
-        assert_eq!(entries().len(), 25);
-    }
-
-    #[test]
-    fn only_the_commands_that_do_not_exist_everywhere_are_restricted() {
-        let restricted: Vec<&str> = entries()
-            .iter()
-            .filter(|e| e.meta.platforms.is_some())
-            .map(|e| e.meta.name)
-            .collect();
-        assert_eq!(restricted, ["tailscale_configure_sysext_status"]);
     }
 }

@@ -499,28 +499,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn there_are_nine_resources_across_two_schemes_and_one_is_a_template() {
-        let all = all();
-        assert_eq!(all.len(), 9, "`spec.md` says nine");
-
-        let templated: Vec<_> = all.iter().filter(|r| r.templated).collect();
-        assert_eq!(templated.len(), 1, "and one template, addressed by device");
-        assert!(templated[0].uri.contains("{device_id}"));
-
-        for entry in &all {
-            let scheme = match entry.surface {
-                Surface::Local => "tailscale://",
-                Surface::Tailnet => "tailnet://",
-            };
-            assert!(
-                entry.uri.starts_with(scheme),
-                "`{}` should say which backend answers it",
-                entry.uri
-            );
-        }
-    }
-
-    #[test]
     fn the_policy_is_the_one_resource_that_is_not_json() {
         let all = all();
         let odd: Vec<_> = all.iter().filter(|r| r.mime_type != JSON).collect();
@@ -588,27 +566,6 @@ mod tests {
     }
 
     #[test]
-    fn the_policy_prompt_orders_read_validate_and_preview_before_any_write() {
-        let prompts = prompts();
-        let policy = prompts
-            .iter()
-            .find(|p| p.name == "review_policy_change")
-            .expect("declared");
-        let text = format!("{:?}", policy.expand(None, both()));
-
-        let at = |needle: &str| {
-            text.find(needle)
-                .unwrap_or_else(|| panic!("{needle} is named"))
-        };
-        assert!(at("tailnet_policy_get") < at("tailnet_policy_validate"));
-        assert!(at("tailnet_policy_validate") < at("tailnet_policy_preview"));
-        assert!(
-            at("tailnet_policy_preview") < at("tailnet_policy_set"),
-            "the write comes last, and only as the operator's call"
-        );
-    }
-
-    #[test]
     fn no_prompt_asks_for_a_tool_that_needs_more_than_the_read_tier() {
         // All three have to work under the read tier, so a prompt naming a
         // write tool would be one a read-only session could not finish.
@@ -657,24 +614,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    /// And the listing rule itself: each prompt says which surface it needs.
-    #[test]
-    fn every_prompt_declares_the_surface_it_cannot_work_without() {
-        let expected = [
-            ("diagnose_connectivity", Surface::Local),
-            ("review_policy_change", Surface::Tailnet),
-            ("audit_tailnet_access", Surface::Tailnet),
-        ];
-        let declared: Vec<_> = prompts()
-            .iter()
-            .map(|prompt| (prompt.name, prompt.surface))
-            .collect();
-        assert_eq!(
-            declared,
-            expected.to_vec(),
-            "a prompt changing surface changes which sessions are offered it"
-        );
     }
 }

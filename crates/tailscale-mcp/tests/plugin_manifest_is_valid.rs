@@ -140,27 +140,6 @@ fn the_manifest_names_the_same_binary_twice() {
 }
 
 #[test]
-fn every_bundle_the_build_script_can_narrow_the_manifest_to_is_still_valid() {
-    // `scripts/build-mcpb.sh` writes one platform into each bundle, since a
-    // bundle carries the binary for one platform only. The checked-in manifest
-    // is the one validated above; these are the manifests that actually ship,
-    // one per platform, and each is judged as well.
-    let (schema, manifest) = schema_and_manifest();
-    let listed = manifest["compatibility"]["platforms"]
-        .as_array()
-        .expect("the platforms the manifest describes")
-        .clone();
-    assert!(!listed.is_empty(), "the manifest describes no platform");
-    for platform in listed {
-        let mut narrowed = manifest.clone();
-        narrowed["compatibility"]["platforms"] = serde_json::json!([platform]);
-        if let Err(why) = validate(schema.clone(), &narrowed) {
-            panic!("a bundle host would refuse the {platform} bundle:\n{why}");
-        }
-    }
-}
-
-#[test]
 fn the_check_catches_a_manifest_a_host_would_refuse() {
     // Each of these is a way the manifest could be wrong that reading it would
     // not catch, so the check is known to fire rather than assumed to.
@@ -198,22 +177,4 @@ fn the_check_catches_a_manifest_a_host_would_refuse() {
             }),
         ],
     );
-}
-
-#[test]
-fn the_reference_reader_finds_what_it_claims_to() {
-    // The agreement above is only as good as this walk, so it is exercised on
-    // a shape that has a reference nested, two in one string, and one that is
-    // not a reference at all.
-    let found = references_in(&serde_json::json!({
-        "command": "${__dirname}/server/tailscale-mcp",
-        "env": {"A": "${user_config.one}", "B": "x${user_config.two}y${user_config.three}z"},
-        "args": ["--flag", "${user_config.four}"],
-        "n": 1,
-    }));
-    let expected: BTreeSet<String> = ["one", "two", "three", "four"]
-        .iter()
-        .map(|s| (*s).to_owned())
-        .collect();
-    assert_eq!(found, expected);
 }

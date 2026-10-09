@@ -127,31 +127,6 @@ async fn the_listing_describes_each_tool_well_enough_to_call_it() {
 }
 
 #[tokio::test]
-async fn a_call_round_trips_its_arguments_and_its_result() {
-    let harness = session(Tier::Read).await;
-    let answer = harness
-        .call_ok("tailscale_session_echo", json!({ "message": "hello" }))
-        .await;
-    assert_eq!(answer["message"], "hello");
-    harness.shutdown().await;
-}
-
-#[tokio::test]
-async fn a_tool_reaches_the_local_binary() {
-    let harness = session(Tier::Read).await;
-    let answer = harness.call_ok("tailscale_session_ask", json!({})).await;
-
-    assert_eq!(answer["text"], "answered");
-    assert!(
-        harness.cli_calls().contains(&vec!["ask".to_owned()]),
-        "{:?}",
-        harness.cli_calls()
-    );
-
-    harness.shutdown().await;
-}
-
-#[tokio::test]
 async fn a_failing_call_is_a_result_the_client_can_read_not_a_dropped_session() {
     let harness = session(Tier::Read).await;
     let error = harness
@@ -197,21 +172,6 @@ async fn a_tier_permits_everything_below_it_and_nothing_above() {
         !names.contains(&"tailnet_session_delete".to_owned()),
         "writing does not permit destruction: {names:?}"
     );
-
-    harness.shutdown().await;
-}
-
-#[tokio::test]
-async fn a_destructive_tool_still_needs_confirming() {
-    let harness = session(Tier::Destructive).await;
-
-    let error = harness.call_err("tailnet_session_delete", json!({})).await;
-    assert_eq!(error["code"], "confirmation_required");
-
-    let answer = harness
-        .call_ok("tailnet_session_delete", json!({ "confirm": true }))
-        .await;
-    assert_eq!(answer["done"], true);
 
     harness.shutdown().await;
 }

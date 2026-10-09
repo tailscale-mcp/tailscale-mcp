@@ -766,6 +766,39 @@ async fn a_posture_integration_secret_is_sent_and_never_answered_with() {
 }
 
 #[tokio::test]
+async fn a_posture_integration_update_that_changes_nothing_is_refused_before_it_is_sent() {
+    // An answer is arranged that the call must not reach: without the check
+    // the empty `PATCH` would be sent and answered as if something changed.
+    let harness = Setup::new()
+        .toolsets("tailnet-posture")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .api_answers(
+            "PATCH",
+            "/api/v2/posture/integrations/pi-example",
+            Response::json(json!({"id": "pi-example", "provider": "falcon"})),
+        )
+        .await
+        .start()
+        .await;
+
+    let error = harness
+        .call_err(
+            "tailnet_posture_integration_update",
+            json!({"integration_id": "pi-example"}),
+        )
+        .await;
+
+    assert_eq!(error["code"], json!("invalid_args"));
+    assert_eq!(
+        harness.control_plane().request_count(),
+        0,
+        "nothing should have been sent"
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn a_key_listing_states_its_scope_on_the_wire_whether_or_not_it_was_asked_to() {
     // Q74: the parameter is never absent, because the description marks it
     // required and calls it optional in the same breath, and an absent one

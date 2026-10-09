@@ -109,6 +109,14 @@ struct Inner {
 impl Client {
     pub fn new(config: ClientConfig) -> Result<Self, ApiError> {
         let base_url = checked_base_url(&config.base_url)?;
+        // Escaping cannot help: a URL parser reads `%2E%2E` as `..` too.
+        if matches!(config.tailnet.as_str(), "." | "..") {
+            return Err(ApiError::Config(format!(
+                "`{}` is not a tailnet name; as a path segment it would leave the \
+                 tailnet's own path",
+                config.tailnet
+            )));
+        }
         if config.concurrency == 0 {
             return Err(ApiError::Config(
                 "at least one call has to be allowed in flight".to_owned(),

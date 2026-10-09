@@ -66,6 +66,23 @@ mod tests {
     }
 
     #[test]
+    fn every_tool_refuses_an_argument_it_does_not_take() {
+        // Including the tools that take nothing, whose schema has no property
+        // list and once read as taking anything (Q172).
+        let args = serde_json::json!({"not_an_argument": 1});
+        let open: Vec<&str> = entries()
+            .iter()
+            .filter(|entry| {
+                let schema = (entry.schema)().expect("every schema builds");
+                let schema = serde_json::Value::Object(schema.as_ref().clone());
+                crate::registry::unknown_argument_in(&schema, &args).is_none()
+            })
+            .map(|entry| entry.meta.name)
+            .collect();
+        assert!(open.is_empty(), "these accept any argument: {open:?}");
+    }
+
+    #[test]
     fn every_tailnet_tool_ends_in_a_known_verb() {
         // `spec.md`: tailnet tools are named `tailnet_<resource>_<verb>` "with
         // a fixed verb vocabulary". Fixed means this list, and means a name

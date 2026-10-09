@@ -413,7 +413,7 @@ pub fn parse_params<T: serde::de::DeserializeOwned + schemars::JsonSchema + 'sta
     let args = Value::Object(args);
     if let Ok(schema) = rmcp::handler::server::tool::schema_for_input::<T>() {
         let root = Value::Object(schema.as_ref().clone());
-        if let Some((path, accepted)) = unknown_argument(&root, &root, &args, "") {
+        if let Some((path, accepted)) = unknown_argument_in(&root, &args) {
             return Err(ToolError::invalid_args(format!(
                 "`{tool}` takes no argument `{path}`; it takes {}",
                 accepted.join(", ")
@@ -423,6 +423,12 @@ pub fn parse_params<T: serde::de::DeserializeOwned + schemars::JsonSchema + 'sta
     serde_json::from_value(args).map_err(|e| {
         ToolError::invalid_args(format!("`{tool}` was called with unusable arguments: {e}"))
     })
+}
+
+/// The first argument in `args` that a tool's input `schema` has no property
+/// for, by path, with the names accepted at that level.
+pub(crate) fn unknown_argument_in(schema: &Value, args: &Value) -> Option<(String, Vec<String>)> {
+    unknown_argument(schema, schema, args, "")
 }
 
 /// The first argument in `value` that `schema` has no property for, with the

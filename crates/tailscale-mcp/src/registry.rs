@@ -401,10 +401,100 @@ macro_rules! tools {
 /// A shape mismatch is `invalid_args` rather than a protocol error: the caller
 /// is a model, and a structured answer naming the problem is something it can
 /// act on, whereas a JSON-RPC error is opaque to it.
-pub fn parse_params<T: serde::de::DeserializeOwned>(tool: &str, args: JsonObject) -> ToolResult<T> {
-    serde_json::from_value(Value::Object(args)).map_err(|e| {
+///
+/// An argument the tool does not take is refused rather than dropped, at any
+/// depth the schema names: dropped, a misspelling becomes a call that reports
+/// success for something it did not do (Q172). An object the schema gives no
+/// property list, such as a document in Tailscale's own shape, stays open.
+pub fn parse_params<T: serde::de::DeserializeOwned + schemars::JsonSchema + 'static>(
+    tool: &str,
+    args: JsonObject,
+) -> ToolResult<T> {
+    let args = Value::Object(args);
+    if let Ok(schema) = rmcp::handler::server::tool::schema_for_input::<T>() {
+        let root = Value::Object(schema.as_ref().clone());
+        if let Some((path, accepted)) = unknown_argument(&root, &root, &args, "") {
+            return Err(ToolError::invalid_args(format!(
+                "`{tool}` takes no argument `{path}`; it takes {}",
+                accepted.join(", ")
+            )));
+        }
+    }
+    serde_json::from_value(args).map_err(|e| {
         ToolError::invalid_args(format!("`{tool}` was called with unusable arguments: {e}"))
     })
+}
+
+/// The first argument in `value` that `schema` has no property for, with the
+/// names it does have there.
+fn unknown_argument(
+    root: &Value,
+    schema: &Value,
+    value: &Value,
+    path: &str,
+) -> Option<(String, Vec<String>)> {
+    let branches = branches(root, schema);
+    match value {
+        Value::Object(fields) => {
+            let open = branches.iter().any(|b| {
+                b.get("additionalProperties")
+                    .is_some_and(|extra| extra != &Value::Bool(false))
+            });
+            let properties: Vec<&JsonObject> = branches
+                .iter()
+                .filter_map(|b| b.get("properties")?.as_object())
+                .collect();
+            if open || properties.is_empty() {
+                return None;
+            }
+            fields.iter().find_map(|(key, field)| {
+                let here = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                match properties.iter().find_map(|p| p.get(key)) {
+                    Some(property) => unknown_argument(root, property, field, &here),
+                    None => {
+                        let mut accepted: Vec<String> = properties
+                            .iter()
+                            .flat_map(|p| p.keys().map(|k| format!("`{k}`")))
+                            .collect();
+                        accepted.sort();
+                        accepted.dedup();
+                        Some((here, accepted))
+                    }
+                }
+            })
+        }
+        Value::Array(items) => {
+            let item = branches.iter().find_map(|b| b.get("items"))?;
+            items.iter().enumerate().find_map(|(i, element)| {
+                unknown_argument(root, item, element, &format!("{path}[{i}]"))
+            })
+        }
+        _ => None,
+    }
+}
+
+/// A schema and every alternative it is made of, with references followed.
+fn branches<'a>(root: &'a Value, schema: &'a Value) -> Vec<&'a JsonObject> {
+    let Some(object) = schema.as_object() else {
+        return Vec::new();
+    };
+    if let Some(target) = object.get("$ref").and_then(Value::as_str) {
+        let resolved = target
+            .strip_prefix("#/")
+            .and_then(|pointer| root.pointer(&format!("/{pointer}")));
+        return resolved.map_or_else(Vec::new, |r| branches(root, r));
+    }
+    let mut all = vec![object];
+    for key in ["allOf", "anyOf", "oneOf"] {
+        if let Some(alternatives) = object.get(key).and_then(Value::as_array) {
+            all.extend(alternatives.iter().flat_map(|a| branches(root, a)));
+        }
+    }
+    all
 }
 
 #[cfg(test)]

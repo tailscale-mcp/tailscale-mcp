@@ -2537,3 +2537,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** A field added to a non-exhaustive struct is a minor change, so the weekly drift fix stops costing a major version. `#[non_exhaustive]` alone would leave callers outside the crate no way to build a request body, because functional-update syntax is refused too; `Default` restores one, since every field is an `Option` and the unknown-field map is empty by default. The bodies serialise as before: all 554 tests pass.
 **Outcome:** applied
 **Ref:** `crates/tailscale-rest/src/models/mod.rs`
+
+## Q172 — interactive/release-2.0 — tool-contract
+
+**Question:** A tool drops an argument it does not take, at any depth: `{"invites": [{"multi_use": true}]}` made a single-use invite and reported it made. Should 2.0.0 refuse unknown arguments, and where?
+**Options considered:** keep dropping them / `#[serde(deny_unknown_fields)]` on each of the 151 argument structs / one check in `parse_params` against the schema each tool advertises
+**Chosen:** Refuse them, in `parse_params`, by walking the arguments against the tool's input schema (`$ref`, `allOf`/`anyOf`/`oneOf` and array `items` followed). The error is `invalid_args`, names the argument by path (`invites[1].multi_use`), and lists the names accepted at that level. An object the schema gives no property list, or whose `additionalProperties` is not `false`, stays open: a document in Tailscale's own shape (ADR-0004) is the control plane's to judge.
+**Decided-by:** agent (user delegated the call)
+**Justification:** Dropped, a misspelling on a write tool becomes a call that reports success for something it did not do. The mixed convention makes the slip likely, with snake_case arguments around camelCase Tailscale bodies. A refusal that names the accepted keys costs one retry. `deny_unknown_fields` would need 151 edits, cannot combine with the eight `flatten` fields, and a new struct could forget it. The schema check covers every tool, current and future, from one place, and cannot disagree with parsing, because the schema is generated from the structs serde reads (no argument uses `alias`). A client that sends extra keys now gets an error, which is a tool-contract break and is why this ships in 2.0.0. Every contract row (a valid call to each of the 186 tools) still passes.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/registry.rs` (`parse_params`, `unknown_argument`)

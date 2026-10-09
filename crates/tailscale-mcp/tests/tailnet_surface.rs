@@ -1227,14 +1227,14 @@ async fn an_argument_the_tool_does_not_take_is_refused_by_name() {
         .start()
         .await;
 
-    for (args, named) in [
+    for (args, (named, accepted)) in [
         (
             json!({"device_id": "n2222222CNTRL", "invites": [{"multiUse": true}], "emails": []}),
-            "`emails`",
+            ("`emails`", "`invites`"),
         ),
         (
             json!({"device_id": "n2222222CNTRL", "invites": [{"email": "a@example.com"}, {"multi_use": true}]}),
-            "`invites[1].multi_use`",
+            ("`invites[1].multi_use`", "`multiUse`"),
         ),
     ] {
         let error = harness.call_err("tailnet_device_invite_create", args).await;
@@ -1242,7 +1242,7 @@ async fn an_argument_the_tool_does_not_take_is_refused_by_name() {
         let message = error["message"].as_str().unwrap_or_default();
         assert!(message.contains(named), "{message}");
         assert!(
-            message.contains("multiUse"),
+            message.contains(accepted),
             "the accepted names help the retry: {message}"
         );
     }

@@ -134,12 +134,10 @@ pub struct UserRoleParams {
 async fn user_role_set(ctx: &ToolContext, params: UserRoleParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let path = user_path(&params.user_id, "/role")?;
-    let body = tailscale_rest::models::user::UserRole {
-        // `all` is a filter, not a role: it belongs to the listing and would
-        // be a role nobody can hold.
-        role: Some(one_of("role", &params.role, USER_ROLES)?),
-        unknown: Default::default(),
-    };
+    let mut body = tailscale_rest::models::user::UserRole::default();
+    // `all` is a filter, not a role: it belongs to the listing and would
+    // be a role nobody can hold.
+    body.role = Some(one_of("role", &params.role, USER_ROLES)?);
     let answer = client.post(path).json(&body).send().await?;
     answered_or(
         answer,

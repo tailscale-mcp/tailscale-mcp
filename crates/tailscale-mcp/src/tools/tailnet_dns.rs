@@ -129,10 +129,8 @@ pub struct NameserversParams {
 
 async fn nameservers_replace(ctx: &ToolContext, params: NameserversParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let body = tailscale_rest::models::dns::DnsNameserversRequest {
-        dns: Some(each_present("dns", params.dns)?),
-        unknown: Default::default(),
-    };
+    let mut body = tailscale_rest::models::dns::DnsNameserversRequest::default();
+    body.dns = Some(each_present("dns", params.dns)?);
     Ok(client
         .post(dns_path(client, "/nameservers"))
         .json(&body)
@@ -161,10 +159,8 @@ pub struct PreferencesParams {
 
 async fn preferences_set(ctx: &ToolContext, params: PreferencesParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let body = tailscale_rest::models::dns::DnsPreferences {
-        magic_dns: Some(params.magic_dns),
-        unknown: Default::default(),
-    };
+    let mut body = tailscale_rest::models::dns::DnsPreferences::default();
+    body.magic_dns = Some(params.magic_dns);
     Ok(client
         .post(dns_path(client, "/preferences"))
         .json(&body)
@@ -192,10 +188,8 @@ pub struct SearchPathsParams {
 
 async fn search_paths_replace(ctx: &ToolContext, params: SearchPathsParams) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
-    let body = tailscale_rest::models::dns::DnsSearchPaths {
-        search_paths: Some(each_present("search_paths", params.search_paths)?),
-        unknown: Default::default(),
-    };
+    let mut body = tailscale_rest::models::dns::DnsSearchPaths::default();
+    body.search_paths = Some(each_present("search_paths", params.search_paths)?);
     Ok(client
         .post(dns_path(client, "/searchpaths"))
         .json(&body)

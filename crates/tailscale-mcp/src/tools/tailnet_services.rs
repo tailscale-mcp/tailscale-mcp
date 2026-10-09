@@ -249,10 +249,8 @@ async fn service_approval_set(
     let name = &path_segment("service_name", &params.service_name)?;
     let device = crate::tools::tailnet_devices::resolve(ctx, &params.device_id).await?;
     let suffix = approval_suffix(&device)?;
-    let body = tailscale_rest::models::service::ServiceApprovalRequest {
-        approved: Some(params.approved),
-        unknown: Default::default(),
-    };
+    let mut body = tailscale_rest::models::service::ServiceApprovalRequest::default();
+    body.approved = Some(params.approved);
     either_spelling(|base| {
         client
             .post(service_path(client, base, name, &suffix))

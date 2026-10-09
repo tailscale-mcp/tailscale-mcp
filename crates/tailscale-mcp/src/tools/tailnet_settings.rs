@@ -106,10 +106,8 @@ async fn contact_update(ctx: &ToolContext, params: ContactUpdateParams) -> ToolR
             "`email` is empty; a contact has to be an address",
         ));
     }
-    let body = tailscale_rest::models::user::UpdateContact {
-        email: Some(email.to_owned()),
-        unknown: Default::default(),
-    };
+    let mut body = tailscale_rest::models::user::UpdateContact::default();
+    body.email = Some(email.to_owned());
     let answer = client.patch(path).json(&body).send().await?;
     answered_or(
         answer,

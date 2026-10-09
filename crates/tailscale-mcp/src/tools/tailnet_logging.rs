@@ -303,10 +303,8 @@ async fn aws_external_id_create(
     // The model rather than a map built beside it: the drift test holds this
     // shape to the description, and a hand-written body is a second shape it
     // does not guard.
-    let body = AwsExternalIdRequest {
-        reusable: params.reusable,
-        unknown: Default::default(),
-    };
+    let mut body = AwsExternalIdRequest::default();
+    body.reusable = params.reusable;
     Ok(client
         .post(client.tailnet_path(None, "/aws-external-id"))
         .json(&body)
@@ -336,10 +334,8 @@ async fn aws_trust_policy_validate(
             path_segment("external_id", &params.external_id)?
         ),
     );
-    let body = AwsTrustPolicyRequest {
-        role_arn: Some(params.role_arn.clone()),
-        unknown: Default::default(),
-    };
+    let mut body = AwsTrustPolicyRequest::default();
+    body.role_arn = Some(params.role_arn.clone());
     let answer = client.post(path).json(&body).send_as::<Value>().await?;
     // A pass is an empty body, and `null` reads as a tool that lost its
     // answer rather than as a policy that checks out (Q67).

@@ -141,7 +141,10 @@ macro_rules! model_entries {
         $($rest:tt)*
     ) => {
         $(#[doc = $doc])*
-        #[derive(Debug, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+        // Non-exhaustive so that a field the next description adds is a minor
+        // release; outside this crate a model starts from `default()`.
+        #[derive(Debug, Clone, Default, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+        #[non_exhaustive]
         pub struct $name {
             $(
                 $(#[doc = $field_doc])*

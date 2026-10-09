@@ -151,14 +151,12 @@ async fn webhook_create(ctx: &ToolContext, params: WebhookCreateParams) -> ToolR
     // The model, not a struct beside it: the drift test holds this shape to
     // the description, and a second hand-written one is a shape it does not
     // guard.
-    let body = CreateWebhookRequest {
-        endpoint_url: Some(endpoint_url.to_owned()),
-        // Not held to `PROVIDER_TYPES` either: it names four chat products,
-        // which is a market rather than a specification (Q60, Q84).
-        provider_type: params.provider_type.clone(),
-        subscriptions: Some(checked_subscriptions(&params.subscriptions)?),
-        unknown: Default::default(),
-    };
+    let mut body = CreateWebhookRequest::default();
+    body.endpoint_url = Some(endpoint_url.to_owned());
+    // Not held to `PROVIDER_TYPES` either: it names four chat products,
+    // which is a market rather than a specification (Q60, Q84).
+    body.provider_type = params.provider_type.clone();
+    body.subscriptions = Some(checked_subscriptions(&params.subscriptions)?);
     Ok(client
         .post(client.tailnet_path(None, "/webhooks"))
         .json(&body)
@@ -181,10 +179,8 @@ async fn webhook_subscriptions_replace(
 ) -> ToolResult<Value> {
     let client = ctx.tailnet()?;
     let path = webhook_path(&params.endpoint_id, "")?;
-    let body = UpdateWebhookRequest {
-        subscriptions: Some(checked_subscriptions(&params.subscriptions)?),
-        unknown: Default::default(),
-    };
+    let mut body = UpdateWebhookRequest::default();
+    body.subscriptions = Some(checked_subscriptions(&params.subscriptions)?);
     Ok(client.patch(path).json(&body).send_as::<Value>().await?)
 }
 

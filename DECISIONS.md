@@ -2527,3 +2527,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** The changelog has to name a break, and an unmarked one is filed as an ordinary change. The marking does not decide the release: `scripts/prepare-release.sh --version <x.y.z>` overrides the computed bump. `cargo semver-checks` 0.51.0 against the published 1.3.2 finds exactly these removals, plus one break that was not marked when it landed: `f52082f` added `TailnetSettings.route_selection` and `Device.posture_status` to structs that callers can build field by field (`constructible_struct_adds_field`). That one alone already requires a major version for `tailscale-rest`.
 **Outcome:** applied
 **Ref:** `crates/tailscale-cli/src/{backend,exec,secret}.rs`, `crates/tailscale-rest/src/client.rs`
+
+## Q171 — interactive/release-2.0 — api-shape
+
+**Question:** Every model is exhaustively constructible, so each weekly re-vendor that adds a field is a major-version break (`f52082f` was one). With 2.0.0 already required, should the models change shape before it ships?
+**Options considered:** leave them as they are / mark them `#[non_exhaustive]` / mark them `#[non_exhaustive]` and derive `Default`
+**Chosen:** `#[non_exhaustive]` plus `Default`, in the `model_entries!` macro, so every model gets both. The ten request bodies the server builds now start from `default()` and assign their fields.
+**Decided-by:** agent (user asked for it as part of the 2.0.0 release)
+**Justification:** A field added to a non-exhaustive struct is a minor change, so the weekly drift fix stops costing a major version. `#[non_exhaustive]` alone would leave callers outside the crate no way to build a request body, because functional-update syntax is refused too; `Default` restores one, since every field is an `Option` and the unknown-field map is empty by default. The bodies serialise as before: all 554 tests pass.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/models/mod.rs`

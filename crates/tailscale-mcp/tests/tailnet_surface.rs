@@ -1213,3 +1213,60 @@ async fn with_no_local_surface_there_is_no_identity_and_the_call_is_ordinary() {
 
     harness.shutdown().await;
 }
+
+/// A misspelled argument is refused, at any depth, rather than dropped.
+///
+/// Dropped, `multi_use` made a single-use invite that the call reported as
+/// made; the arguments are snake_case and Tailscale's bodies camelCase, so the
+/// slip is an easy one to make (Q172).
+#[tokio::test]
+async fn an_argument_the_tool_does_not_take_is_refused_by_name() {
+    let harness = Setup::new()
+        .toolsets("tailnet-invites")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .start()
+        .await;
+
+    for (args, named) in [
+        (
+            json!({"device_id": "n2222222CNTRL", "invites": [{"multiUse": true}], "emails": []}),
+            "`emails`",
+        ),
+        (
+            json!({"device_id": "n2222222CNTRL", "invites": [{"email": "a@example.com"}, {"multi_use": true}]}),
+            "`invites[1].multi_use`",
+        ),
+    ] {
+        let error = harness.call_err("tailnet_device_invite_create", args).await;
+        assert_eq!(error["code"], "invalid_args", "{error:#?}");
+        let message = error["message"].as_str().unwrap_or_default();
+        assert!(message.contains(named), "{message}");
+        assert!(
+            message.contains("multiUse"),
+            "the accepted names help the retry: {message}"
+        );
+    }
+    assert_eq!(harness.control_plane().request_count(), 0);
+
+    harness.shutdown().await;
+}
+
+/// A document in Tailscale's own shape is the control plane's to judge.
+#[tokio::test]
+async fn a_free_form_document_still_carries_whatever_it_carries() {
+    let harness = Setup::new()
+        .toolsets("tailnet-settings")
+        .tier(tailscale_mcp::meta::Tier::Write)
+        .api_answers("PATCH", "/api/v2/tailnet/-/settings", Response::empty())
+        .await
+        .start()
+        .await;
+
+    let settings = json!({"routeSelection": "regional-routing", "aSettingFromNextYear": 1});
+    harness
+        .call_ok("tailnet_settings_update", json!({"settings": settings}))
+        .await;
+    assert_eq!(harness.control_plane().only_request().json(), settings);
+
+    harness.shutdown().await;
+}

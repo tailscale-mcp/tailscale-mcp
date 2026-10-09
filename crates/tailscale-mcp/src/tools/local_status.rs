@@ -1548,12 +1548,14 @@ mod tests {
         assert_eq!(value["ready"], true);
         assert_eq!(value["waited_up_to_seconds"], MAX_WAIT);
 
-        let ctx = context(Arc::new(StubBackend::failure(1, "timeout\n")));
+        let backend = Arc::new(StubBackend::failure(1, "timeout\n"));
+        let ctx = context(Arc::clone(&backend));
         let value = wait(&ctx, WaitParams { timeout_seconds: 5 })
             .await
             .expect("a timeout is an answer");
         assert_eq!(value["ready"], false);
         assert_eq!(value["note"], "timeout");
+        assert_eq!(backend.calls()[0].timeout, Duration::from_secs(5 + 5));
     }
 
     #[tokio::test]

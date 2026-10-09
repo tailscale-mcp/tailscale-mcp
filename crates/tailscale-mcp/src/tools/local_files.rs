@@ -1013,6 +1013,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_transfer_and_a_certificate_bound_the_process_too() {
+        let backend = Arc::new(StubBackend::always(Reply::ok("")));
+        let ctx = context(Arc::clone(&backend));
+        file_cp(
+            &ctx,
+            FileCpParams {
+                files: vec!["/tmp/notes.txt".to_owned()],
+                target: "laptop".to_owned(),
+                ..FileCpParams::default()
+            },
+        )
+        .await
+        .expect("the transfer succeeds");
+        cert(
+            &ctx,
+            CertParams {
+                domain: "workstation.example-tailnet.ts.net".to_owned(),
+                cert_file: "/etc/ssl/node.crt".to_owned(),
+                key_file: "/etc/ssl/node.key".to_owned(),
+                ..CertParams::default()
+            },
+        )
+        .await
+        .expect("the certificate is issued");
+        let bounds: Vec<Duration> = backend.calls().iter().map(|call| call.timeout).collect();
+        assert_eq!(
+            bounds,
+            [
+                Duration::from_secs(DEFAULT_TRANSFER_TIMEOUT + 5),
+                Duration::from_secs(DEFAULT_CERT_TIMEOUT + 5)
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn no_certificate_path_may_be_standard_output() {
         // The acceptance criterion the tool exists to hold: `-` is how the
         // client is told to print the private key, and no call can ask for it.

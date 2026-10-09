@@ -1147,6 +1147,7 @@ async fn force_netmap_update(ctx: &ToolContext, _params: NoParams) -> ToolResult
 mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use super::*;
 
@@ -1287,6 +1288,35 @@ mod tests {
         );
         assert_eq!(value["asked_for"], MAX_EVENTS);
         assert_eq!(value["seconds"], MAX_WATCH_SECONDS);
+    }
+
+    #[tokio::test]
+    async fn the_watcher_and_the_portmap_probe_bound_the_process_too() {
+        let backend = Arc::new(StubBackend::always(Reply::ok("")));
+        let ctx = context(Arc::clone(&backend));
+        watch_ipn(&ctx, watching(3, None))
+            .await
+            .expect("the watcher succeeds");
+        portmap(
+            &ctx,
+            PortmapParams {
+                duration_seconds: None,
+                r#type: None,
+                gateway_addr: None,
+                self_addr: None,
+                log_http: None,
+            },
+        )
+        .await
+        .expect("the probe succeeds");
+        let bounds: Vec<Duration> = backend.calls().iter().map(|call| call.timeout).collect();
+        assert_eq!(
+            bounds,
+            [
+                Duration::from_secs(DEFAULT_WATCH_SECONDS + 5),
+                Duration::from_secs(DEFAULT_PORTMAP_SECONDS + 5)
+            ]
+        );
     }
 
     // -- what the rest of them run -------------------------------------------

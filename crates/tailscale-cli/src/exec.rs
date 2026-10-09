@@ -279,6 +279,9 @@ fn minimal_env() -> BTreeMap<OsString, OsString> {
         "LOGNAME",
         // Where a secret file may live.
         "TMPDIR",
+        // Set only under a coverage run. Without it an instrumented child
+        // writes its profile into the working directory, out of the merge.
+        "LLVM_PROFILE_FILE",
         // Windows cannot start a process without these.
         "SystemRoot",
         "SystemDrive",

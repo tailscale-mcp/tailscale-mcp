@@ -2507,3 +2507,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Rewriting `main` breaks every clone and every citation of the SHAs after it. Moving the baseline would also stop checking `e640e8f`. An exemption by full SHA covers exactly one commit. Without the `cliff.toml` row, the catch-all parser would still file the commit under "Changes", which is the loss Q110 exists to prevent; git-cliff 2.8.0 renders it under Housekeeping with the row and under Changes without. A scratch-worktree run showed the check still rejects a new prose subject, and rejects `9fff35e` once the exemption is removed.
 **Outcome:** applied
 **Ref:** `scripts/check-commit-messages.sh`, `cliff.toml`
+
+## Q169 — interactive/revendor-2026-10-09 — scope
+
+**Question:** The description served on 2026-10-09 adds `routeSelection` to the tailnet settings, makes `regionalRoutingOn` read-only, and says a change must not name both. Does `tailnet_settings_update` refuse a body that names both, or say which one to use?
+**Options considered:** refuse it in the tool / name `routeSelection` in the parameter description / model the field only and let the control plane refuse
+**Chosen:** Model the field only. The tool keeps passing the caller's `settings` object through as it is.
+**Decided-by:** agent
+**Justification:** `settings` is free-form by design (ADR-0004): the tool names no individual setting today, and the control plane is the authority on which ones may be combined, so its refusal reaches the caller through the usual error mapping. A local check would be the first per-setting rule in the tool and would go stale at the next change upstream. `tailnet_settings_get` already returns `routeSelection`, because the model keeps unknown fields.
+**Outcome:** applied
+**Ref:** `crates/tailscale-rest/src/models/tailnet.rs`

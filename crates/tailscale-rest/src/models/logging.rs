@@ -123,6 +123,7 @@ pub const AUDIT_TARGET_PROPERTIES: &[&str] = &[
     "TCD",
     "TKA",
     "AUTH_PROVIDER",
+    "ROUTE_SELECTION",
 ];
 
 /// What was attempted against the target.
@@ -172,7 +173,7 @@ pub const FLOW_PROTOCOLS: &[&str] = &[
 
 /// Every event the audit log can be filtered by.
 ///
-/// A hundred and thirty-nine of them, and the list that a  parameter
+/// A hundred and forty of them, and the list that a  parameter
 /// quotes. Kept whole rather than summarised because the caller has to spell one
 /// exactly, and a truncated list is worse than none.
 pub const AUDIT_EVENTS: &[&str] = &[
@@ -211,7 +212,8 @@ pub const AUDIT_EVENTS: &[&str] = &[
     "TAILNET.JOIN", "TAILNET.JOIN_WAITLIST.FEATURE", "TAILNET.LEAVE",
     "TAILNET.UPDATE.ACCOUNT_EMAIL", "TAILNET.UPDATE.ACL", "TAILNET.UPDATE.DNS_CONFIG",
     "TAILNET.UPDATE.LOGSTREAM_ENDPOINT", "TAILNET.UPDATE.MAX_KEY_DURATION",
-    "TAILNET.UPDATE.POSTURE_INTEGRATION", "TAILNET.UPDATE.SECURITY_EMAIL",
+    "TAILNET.UPDATE.POSTURE_INTEGRATION", "TAILNET.UPDATE.ROUTE_SELECTION",
+    "TAILNET.UPDATE.SECURITY_EMAIL",
     "TAILNET.UPDATE.SUPPORT_EMAIL", "TAILNET.UPDATE.TCD", "TAILNET.UPDATE.TKA",
     "TAILNET.VERIFY.ACCOUNT_EMAIL", "TAILNET.VERIFY.SECURITY_EMAIL",
     "TAILNET.VERIFY.SUPPORT_EMAIL", "USER.APPROVE", "USER.CREATE", "USER.DELETE",

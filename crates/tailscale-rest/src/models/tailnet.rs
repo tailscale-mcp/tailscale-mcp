@@ -16,10 +16,20 @@ use crate::models::KnownValues;
 /// the setting off is itself a setting.
 pub const ROLES_ALLOWED_TO_JOIN: &[&str] = &["none", "admin", "member"];
 
-pub const KNOWN_VALUES: &[KnownValues] = &[(
-    "TailnetSettings.usersRoleAllowedToJoinExternalTailnets",
-    ROLES_ALLOWED_TO_JOIN,
-)];
+/// How the tailnet picks among subnet routers that advertise the same route.
+pub const ROUTE_SELECTIONS: &[&str] = &[
+    "active-passive-failover",
+    "regional-routing",
+    "regional-routing-failover",
+];
+
+pub const KNOWN_VALUES: &[KnownValues] = &[
+    (
+        "TailnetSettings.usersRoleAllowedToJoinExternalTailnets",
+        ROLES_ALLOWED_TO_JOIN,
+    ),
+    ("TailnetSettings.routeSelection", ROUTE_SELECTIONS),
+];
 
 model! {
     /// What a failing call says went wrong.
@@ -47,7 +57,11 @@ model! {
         users_role_allowed_to_join_external_tailnets:
             "usersRoleAllowedToJoinExternalTailnets" => String,
         network_flow_logging_on: "networkFlowLoggingOn" => bool,
+        /// Read-only: `route_selection` is what a change sets, and a change
+        /// may not name both.
         regional_routing_on: "regionalRoutingOn" => bool,
+        /// One of [`ROUTE_SELECTIONS`].
+        route_selection: "routeSelection" => String,
         /// Whether posture integrations may collect device identity.
         posture_identity_collection_on: "postureIdentityCollectionOn" => bool,
         /// Whether devices can be issued HTTPS certificates.

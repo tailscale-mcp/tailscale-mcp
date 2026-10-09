@@ -80,6 +80,7 @@ model! {
         tailnet_lock_key: "tailnetLockKey" => String,
         ssh_enabled: "sshEnabled" => bool,
         posture_identity: "postureIdentity" => PostureIdentity,
+        posture_status: "postureStatus" => PostureStatus,
         is_ephemeral: "isEphemeral" => bool,
         distro: "distro" => Distro,
     }
@@ -125,6 +126,15 @@ model! {
     PostureIdentity as "Device.postureIdentity" {
         serial_numbers: "serialNumbers" => Vec<String>,
         disabled: "disabled" => bool,
+    }
+
+    /// Whether the device passes a posture, and what it fails if not.
+    PostureStatus as "Device.postureStatus" {
+        passing: "passing" => bool,
+        /// Whether failing it cuts the device's connectivity.
+        impacting: "impacting" => bool,
+        /// Empty when the device passes.
+        failing_assertions: "failingAssertions" => Vec<String>,
     }
 
     /// The operating system distribution, where the client can tell.

@@ -8,7 +8,7 @@
 //! exist only to be spelled in Rust.
 //!
 //! Enums are documented strings rather than Rust enums (Q60). None of the
-//! description's thirty-three enumerations is a closed set; each is a list of
+//! description's thirty-four enumerations is a closed set; each is a list of
 //! what exists today, so the values live in a `&[&str]` constant beside the
 //! field — which is what a tool's parameter description quotes — and the
 //! drift test asserts the constant still says what the document says.

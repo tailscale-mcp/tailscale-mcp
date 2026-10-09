@@ -392,6 +392,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_peer_named_for_an_operator_is_still_not_found() {
+        let ctx = context(
+            StubBackend::failure(1, "no such peer: operator-laptop\n"),
+            None,
+        );
+        let err = run(&ctx, &meta(None), Invocation::read(["ping"]))
+            .await
+            .expect_err("should fail");
+        assert_eq!(err.code, ErrorCode::NotFound, "{err:?}");
+    }
+
+    #[tokio::test]
     async fn a_secret_in_the_error_stream_does_not_reach_the_caller() {
         let ctx = context(
             StubBackend::failure(1, "bad key tskey-auth-example1CNTRL-secretpart\n"),

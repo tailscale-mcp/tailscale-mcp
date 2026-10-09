@@ -1182,6 +1182,7 @@ async fn this_node_is_recognised_by_any_name_the_api_accepts() {
             "`{name}` should be recognised as this node: {error:#?}"
         );
     }
+    assert_eq!(harness.control_plane().request_count(), 0);
 
     harness.shutdown().await;
 }

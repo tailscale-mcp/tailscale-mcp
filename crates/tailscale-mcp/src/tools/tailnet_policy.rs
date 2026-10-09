@@ -24,7 +24,7 @@
 
 use rmcp::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tailscale_rest::models::policy::PREVIEW_SUBJECTS;
 
 use crate::context::ToolContext;
@@ -363,6 +363,12 @@ pub struct PolicyValidateParams {
     /// Access tests to run against the policy currently in force, as
     /// `[{"src": ..., "accept": [...], "deny": [...]}]`. Give this or
     /// `policy`, not both.
+    ///
+    /// The schema spells the entries as objects: `Value` would render as the
+    /// boolean schema `true`, and strict tool-schema converters reject a whole
+    /// request over a boolean subschema in `items` (issue #1). Only the
+    /// advertised schema changes; the runtime still accepts any JSON value.
+    #[schemars(with = "Option<Vec<Map<String, Value>>>")]
     #[serde(default)]
     pub tests: Option<Vec<Value>>,
     /// A hypothetical policy to check — a HuJSON string or a JSON object —

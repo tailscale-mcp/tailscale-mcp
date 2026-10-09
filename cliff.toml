@@ -24,7 +24,7 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim | upper_first }}
 {% for commit in commits %}
-- {{ commit.message | upper_first | split(pat="\n") | first | trim }}\
+- {% if commit.breaking %}**Breaking:** {% endif %}{{ commit.message | upper_first | split(pat="\n") | first | trim }}\
 {% endfor %}
 {% endfor %}\n
 """
@@ -48,6 +48,12 @@ commit_parsers = [
   # Unconventional subjects that reached `main` after the convention (Q168),
   # filed where their conventional form would have put them.
   { sha = "9fff35ede68ec116ef0cd04507e68d0a1d836105", group = "<!-- 7 -->Housekeeping" },
+  # Failing tests committed ahead of their fix, whose subjects state the bug
+  # rather than a change; the fix's own entry is the changelog's (Q173).
+  { sha = "67e059bdb7ef2a8bc3c7a4c8c13d6bf6e32cc3cc", skip = true },
+  { sha = "207b64443c2eaa8ca93a461311a3f7d6e63d9d66", skip = true },
+  { sha = "fb217cf9aac96866e53ecd4833d999e3d9873e62", skip = true },
+  { sha = "babfa2d28f2664239afeca62a8b6139b857e5a59", skip = true },
   { message = "^feat", group = "<!-- 0 -->Added" },
   { message = "^fix", group = "<!-- 1 -->Fixed" },
   { message = "^refactor", group = "<!-- 2 -->Changed" },

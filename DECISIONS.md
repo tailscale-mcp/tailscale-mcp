@@ -2547,3 +2547,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Dropped, a misspelling on a write tool becomes a call that reports success for something it did not do. The mixed convention makes the slip likely, with snake_case arguments around camelCase Tailscale bodies. A refusal that names the accepted keys costs one retry. `deny_unknown_fields` would need 151 edits, cannot combine with the eight `flatten` fields, and a new struct could forget it. The schema check covers every tool, current and future, from one place, and cannot disagree with parsing, because the schema is generated from the structs serde reads (no argument uses `alias`). A client that sends extra keys now gets an error, which is a tool-contract break and is why this ships in 2.0.0. Every contract row (a valid call to each of the 186 tools) still passes.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/registry.rs` (`parse_params`, `unknown_argument`)
+
+## Q173 — interactive/release-2.0 — changelog
+
+**Question:** The 2.0.0 changelog, as `cliff.toml` rendered it, marked none of its breaking changes, and listed four failing-test commits whose subjects state the bug being fixed ("A base URL with a query or fragment is accepted") as though they were changes. Does the template change before 2.0.0 ships?
+**Options considered:** ship it as rendered / edit `CHANGELOG.md` by hand / change `cliff.toml`
+**Chosen:** Prefix every entry whose commit is marked breaking with **Breaking:**. Skip the four test-first commits by full SHA, as Q168 files `9fff35e`; each fix's own entry already says what changed.
+**Decided-by:** agent
+**Justification:** A major release whose changelog does not say what breaks leaves every reader to diff the API themselves. The changelog says "do not edit by hand" because it is regenerated in full, so a hand edit would not survive the next release. The dry run shows the template change touches no earlier section, since none had a breaking commit. Rewording the four commits would mean rewriting pushed history.
+**Outcome:** applied
+**Ref:** `cliff.toml`

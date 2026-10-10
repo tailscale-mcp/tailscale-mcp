@@ -90,6 +90,17 @@ fn no_ticket_waits_on_a_version_that_has_shipped() {
         "no released versions found in CHANGELOG.md, so this check cannot tell \
          a stale ticket from a fresh one"
     );
+    // No ticket names a version today, so the comparison below runs on nothing
+    // unless ticket 31's old status is shown to be caught: a changelog heading
+    // spelled differently from a status line would otherwise pass every ticket.
+    assert_eq!(
+        versions_named("in-progress — waiting on 1.0.0")
+            .iter()
+            .filter(|version| released.contains(*version))
+            .count(),
+        1,
+        "the shipped 1.0.0 is not recognised in a status line; read from the changelog: {released:?}"
+    );
     for (ticket, status) in statuses() {
         for version in versions_named(&status) {
             assert!(

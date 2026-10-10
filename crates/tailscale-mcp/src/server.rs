@@ -44,6 +44,11 @@ pub enum StartupError {
     /// running with the tailnet surface silently missing.
     #[error(transparent)]
     ControlPlane(#[from] tailscale_rest::ApiError),
+    /// The selection would offer tools, but every surface it needs is missing.
+    /// The repair is a binary or a credential rather than a wider selection,
+    /// so the notes that name them are the message.
+    #[error("no tools can be offered. {}", .0.join(" "))]
+    NoSurface(Vec<String>),
 }
 
 /// What the two surfaces turned out to be.
@@ -201,12 +206,26 @@ pub async fn build(
         }
     };
 
-    let gate = Gate::new(
+    let metas = registry.metas();
+    let gate = match Gate::new(
         config.toolsets.clone(),
         config.max_tier,
         unavailable,
-        &registry.metas(),
-    )?;
+        &metas,
+    ) {
+        Err(ConfigError::NoToolsEnabled)
+            if Gate::new(
+                config.toolsets.clone(),
+                config.max_tier,
+                std::collections::BTreeSet::new(),
+                &metas,
+            )
+            .is_ok() =>
+        {
+            return Err(StartupError::NoSurface(notes));
+        }
+        gate => gate?,
+    };
 
     let ctx = ToolContext {
         local: Arc::clone(&backends.local),

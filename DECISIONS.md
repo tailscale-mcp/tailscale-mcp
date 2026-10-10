@@ -2607,3 +2607,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** `true` is a claim that the binary is supported, and a model reading the answer acts on it. `false` is a different false claim. `null` matches `version`, which is already `null` in the same case. The tool advertises no output schema (checked with `tools/list` on 2026-10-09), so no declared contract changes; a client that tested the field for truthiness now sees `null` where it saw `true`. The startup warning in `cli.rs` reads the version its own way and is unchanged.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/tools/local_status.rs` (`VersionReport::meets_floor`)
+
+## Q179 — interactive/post-2.0.2 — startup-errors
+
+**Question:** Run without a `tailscale` binary or a credential, which is how the container image starts when the key is forgotten, the server said "the selected toolsets and tier leave no tools enabled; widen the preset, the toolsets, or the tier". Widening the selection cannot help, and the notes that named the real repair were collected but never printed. What should startup say?
+**Options considered:** print the notes before the error / reword `NoToolsEnabled` to mention surfaces / return a separate error when the selection would offer tools if its surfaces were there
+**Chosen:** `StartupError::NoSurface`, whose message is the surface notes ("No `tailscale` binary was found … pass --cli-path", "No control-plane credential was found … Set TAILSCALE_API_KEY …"). `NoToolsEnabled` stays for a selection that offers nothing even with every surface present.
+**Decided-by:** agent
+**Justification:** Found on 2026-10-09 by running the 2.0.2 image on mac-mini-m2 with `--network none` and no key. The two cases need different repairs, so one message cannot serve both. The test is a second `Gate::new` with no surface marked missing, which asks exactly whether the surfaces were the cause, and the `local-serve` control in `neither_surface_is_a_startup_error` keeps the old error for the old case.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/server.rs` (`build`, `StartupError::NoSurface`)

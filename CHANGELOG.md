@@ -3,6 +3,23 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 2.0.3 — 2026-10-10
+
+### Fixed
+
+- Report meets_floor as null when the version cannot be read
+- Name the missing binary or credential when no surface is available
+
+### Documentation
+
+- Say which two of the eleven local-file tools touch no file
+
+### Tests
+
+- A version that cannot be read is not said to meet the floor
+- The shipped-version check proves it catches the status it was written for
+- A server with no surface names the binary and the credential it lacks
+
 ## 2.0.2 — 2026-10-10
 
 ### Fixed

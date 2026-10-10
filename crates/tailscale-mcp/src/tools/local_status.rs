@@ -487,8 +487,9 @@ pub struct VersionReport {
     /// The oldest release this server is written against.
     pub supported_floor: String,
     /// Whether the binary is at or above that floor. An unstable build — an odd
-    /// minor number — counts as newer than the stable release above it.
-    pub meets_floor: bool,
+    /// minor number — counts as newer than the stable release above it. Null
+    /// when the version could not be read, because then nobody knows.
+    pub meets_floor: Option<bool>,
 }
 
 async fn version(ctx: &ToolContext, _params: NoParams) -> ToolResult<Value> {
@@ -503,7 +504,7 @@ async fn version(ctx: &ToolContext, _params: NoParams) -> ToolResult<Value> {
         version: version.map(|v| v.to_string()),
         raw: raw.trim_end().to_owned(),
         supported_floor: SUPPORTED_FLOOR.to_string(),
-        meets_floor: version.is_none_or(|v| v >= SUPPORTED_FLOOR || v.is_unstable()),
+        meets_floor: version.map(|v| v >= SUPPORTED_FLOOR || v.is_unstable()),
     })
 }
 

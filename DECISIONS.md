@@ -2597,3 +2597,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Each change was checked against a planted defect: a README count of 137, a `file_cp` summary that only names its command, and a fake that echoes the secret. The old test passed on each, and the new one fails where it should. A bare "file" was not a claim, because `tailscale file cp` contains it. The tool does pass a successful answer on unchanged (`integration_create` returns the raw body, and the redactor covers only CLI output and errors). So the old assert passed only because the fixture held no secret. Whether the real API ever echoes `clientSecret` is not known; no scrubbing was added.
 **Outcome:** applied
 **Ref:** commits `8e0a45e`, `2082e3a`, `49887f3`, `9186188`
+
+## Q178 — interactive/post-2.0.2 — tool-contract
+
+**Question:** `tailscale_version` reported `"meets_floor": true` beside `"version": null` when the binary's version could not be read, as the reproduction for Q176 showed. What should it report when nobody knows?
+**Options considered:** keep `true` (unknown is not known to be old) / report `false` / make the field nullable and report `null`
+**Chosen:** `meets_floor: Option<bool>`, `null` when the version could not be read.
+**Decided-by:** agent
+**Justification:** `true` is a claim that the binary is supported, and a model reading the answer acts on it. `false` is a different false claim. `null` matches `version`, which is already `null` in the same case. The tool advertises no output schema (checked with `tools/list` on 2026-10-09), so no declared contract changes; a client that tested the field for truthiness now sees `null` where it saw `true`. The startup warning in `cli.rs` reads the version its own way and is unchanged.
+**Outcome:** applied
+**Ref:** `crates/tailscale-mcp/src/tools/local_status.rs` (`VersionReport::meets_floor`)

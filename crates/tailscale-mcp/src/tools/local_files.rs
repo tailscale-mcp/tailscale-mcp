@@ -1,12 +1,14 @@
 //! The tools that touch the local filesystem.
 //!
 //! Everything else on the local surface reads or writes state inside
-//! `tailscaled`. These eleven read and write *files on the local filesystem*:
-//! they send
-//! files to a peer and take files out of the Taildrop inbox, write a TLS
-//! certificate and a metrics dump to paths the caller names, point `kubectl` at
-//! a cluster, and share a directory over Taildrive. Every tool description says
-//! so, because the caller is choosing a path on a machine it cannot see.
+//! `tailscaled`. Nine of the eleven here read and write *files on the local
+//! filesystem*: they send files to a peer and take files out of the Taildrop
+//! inbox, write a TLS certificate and a metrics dump to paths the caller names,
+//! point `kubectl` at a cluster, and share a directory over Taildrive. Each of
+//! those descriptions says so, because the caller is choosing a path on a
+//! machine it cannot see. The other two touch no file: `file_targets` lists the
+//! peers a file can go to, and `syspolicy_reload` rereads settings the node
+//! already has.
 //!
 //! Paths are taken as the caller gives them, at the write tier and no higher:
 //! the tier is what confines them in this release, so a read-only session

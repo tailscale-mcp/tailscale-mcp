@@ -3,6 +3,32 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 2.0.2 — 2026-10-10
+
+### Fixed
+
+- Ask a tailscale that lives in an app bundle however PATH reaches it
+
+### Changed
+
+- Drop the unused registry accessor and two branches build() never reaches
+
+### Documentation
+
+- Record how the four weak tests were tightened (Q177)
+
+### Tests
+
+- A search path into the app bundle still reaches the CLI behind it
+- A README preset count is read as a number, not found inside one
+- Drop the toolset-surface check, which compares surface() with itself
+- A description claims a place on disk, not just the word "file"
+- The secret test claims only that clientSecret is sent, not that answers drop it
+
+### Build and CI
+
+- Pass the profile path through to instrumented children
+
 ## 2.0.1 — 2026-10-09
 
 ### Fixed

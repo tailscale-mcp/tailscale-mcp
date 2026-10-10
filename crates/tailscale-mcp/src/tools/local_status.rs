@@ -1278,6 +1278,26 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_version_that_cannot_be_read_is_not_said_to_meet_the_floor() {
+        for (printed, meets_floor) in [
+            (
+                "The Tailscale GUI failed to start: (Tailscale.CLIError error 3.)\n",
+                Value::Null,
+            ),
+            ("1.72.0\n", Value::Bool(false)),
+            (fixture!("tailscale-version.txt"), Value::Bool(true)),
+        ] {
+            let (value, _) = against(
+                Reply::ok(printed),
+                |ctx, p| async move { version(&ctx, p).await },
+                NoParams {},
+            )
+            .await;
+            assert_eq!(value["meets_floor"], meets_floor, "{value}");
+        }
+    }
+
     // -- parsers --------------------------------------------------------------
 
     #[test]

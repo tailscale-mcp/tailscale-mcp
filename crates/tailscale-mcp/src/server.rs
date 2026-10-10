@@ -710,10 +710,29 @@ mod tests {
         )
         .await
         .expect_err("a server that can do nothing should not start");
-        assert!(matches!(
-            err,
-            StartupError::Config(ConfigError::NoToolsEnabled)
-        ));
+        // The repair is a binary or a credential, not a wider selection, so the
+        // error has to say which: a container without either is the usual case.
+        let said = err.to_string();
+        for repair in ["--cli-path", "TAILSCALE_API_KEY"] {
+            assert!(said.contains(repair), "{said}");
+        }
+
+        // Whereas a selection that offers nothing on a working node is the
+        // selection's fault, and says so.
+        let err = build(
+            &config(Cli {
+                toolsets: Some("local-serve".to_owned()),
+                ..Cli::default()
+            }),
+            fixture::entries(),
+            backends(Some(healthy_node()), true),
+        )
+        .await
+        .expect_err("a selection with nothing in it should not start");
+        assert!(
+            matches!(err, StartupError::Config(ConfigError::NoToolsEnabled)),
+            "{err}"
+        );
     }
 
     /// A server pointed somewhere in particular, so that the base URL is the

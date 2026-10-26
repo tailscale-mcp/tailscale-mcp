@@ -13,7 +13,7 @@ use rmcp::model::{
     GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation, InitializeResult,
     ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult, ListToolsResult,
     PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, ServerCapabilities,
-    ServerInfo, Tool,
+    ServerConfig, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
@@ -342,7 +342,7 @@ impl TailscaleMcpServer {
 }
 
 impl ServerHandler for TailscaleMcpServer {
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         let mut info = InitializeResult::new(
             ServerCapabilities::builder()
                 .enable_tools()

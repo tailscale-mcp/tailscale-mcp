@@ -453,4 +453,4 @@ pub fn version() -> Report {
 /// read a dependency's version at runtime: `DEP_*` variables reach only the
 /// build script of a crate that declares `links`, which rmcp does not, so the
 /// obvious `option_env!` would have been silently `None` for ever (Q97).
-pub const RMCP_VERSION: &str = "3.2.0";
+pub const RMCP_VERSION: &str = "3.7.0";

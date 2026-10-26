@@ -15,7 +15,7 @@ authors = ["The tailscale-mcp authors"]
 tailscale-rest = { version = "2.0.3", path = "crates/tailscale-rest" }
 tailscale-cli = { version = "2.0.3", path = "crates/tailscale-cli" }
 
-rmcp = "3.2.0"
+rmcp = "3.7.0"
 tokio = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "charset", "http2"] }
 serde = { version = "1", features = ["derive"] }

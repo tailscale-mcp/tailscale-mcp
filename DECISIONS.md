@@ -2627,3 +2627,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Q174: a release that stops at `image` has already published crates and npm, and then the MCP registry step never runs. A delay is cheap to undo; a half-published release is not. Moving off ECR is a build-infrastructure change like Q174, which the user decided, so it is not the agent's call.
 **Outcome:** applied
 **Ref:** CI run 40278015228; commits 8f568e8..fec73c8
+
+## Q181 — loop/issue-pr-maintainer — irreversible-action
+
+**Question:** The 2.0.4 Release run is half-published. Attempt 2 passed `image`, then `cargo publish --workspace` uploaded `tailscale-cli` and `tailscale-rest` 2.0.4 and timed out after 60 s waiting for the index, so `tailscale-mcp` stays at 2.0.3 on crates.io. Attempt 3 (`gh run rerun --failed`) failed at once: `crate version 2.0.4 is already uploaded`. `RELEASING.md` said a rerun skips uploaded crates; it does not. How to finish 2.0.4?
+**Options considered:** rerun again (fails the same way: the rerun uses the workflow at the tag) / change `release.yml` (for example `--exclude` the crates already at the tag's version, or a dispatch input that publishes one crate) and cut 2.0.5 / change the workflow and publish `tailscale-mcp` 2.0.4 from a dispatch / leave crates.io at 2.0.3 until the next release
+**Chosen:** hold. Correct the `RELEASING.md` row, cut no new version, reply on #1 and #2 only once the release is whole. The user picks the recovery.
+**Decided-by:** agent
+**Justification:** No hand-publish path exists (trusted publishing only), so every real fix is a change to the release workflow, which Q174 and Q180 leave to the user. The run rules forbid a new version over a half-published one. npm, the GitHub release, the container image and the MCP registry already carry 2.0.4; only `cargo install tailscale-mcp` users still get 2.0.3.
+**Outcome:** applied
+**Ref:** Release run 40279063903 attempts 2 and 3; `RELEASING.md` recovery table

@@ -3,6 +3,12 @@
 
 # rmcp research report (verified against rmcp 3.2.0, 2026-09-03)
 
+> **Since then (2026-10-26):** the workspace is on rmcp 3.7.0. Two changes bear on what follows.
+> List results (`tools/list`, `resources/list`, `resources/templates/list`, `prompts/list`) now
+> carry `ttlMs` and `cacheScope` for 2026-07-28 peers: 3.2.0 put them on `server/discover` only
+> (rust-sdk#1308, issue #2). And `ServerInfo` is deprecated in favour of `ServerConfig`, the same
+> `InitializeResult`. The rest of this note was not re-verified against 3.7.0.
+
 ## 0. What I actually read / ran
 
 - Local: `rustc --version`, `cargo --version`, `rustup show`, `cargo search`/`cargo info`, `~/.cargo/registry`.

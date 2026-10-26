@@ -21,6 +21,7 @@ pub const ROUTE_SELECTIONS: &[&str] = &[
     "active-passive-failover",
     "regional-routing",
     "regional-routing-failover",
+    "magicroute",
 ];
 
 pub const KNOWN_VALUES: &[KnownValues] = &[
@@ -48,6 +49,9 @@ model! {
         acls_externally_managed_on: "aclsExternallyManagedOn" => bool,
         /// Where the admin console points a reader when the above is on.
         acls_external_link: "aclsExternalLink" => String,
+        /// How long a member stays signed in to the admin console, 0 to 43200
+        /// minutes; 0 turns the timeout off.
+        admin_console_session_timeout_minutes: "adminConsoleSessionTimeoutMinutes" => i64,
         devices_approval_on: "devicesApprovalOn" => bool,
         devices_auto_updates_on: "devicesAutoUpdatesOn" => bool,
         /// How long a device's key lasts before it must reauthenticate.

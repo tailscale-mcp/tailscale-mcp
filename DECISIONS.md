@@ -2617,3 +2617,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Found on 2026-10-09 by running the 2.0.2 image on mac-mini-m2 with `--network none` and no key. The two cases need different repairs, so one message cannot serve both. The test is a second `Gate::new` with no surface marked missing, which asks exactly whether the surfaces were the cause, and the `local-serve` control in `neither_surface_is_a_startup_error` keeps the old error for the old case.
 **Outcome:** applied
 **Ref:** `crates/tailscale-mcp/src/server.rs` (`build`, `StartupError::NoSurface`)
+
+## Q180 — loop/issue-pr-maintainer — irreversible-action
+
+**Question:** 2.0.4 is ready (fixes for #1 and #2, rustls, tokio and webpki advisories), and every CI job passes except Container image, which fails three times in a row with `429 Too Many Requests` from `public.ecr.aws` on `rust:1-alpine`. The release's `image` job pulls the same base image. Tag now, or wait?
+**Options considered:** tag now and rerun `image` if it fails / wait for the pull limit to clear and tag on a green container job / move the base image to another mirror
+**Chosen:** wait. Retry on the next hourly maintainer run and tag once the container job passes. Escalate a mirror change if the 429 continues.
+**Decided-by:** agent
+**Justification:** Q174: a release that stops at `image` has already published crates and npm, and then the MCP registry step never runs. A delay is cheap to undo; a half-published release is not. Moving off ECR is a build-infrastructure change like Q174, which the user decided, so it is not the agent's call.
+**Outcome:** applied
+**Ref:** CI run 40278015228; commits 8f568e8..fec73c8

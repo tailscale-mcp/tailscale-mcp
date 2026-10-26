@@ -2637,3 +2637,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** No hand-publish path exists (trusted publishing only), so every real fix is a change to the release workflow, which Q174 and Q180 leave to the user. The run rules forbid a new version over a half-published one. npm, the GitHub release, the container image and the MCP registry already carry 2.0.4; only `cargo install tailscale-mcp` users still get 2.0.3.
 **Outcome:** applied
 **Ref:** Release run 40279063903 attempts 2 and 3; `RELEASING.md` recovery table
+
+## Q182 — interactive/release-2.0.5 — build-infrastructure
+
+**Question:** 2.0.4 reached crates.io with only `tailscale-cli` and `tailscale-rest`. `tailscale-mcp` timed out waiting for the index, and a rerun refused with `already uploaded` (Q181). In the same release, `public.ecr.aws` answered CI and the release `image` job with 429 four times (Q180). How do the next releases avoid both?
+**Options considered:** for crates.io: leave crates.io at 2.0.3 / add a manual single-crate publish / make the publish step skip crates already at the version and retry, then cut 2.0.5. For the base image: keep ECR and rerun / log in to a registry / `mirror.gcr.io`
+**Chosen:** The publish step lists the publishable crates from `cargo metadata`, leaves out each one crates.io already has at the tag's version (`--exclude`), and retries up to five times a minute apart. Cut 2.0.5 with it. Base image `FROM mirror.gcr.io/library/rust:1-alpine`.
+**Decided-by:** human (chose both recommendations)
+**Justification:** A rerun runs the workflow as it was at the tag, so 2.0.4 cannot be finished and 2.0.5 replaces it. Leaving out the uploaded crates keeps `--workspace`'s check before upload for the crates that remain, and makes a rerun finish a release instead of failing. Dry-run on 2026-10-26: for v2.0.4 it left out the two uploaded crates and packaged `tailscale-mcp` alone; for v2.0.3 it found all three and exited 0. On 2026-10-26 Docker Hub, `public.ecr.aws` and `mirror.gcr.io` all served `rust:1-alpine` at `sha256:b1d5dd5a…7d87`, and `mirror.gcr.io` needs no login, which keeps `release.yml` free of credentials.
+**Outcome:** applied
+**Ref:** `Dockerfile`, `.github/workflows/release.yml` (crates.io publish step), `RELEASING.md`

@@ -70,7 +70,7 @@ Jobs that share a `needs:` run together, so "what exists already" is what has
 | `npm` | The GitHub release; the image may be building | Fix, then re-run the failed jobs from the Actions tab |
 | `image` / `image-manifest` | The release, and npm if it finished | Re-run the failed jobs |
 | `registry` | The release, npm, the image; crates.io may be running | Re-run; the MCP registry is in preview and does not gate crates.io |
-| `publish` | The release, npm, the image; the listing may be out | Re-run only if no crate uploaded. `cargo publish --workspace` does not skip a crate already at this version: it fails with `already uploaded` (Q181) |
+| `publish` | The release, npm, the image; the listing may be out; some crates may be up | Re-run the failed jobs. From 2.0.5 the step leaves out each crate already at this version and retries a timeout; 2.0.4's own workflow did not, so a rerun of it fails with `already uploaded` (Q181, Q182) |
 
 A version on crates.io cannot be deleted, only yanked. A version on npm can be
 unpublished within its first 72 hours. A GitHub release and a container tag can

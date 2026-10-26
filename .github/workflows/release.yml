@@ -485,6 +485,15 @@ jobs:
       # start if any of them would fail, which is what keeps them at one
       # version.
       #
+      #
+      # It can still stop halfway. Cargo waits only 60 seconds for crates.io's
+      # index to list a crate before uploading the crates that depend on it.
+      # 2.0.4 timed out there after two of its three crates, and every rerun
+      # then refused, because those two were already uploaded (Q182). So each
+      # attempt leaves out the crates already at this version, and a timeout
+      # is retried after a minute. A rerun of this job finishes a release the
+      # same way.
+      #
       # The step's own timeout is under the token's life so that a publish
       # which hangs fails saying so, rather than running on until the
       # credential expires underneath it and failing somewhere in the middle
@@ -493,4 +502,25 @@ jobs:
         timeout-minutes: 25
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --workspace --locked
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          crates=$(cargo metadata --no-deps --format-version 1 --locked |
+              jq -r '.packages[] | select(.publish != []) | .name')
+          for attempt in 1 2 3 4 5; do
+              exclude=()
+              for crate in $crates; do
+                  if curl -sf -A "tailscale-mcp release (github.com/${GITHUB_REPOSITORY})" \
+                      "https://crates.io/api/v1/crates/$crate/$version" > /dev/null; then
+                      exclude+=(--exclude "$crate")
+                  fi
+              done
+              if [ "${#exclude[@]}" -eq "$((2 * $(wc -w <<< "$crates")))" ]; then
+                  echo "every crate is on crates.io at $version"
+                  exit 0
+              fi
+              echo "attempt $attempt: already uploaded: ${exclude[*]:-none}"
+              cargo publish --workspace --locked "${exclude[@]}" && exit 0
+              sleep 60
+          done
+          exit 1

@@ -38,8 +38,10 @@ fn line(message: Value) -> String {
     format!("{message}\n")
 }
 
-#[test]
-fn the_startup_warning_goes_to_standard_error_and_leaves_the_protocol_clean() {
+/// Run the server over stdio with no credential, send `requests`, close its
+/// input, and return what it wrote: the messages on standard output, each
+/// checked to be one, and standard error as text.
+fn exchange(requests: &[Value]) -> (Vec<Value>, String) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let cli = fake_tailscale(dir.path());
 
@@ -59,23 +61,9 @@ fn the_startup_warning_goes_to_standard_error_and_leaves_the_protocol_clean() {
         .expect("the server starts");
 
     let mut stdin = child.stdin.take().expect("stdin is piped");
-    let requests = [
-        line(json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": { "name": "test", "version": "0" }
-            }
-        })),
-        line(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })),
-        line(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} })),
-    ];
     for request in requests {
         stdin
-            .write_all(request.as_bytes())
+            .write_all(line(request.clone()).as_bytes())
             .expect("the request is sent");
     }
     stdin.flush().expect("flushed");
@@ -95,6 +83,26 @@ fn the_startup_warning_goes_to_standard_error_and_leaves_the_protocol_clean() {
             })
         })
         .collect();
+    (messages, stderr)
+}
+
+#[test]
+fn the_startup_warning_goes_to_standard_error_and_leaves_the_protocol_clean() {
+    let (messages, stderr) = exchange(&[
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": "test", "version": "0" }
+            }
+        }),
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} }),
+    ]);
+
     assert!(
         messages.iter().all(|m| m["jsonrpc"] == "2.0"),
         "{messages:#?}"
@@ -136,4 +144,48 @@ fn the_startup_warning_goes_to_standard_error_and_leaves_the_protocol_clean() {
         stderr.contains("tailnet surface is switched off"),
         "{stderr}"
     );
+}
+
+#[test]
+fn every_listing_under_2026_07_28_carries_its_cache_hints() {
+    // From 2026-07-28 a list result must say how long it stays fresh and who
+    // may share it. Claude Code rejects a `tools/list` without `ttlMs` and
+    // `cacheScope`, and then shows the server as connected with no tools
+    // (issue #2).
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": { "name": "test", "version": "0" }
+    });
+    let lists = [
+        "tools/list",
+        "resources/list",
+        "resources/templates/list",
+        "prompts/list",
+    ];
+    let mut requests = vec![json!({
+        "jsonrpc": "2.0", "id": 0, "method": "server/discover", "params": { "_meta": meta }
+    })];
+    requests.extend(lists.iter().zip(1..).map(|(method, id)| {
+        json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": { "_meta": meta } })
+    }));
+    let (messages, _) = exchange(&requests);
+
+    for (method, id) in lists.iter().zip(1..) {
+        let reply = messages
+            .iter()
+            .find(|m| m["id"] == id)
+            .unwrap_or_else(|| panic!("{method} is answered: {messages:#?}"));
+        let result = &reply["result"];
+        assert!(
+            result["ttlMs"].is_u64(),
+            "{method} has no ttlMs: {}",
+            result["ttlMs"]
+        );
+        assert!(
+            matches!(result["cacheScope"].as_str(), Some("public" | "private")),
+            "{method} has no cacheScope: {}",
+            result["cacheScope"]
+        );
+    }
 }

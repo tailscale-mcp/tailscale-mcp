@@ -3,6 +3,20 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 2.0.5 — 2026-10-26
+
+### Fixed
+
+- Finish a crates.io publish that stopped halfway
+
+### Documentation
+
+- A crates.io rerun does not skip crates already uploaded (Q181)
+
+### Build and CI
+
+- Pull the Rust base image from Google's mirror of Docker Hub
+
 ## 2.0.4 — 2026-10-26
 
 ### Fixed

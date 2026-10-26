@@ -2381,7 +2381,11 @@ It is a guarantee that was not true, which is the kind that gets relied on later
 **Ref:** (pending)
 **Supersedes:** Q4 — only its "no `rust-toolchain.toml`" clause; the lint set it chose is untouched.
 
-## Q156 — ticket-32/part-b — deviation
+## Q163 — ticket-32/part-b — deviation
+
+*Numbered Q156 when written, which the entry above already was. Renumbered on
+2026-10-26 to Q163, the one number nothing had taken, so that every citation
+of Q156 keeps meaning the toolchain entry and nothing after it moves (Q183).*
 
 **Question:** Should `audit_tailnet_access`'s `subject` complete device names, closing the gap between the completion and the parameter's own "a user, tag or device"?
 **Options considered:** leave it at users and tags (Q150) / add devices, ordered by name with everything else / add devices, ordered after users and tags
@@ -2647,3 +2651,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** A rerun runs the workflow as it was at the tag, so 2.0.4 cannot be finished and 2.0.5 replaces it. Leaving out the uploaded crates keeps `--workspace`'s check before upload for the crates that remain, and makes a rerun finish a release instead of failing. Dry-run on 2026-10-26: for v2.0.4 it left out the two uploaded crates and packaged `tailscale-mcp` alone; for v2.0.3 it found all three and exited 0. On 2026-10-26 Docker Hub, `public.ecr.aws` and `mirror.gcr.io` all served `rust:1-alpine` at `sha256:b1d5dd5a…7d87`, and `mirror.gcr.io` needs no login, which keeps `release.yml` free of credentials.
 **Outcome:** applied
 **Ref:** `Dockerfile`, `.github/workflows/release.yml` (crates.io publish step), `RELEASING.md`
+
+## Q183 — interactive/decisions-numbering — deviation
+
+**Question:** A positional check of this journal reports 15 breaks: Q75 before Q74, Q86 after Q91, and Q156 used twice with the six entries after it one below their position. Renumber every entry to its position?
+**Options considered:** renumber all to position and rewrite citations / renumber only the duplicate
+**Chosen:** Only the duplicate. The second Q156 (ticket-32/part-b) is now Q163, the one number nothing used. Q74/Q75 and Q86 stay where they are.
+**Decided-by:** agent
+**Justification:** This journal treats a number as an address, not a position: the note under Q86 says an entry is appended where it is written, not slotted in by number, and that Q75 sits before Q74 for the same reason. A positional renumber would move Q74, Q75, Q86–Q91 and Q157–Q162, and redirect their citations in 9 commit messages and in CHANGELOG.md, which is generated from them. Neither can be edited. A duplicate is the only real fault, because a citation of Q156 could not say which entry it meant. Every existing citation of Q156 (`rust-toolchain.toml`, and the commit that added it) means the toolchain entry, and the part-b entry was cited nowhere. So giving part-b a free number changes no citation.
+**Outcome:** applied
+**Ref:** `DECISIONS.md` (the entry now headed Q163)

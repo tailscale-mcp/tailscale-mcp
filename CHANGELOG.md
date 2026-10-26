@@ -3,6 +3,23 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 2.0.4 — 2026-10-26
+
+### Fixed
+
+- Spell policy validate tests entries as objects
+- Send ttlMs and cacheScope on every listing under 2026-07-28
+- Take rustls 0.23.46 for RUSTSEC-2026-0346 to 0349
+- Take tokio 1.54.1, rustls-webpki 0.103.16 and webpki-roots 1.0.11
+
+### Documentation
+
+- Hold 2.0.4 while the container base image is rate-limited (Q180)
+
+### Tests
+
+- Every listing under 2026-07-28 carries ttlMs and cacheScope
+
 ## 2.0.3 — 2026-10-10
 
 ### Fixed

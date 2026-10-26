@@ -11,9 +11,10 @@
 # detects that at startup, offers the tailnet tools alone, and says so. Mount a
 # `tailscale` binary and its socket in if you want the other half.
 
-# Docker Hub's official image, from AWS's mirror of it: the same digest, without
-# the anonymous pull limit that failed CI with 429s (Q174).
-FROM public.ecr.aws/docker/library/rust:1-alpine AS build
+# Docker Hub's official image, from Google's mirror of it: the same digest, and
+# no login. Docker Hub (Q174) and then AWS's mirror (Q182) both answered CI's
+# anonymous pulls with 429s.
+FROM mirror.gcr.io/library/rust:1-alpine AS build
 
 # `ring` compiles C, which on Alpine means musl's headers have to be here.
 RUN apk add --no-cache musl-dev

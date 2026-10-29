@@ -2661,3 +2661,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** This journal treats a number as an address, not a position: the note under Q86 says an entry is appended where it is written, not slotted in by number, and that Q75 sits before Q74 for the same reason. A positional renumber would move Q74, Q75, Q86–Q91 and Q157–Q162, and redirect their citations in 9 commit messages and in CHANGELOG.md, which is generated from them. Neither can be edited. A duplicate is the only real fault, because a citation of Q156 could not say which entry it meant. Every existing citation of Q156 (`rust-toolchain.toml`, and the commit that added it) means the toolchain entry, and the part-b entry was cited nowhere. So giving part-b a free number changes no citation.
 **Outcome:** applied
 **Ref:** `DECISIONS.md` (the entry now headed Q163)
+
+## Q184 — github-maintainer/schema-drift — scope
+
+**Question:** The weekly drift check went red on `main` on 2026-10-29: the served API description added a documented 400 response to one endpoint. Earlier re-vendors were interactive work. Does the unattended maintainer loop, which is scoped to issues and PRs, re-vendor it?
+**Options considered:** re-vendor in the loop / leave it red and report it for an interactive session
+**Chosen:** Re-vendor in the loop when the diff is documentation only and the drift test passes with no model change. Anything that names a field to model stays reported, not done.
+**Decided-by:** agent
+**Justification:** A red `main` blocks every future tag (Q174, Q180), and a copy-and-ETag commit carries no judgement an interactive session would add. New fields do: they decide the tool contract, so they wait for Frank.
+**Outcome:** applied
+**Ref:** the `chore(rest): re-vendor` commit of 2026-10-29

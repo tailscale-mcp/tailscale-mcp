@@ -2671,3 +2671,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** A red `main` blocks every future tag (Q174, Q180), and a copy-and-ETag commit carries no judgement an interactive session would add. New fields do: they decide the tool contract, so they wait for Frank.
 **Outcome:** applied
 **Ref:** the `chore(rest): re-vendor` commit of 2026-10-29
+
+## Q185 — github-maintainer/release-gate — assumption
+
+**Question:** The post-2.0.5 re-vendors `7353eca` and `9c5a4d5` are `chore` commits, yet `7353eca` adds `magicroute` to `ROUTE_SELECTIONS` and `admin_console_session_timeout_minutes` to `TailnetSettings`. Does a re-vendor that grows a model make a release due?
+**Options considered:** treat it as `feat` and cut 2.0.6 / keep `chore` and hold until a `fix` or `feat` lands
+**Chosen:** Hold. `ROUTE_SELECTIONS` is read only through `known_values()` by `tests/schema_drift.rs`. Every `model!` struct carries a `#[serde(flatten)]` map, so the new setting round-tripped before the field existed, and `tailnet_settings_get` and `tailnet_settings_update` pass raw `Value` either way. No tool's contract or output changed.
+**Decided-by:** agent
+**Justification:** The maintainer loop releases only for `fix` or `feat` commits. Several unattended runs on 2026-11-06 re-derived this from the code; recording it stops the loop from re-opening it, as openroutine Q4 did.
+**Outcome:** applied
+**Ref:** `7353eca`, `9c5a4d5`, `crates/tailscale-rest/src/models/mod.rs` (`#[serde(flatten)]`), `crates/tailscale-mcp/src/tools/tailnet_settings.rs`

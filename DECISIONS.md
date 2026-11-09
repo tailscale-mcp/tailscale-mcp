@@ -2681,3 +2681,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** The maintainer loop releases only for `fix` or `feat` commits. Several unattended runs on 2026-11-06 re-derived this from the code; recording it stops the loop from re-opening it, as openroutine Q4 did.
 **Outcome:** applied
 **Ref:** `7353eca`, `9c5a4d5`, `crates/tailscale-rest/src/models/mod.rs` (`#[serde(flatten)]`), `crates/tailscale-mcp/src/tools/tailnet_settings.rs`
+
+## Q186 — github-maintainer/advisories — assumption
+
+**Question:** The weekly Advisories run on 2026-11-09 fails on RUSTSEC-2026-0462 (rmcp < 3.9.0: the Streamable HTTP clients buffer a response body with no size limit). The loop's spec covers issues and PRs, not advisories. Act on it, and if so, is it a `fix` that makes a release due?
+**Options considered:** leave it for a human / take rmcp 3.9.0 as `fix(deps)` and cut 2.0.6 / take rmcp 3.9.0 as `chore(deps)` and hold the release
+**Chosen:** Take rmcp 3.9.0 in the lockfile as `chore(deps)` and hold the release. The advisory names only the client transports (`transport-streamable-http-client-reqwest`, `-unix-socket`). `cargo tree -p tailscale-mcp -e normal` shows rmcp with server features only; the `client` feature comes from `[dev-dependencies]`, which resolver 3 keeps out of the shipped build. No published binary, image or crate runs the affected code. The bump still lands now so that `ci.yml`'s `cargo deny check` stays green for the next real change, as 498fc15 and fec73c8 did for 2.0.4.
+**Decided-by:** agent
+**Justification:** The maintainer loop releases only for `fix` or `feat` commits, and the commit type must say whether users are affected. A `fix` here would ship a minor rmcp upgrade to users for a flaw they do not have.
+**Outcome:** applied
+**Ref:** the `chore(deps): take rmcp 3.9.0` commit; Advisories run 42655982594; https://rustsec.org/advisories/RUSTSEC-2026-0462

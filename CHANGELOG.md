@@ -3,6 +3,25 @@
 Every release of `tailscale-mcp`, newest first. Generated from the commit
 history by [git-cliff](https://git-cliff.org); do not edit by hand.
 
+## 2.1.0 — 2026-11-13
+
+### Documentation
+
+- Give the second Q156 the free number Q163 (Q183)
+- Note what rmcp 3.7.0 changed since the 3.2.0 study
+- Record why the post-2.0.5 re-vendors hold the release (Q185)
+
+### Build and CI
+
+- Rust 1.100.0 (MSRV 1.100)
+
+### Housekeeping
+
+- Re-vendor the API description served on 2026-10-26
+- Re-vendor the API description served on 2026-10-29
+- Take rmcp 3.9.0 for RUSTSEC-2026-0462
+- Re-vendor the API description served on 2026-11-13
+
 ## 2.0.5 — 2026-10-26
 
 ### Fixed

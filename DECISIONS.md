@@ -2712,3 +2712,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** The same reasoning as Q185 for `7353eca`: a re-vendor that grows a model while every tool passes the object through raw is a `chore`. A typed parameter would only repeat what `capabilities` already carries.
 **Outcome:** applied
 **Ref:** the `chore(rest): re-vendor the API description served on 2026-11-13` commit
+
+## Q189 — interactive/release-2.1.0 — deviation
+
+**Question:** Since 2.0.5 there are only `chore`, `docs` and `build` commits, so `prepare-release.sh` would choose 2.0.6. What version ships the MSRV raise to 1.100 (Q187), rmcp 3.9.0 for RUSTSEC-2026-0462, and the three re-vendors?
+**Options considered:** 2.0.6, the script's rule / 2.1.0 through `--version`
+**Chosen:** 2.1.0. A raised MSRV stops builds from source on any Rust older than 1.100, and Cargo's own convention treats that as a minor bump, not a patch. The changelog names the new floor under "Build and CI". Q185's hold covered chore-only re-vendors, and this release also carries a security fix and the MSRV change, so the hold no longer applies.
+**Decided-by:** human (release now, "do 4"); agent (2.1.0 over 2.0.6)
+**Justification:** Frank asked on 2026-11-12 for the MSRV raise to be released. RELEASING.md allows `--version` to override the rule.
+**Outcome:** applied
+**Ref:** `chore(release): 2.1.0`, tag `v2.1.0`

@@ -2702,3 +2702,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Outcome:** applied
 **Ref:** the `build: Rust 1.100.0 (MSRV 1.100)` commit
 **Supersedes:** Q156 — only its "`rust-version = "1.88"` stays" clause; the stable-channel `rust-toolchain.toml` is untouched.
+
+## Q188 — interactive/schema-drift — gate-resolution
+
+**Question:** The description served on 2026-11-13 adds `nodeAttributes` (custom posture attributes) under `capabilities.devices.create` on key creation, and says that sending it also needs `devices:posture_attributes`. Should `key_create` gain a parameter for it, or should the model only catch up?
+**Options considered:** a new typed tool parameter (`feat`) / model the field and leave the tool as it is (`chore(rest)`)
+**Chosen:** Model only. `CreateCapability` gains `node_attributes` (`BTreeMap<String, Value>`, because values are a string, an integer or a boolean). `control-plane-api.md` notes the field and the extra scope. `key_create` still sends `capabilities` exactly as written, so `nodeAttributes` already reaches Tailscale today and no tool's contract changes.
+**Decided-by:** agent
+**Justification:** The same reasoning as Q185 for `7353eca`: a re-vendor that grows a model while every tool passes the object through raw is a `chore`. A typed parameter would only repeat what `capabilities` already carries.
+**Outcome:** applied
+**Ref:** the `chore(rest): re-vendor the API description served on 2026-11-13` commit

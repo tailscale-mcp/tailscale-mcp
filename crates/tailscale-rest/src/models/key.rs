@@ -6,6 +6,8 @@
 
 use std::collections::BTreeMap;
 
+use serde_json::Value;
+
 use crate::Secret;
 use crate::model;
 use crate::models::KnownValues;
@@ -89,6 +91,10 @@ model! {
         preauthorized: "preauthorized" => bool,
         /// The tags every device registered with this key is given.
         tags: "tags" => Vec<String>,
+        /// Custom posture attributes (`custom:` keys; string, integer or boolean
+        /// values, at most 100) set on every device registered with this key.
+        /// Sending them also needs `devices:posture_attributes`.
+        node_attributes: "nodeAttributes" => BTreeMap<String, Value>,
     }
 
     // -----------------------------------------------------------------------

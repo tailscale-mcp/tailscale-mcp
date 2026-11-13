@@ -5,10 +5,9 @@ members = ["crates/tailscale-rest", "crates/tailscale-cli", "crates/tailscale-mc
 [workspace.package]
 version = "2.0.5"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.100"
 license = "Apache-2.0"
 repository = "https://github.com/tailscale-mcp/tailscale-mcp"
-homepage = "https://github.com/tailscale-mcp/tailscale-mcp"
 authors = ["The tailscale-mcp authors"]
 
 [workspace.dependencies]

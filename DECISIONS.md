@@ -2691,3 +2691,14 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** The maintainer loop releases only for `fix` or `feat` commits, and the commit type must say whether users are affected. A `fix` here would ship a minor rmcp upgrade to users for a flaw they do not have.
 **Outcome:** applied
 **Ref:** the `chore(deps): take rmcp 3.9.0` commit; Advisories run 42655982594; https://rustsec.org/advisories/RUSTSEC-2026-0462
+
+## Q187 — interactive/toolchain — tradeoff
+
+**Question:** Rust 1.100.0 shipped on 2026-11-12. Should the MSRV stay at 1.88 (Q4, Q156), or rise with the release?
+**Options considered:** keep `rust-version = "1.88"` / raise it to 1.100
+**Chosen:** `rust-version = "1.100"`. The Minimum-toolchain job reads the manifest (Q4's one-edit design), so `ci.yml` needs no edit. Cargo 1.100's new manifest lints also landed in the same commit: `homepage` is gone from the workspace and from the three crates, because it repeated `repository`, and `tailscale-cli` drops `serde`, `serde_json` and `tracing`, which a grep of its sources shows nothing uses.
+**Decided-by:** human
+**Justification:** Frank chose on 2026-11-12 to raise the MSRV of every Rust repo he owns to 1.100. No code here needs a 1.100 feature yet. The cost falls on users who build from source with an older compiler. They now need `rustup update stable`, which fleet hosts already need for other crates (Q156). Release binaries, the npm and Homebrew packages and the image are unaffected.
+**Outcome:** applied
+**Ref:** the `build: Rust 1.100.0 (MSRV 1.100)` commit
+**Supersedes:** Q156 — only its "`rust-version = "1.88"` stays" clause; the stable-channel `rust-toolchain.toml` is untouched.

@@ -2722,3 +2722,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Frank asked on 2026-11-12 for the MSRV raise to be released. RELEASING.md allows `--version` to override the rule.
 **Outcome:** applied
 **Ref:** `chore(release): 2.1.0`, tag `v2.1.0`
+
+## Q190 — github-maintainer/schema-drift — scope
+
+**Question:** The weekly drift check went red on `main` on 2026-11-19 (run 44568554587). The served description (sha256 `10ef89e0…7344a2e1`) changes only two lines of prose: the `networking_settings` scope notes on `getTailnetSettings` and `updateTailnetSettings` now name `httpsEnabled` instead of `httpsCertificates`. No field changes. With the served file in place, `the_https_setting_is_called_two_things` in `tests/schema_drift.rs` fails, and its message says "this note can go". Does the unattended loop re-vendor it and delete that test?
+**Options considered:** re-vendor, delete the test and drop the mismatch notes in `control-plane-api.md` / hold and ask Frank
+**Chosen:** Hold and ask. Q184 lets the loop re-vendor only when the drift test passes with no model change, and here it passes only after a test is removed. The fleet rule says never to change a test a human wrote to make it pass, and the git log cannot show who wrote this one. Nothing is waiting on a green weekly job: `main` is at v2.1.0 with no commits since the tag.
+**Decided-by:** agent
+**Justification:** Pushing the re-vendor without the test change would turn `ci.yml` red on `main`, which blocks the next tag (Q174, Q180). Waiting costs nothing. The fix, once approved: the served file into `docs/research/tailscale-openapi.yaml`, its ETag in `docs/research/README.md`, delete the test, and drop the mismatch notes at `docs/research/control-plane-api.md` lines 160, 272 and 303.
+**Outcome:** pending Frank
+**Ref:** Schema drift run 44568554587; `crates/tailscale-rest/tests/schema_drift.rs` (`known_divergences::the_https_setting_is_called_two_things`)

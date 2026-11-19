@@ -2732,3 +2732,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** Pushing the re-vendor without the test change would turn `ci.yml` red on `main`, which blocks the next tag (Q174, Q180). Waiting costs nothing. The fix, once approved: the served file into `docs/research/tailscale-openapi.yaml`, its ETag in `docs/research/README.md`, delete the test, and drop the mismatch notes at `docs/research/control-plane-api.md` lines 160, 272 and 303.
 **Outcome:** pending Frank
 **Ref:** Schema drift run 44568554587; `crates/tailscale-rest/tests/schema_drift.rs` (`known_divergences::the_https_setting_is_called_two_things`)
+
+## Q191 — github-maintainer/advisories — tradeoff
+
+**Question:** `ci.yml`'s Dependency policy job went red on `main` on 2026-11-19 (run 44569039492) for RUSTSEC-2026-0543: chrono is unmaintained, all versions, no patched release. chrono is not a direct dependency. rmcp and schemars pull it in, and rmcp 3.11.0, the newest, still requires it. Ignore it, relax the policy, or hold for Frank?
+**Options considered:** ignore this one advisory ID in `deny.toml` / set `unmaintained = "workspace"` / hold and ask Frank
+**Chosen:** Ignore RUSTSEC-2026-0543 by ID, with a reason, as `chore(deps)`. No release.
+**Decided-by:** agent
+**Justification:** The advisory is informational (`unmaintained`), not a vulnerability, and no upgrade removes it, so a red job asks for an action nobody can take. Q186 keeps `cargo deny check` green so the next real change can tag (Q174, Q180). An ID-scoped ignore keeps every other advisory loud, which Q101's argument for running `advisories` at all requires; `unmaintained = "workspace"` would silence every future transitive one. Drop the entry when rmcp drops chrono.
+**Outcome:** applied
+**Ref:** CI run 44569039492; https://rustsec.org/advisories/RUSTSEC-2026-0543; `deny.toml`

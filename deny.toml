@@ -42,6 +42,11 @@ reason = "rustls only; see the workspace dependency policy"
 [advisories]
 version = 2
 yanked = "deny"
+# chrono is "unmaintained" (informational, no patched version). It is not ours:
+# rmcp (3.11.0 too) and schemars pull it in. Drop this entry when rmcp drops chrono.
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; transitive via rmcp and schemars, no release drops it" },
+]
 
 [sources]
 unknown-registry = "deny"

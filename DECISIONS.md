@@ -2742,3 +2742,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** The advisory is informational (`unmaintained`), not a vulnerability, and no upgrade removes it, so a red job asks for an action nobody can take. Q186 keeps `cargo deny check` green so the next real change can tag (Q174, Q180). An ID-scoped ignore keeps every other advisory loud, which Q101's argument for running `advisories` at all requires; `unmaintained = "workspace"` would silence every future transitive one. Drop the entry when rmcp drops chrono.
 **Outcome:** applied
 **Ref:** CI run 44569039492; https://rustsec.org/advisories/RUSTSEC-2026-0543; `deny.toml`
+
+## Q192 — github-maintainer/advisories — assumption
+
+**Question:** The weekly Advisories run on 2026-11-23 (run on 124dd29) fails on RUSTSEC-2026-0592: `url` <= 2.5.8 overflows the stack in `Url::origin()` on a deeply nested `blob:` URL. `url` 2.5.9 fixes it. Take the bump, and is it a `fix` that makes a release due?
+**Options considered:** leave it for a human / `fix(deps)` and cut 2.1.1 / `chore(deps)` and hold the release
+**Chosen:** Take `url` 2.5.9 in the lockfile as `chore(deps)` and hold the release. `cargo update -p url --precise 2.5.9` moves only `url` and its sibling `form_urlencoded` (1.2.2 to 1.2.3).
+**Decided-by:** agent
+**Justification:** The same test as Q186: the commit type says whether users are affected. `cargo tree -p tailscale-mcp -e normal -i url` shows `url` reaches the shipped build only through reqwest 0.12.28 and tower-http 0.6.11 (boon is dev-only). Neither crate's source calls `origin()` or `url::quirks`, and nothing in `crates/` does. No published binary, image or crate runs the affected function. The bump still lands now so `cargo deny check` stays green for the next real change (Q174, Q180).
+**Outcome:** applied
+**Ref:** the `chore(deps): take url 2.5.9` commit; https://rustsec.org/advisories/RUSTSEC-2026-0592

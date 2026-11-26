@@ -2752,3 +2752,13 @@ Test-only seams that the deletions left without a caller are removed: `server::s
 **Justification:** The same test as Q186: the commit type says whether users are affected. `cargo tree -p tailscale-mcp -e normal -i url` shows `url` reaches the shipped build only through reqwest 0.12.28 and tower-http 0.6.11 (boon is dev-only). Neither crate's source calls `origin()` or `url::quirks`, and nothing in `crates/` does. No published binary, image or crate runs the affected function. The bump still lands now so `cargo deny check` stays green for the next real change (Q174, Q180).
 **Outcome:** applied
 **Ref:** the `chore(deps): take url 2.5.9` commit; https://rustsec.org/advisories/RUSTSEC-2026-0592
+
+## Q193 — github-maintainer/schema-drift — assumption
+
+**Question:** On 2026-11-26 the served description changed again (sha256 `2d63650935190de58da7c3c5ef9b05b48226462c8ceba0b33a1273c18e066eec`, 6804 lines; Q190's was `10ef89e0…7344a2e1`). Besides Q190's two scope-note lines, `updateUserRole` (`POST /users/{userId}/role`) gains a prose line (a pending user cannot be made owner until approved) and a `402` response (trial ended and the user is pending). Does this change Q190's hold, or need a model or tool change?
+**Options considered:** re-vendor now / keep holding on Q190 and fold this in
+**Chosen:** Keep holding on Q190. With the served file in place, `cargo test -p tailscale-rest --test schema_drift` still fails on only `the_https_setting_is_called_two_things` (11 of 12 pass), so the block is the same test deletion. No model or tool change: `ToolError::from(ApiError)` passes a status it has no code for through with its number and message, so `tailnet_user_role_set` already reports a `402` correctly.
+**Decided-by:** agent
+**Justification:** Q190's reasoning holds unchanged, and the new hunks need nothing the drift test or the error mapping does not already cover. Once Frank approves, the fix is Q190's list with this file and its ETag, plus an optional note on the pending-user rule in the `/users/{userId}/role` row of `docs/research/control-plane-api.md`. A later run that sees a different served sha256 has new drift to report; the same sha256 is this entry.
+**Outcome:** assumed
+**Ref:** local fetch of the schema URL in `.github/workflows/schema-drift.yml`; `crates/tailscale-mcp/src/error.rs` (`impl From<tailscale_rest::ApiError> for ToolError`)
